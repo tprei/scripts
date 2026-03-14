@@ -6,6 +6,8 @@ Telegram notification bot for Claude Code's `Stop` hook. Sends a message with pr
 
 Claude Code fires the `Stop` hook when it finishes. The hook runs `notify.ts` via `npx tsx`, which reads the hook's stdin JSON, enriches it with git/hostname context, and POSTs to the Telegram Bot API. Failures are logged to stderr and never block Claude from stopping.
 
+When `LISTENER_ENABLED=true`, a separate `listener.ts` process polls for incoming Telegram messages and injects them as keystrokes into the active tmux pane running Claude. `notify.ts` also registers on the `SessionStart` hook so the session cache always has the current pane ID before any reply arrives.
+
 ## Setup
 
 ### 1. Create a Telegram bot
@@ -43,9 +45,9 @@ echo '{"session_id":"test","cwd":"/tmp","hook_event_name":"Stop","last_assistant
 
 Expect `{}` on stdout. With `.env` configured, a message should arrive in Telegram.
 
-### 6. Register the Stop hook
+### 6. Register the hooks
 
-Add to `~/.claude/settings.json` under `hooks`:
+Add to `~/.claude/settings.json` under `hooks`. Both `Stop` and `SessionStart` must run `notify.ts` — Stop sends the Telegram message, SessionStart writes the pane ID to sessions-cache so the listener can route replies correctly.
 
 ```json
 "Stop": [
@@ -54,12 +56,56 @@ Add to `~/.claude/settings.json` under `hooks`:
     "hooks": [
       {
         "type": "command",
-        "command": "npx tsx /home/prei/scripts/src/notify.ts",
+        "command": "npx tsx /absolute/path/to/telegram-notify/src/notify.ts",
+        "timeout": 15
+      }
+    ]
+  }
+],
+"SessionStart": [
+  {
+    "matcher": "",
+    "hooks": [
+      {
+        "type": "command",
+        "command": "npx tsx /absolute/path/to/telegram-notify/src/notify.ts",
         "timeout": 15
       }
     ]
   }
 ]
+```
+
+### 7. (Optional) Enable the two-way listener
+
+The listener lets you reply to Telegram messages and have them injected into the active Claude pane.
+
+```sh
+# Add to .env
+LISTENER_ENABLED=true
+ALLOWED_USER_IDS=<your-telegram-user-id>
+```
+
+The classifier (`src/safe-inject.ts`) calls `z-claude` to check each incoming message before injecting. Because `z-claude` is a shell function, it must be wrapped as a real executable:
+
+```sh
+mkdir -p ~/bin
+cat > ~/bin/z-claude <<'EOF'
+#!/usr/bin/env bash
+ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
+ANTHROPIC_AUTH_TOKEN="$MY_ZAI_AUTH_TOKEN" \
+ANTHROPIC_DEFAULT_OPUS_MODEL="glm-5" \
+ANTHROPIC_DEFAULT_SONNET_MODEL="glm-5" \
+ANTHROPIC_DEFAULT_HAIKU_MODEL="glm-5" \
+exec claude --model GLM-5 "$@"
+EOF
+chmod +x ~/bin/z-claude
+```
+
+`MY_ZAI_AUTH_TOKEN` must be set in the shell that starts `listener.ts` (not in `.env`). Start the listener manually:
+
+```sh
+npx tsx src/listener.ts
 ```
 
 ## Verification
