@@ -1,36 +1,36 @@
 import type { EnvContext } from "./context.js"
 import type { StopHookInput } from "./types.js"
 
-const MAX_MESSAGE_LENGTH = 2000
+const MAX_INSTRUCTION = 300
+const MAX_RESPONSE = 800
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
-export function formatNotification(input: StopHookInput, ctx: EnvContext): string {
-  const lastMessage = input.last_assistant_message.length > MAX_MESSAGE_LENGTH
-    ? input.last_assistant_message.slice(0, MAX_MESSAGE_LENGTH) + "\n[truncated]"
-    : input.last_assistant_message
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max).trimEnd() + "…" : s
+}
 
-  const lines = [
-    "<b>Claude Code stopped</b>",
-    "",
-    `<b>Project:</b>  ${esc(ctx.project)}`,
-    `<b>Path:</b>     ${esc(input.cwd)}`,
-    `<b>Branch:</b>   ${esc(ctx.branch)}`,
-    `<b>Host:</b>     ${esc(ctx.hostname)}`,
-  ]
+export function formatNotification(
+  input: StopHookInput,
+  ctx: EnvContext,
+  lastInstruction: string | null,
+): string {
+  const meta = [
+    `🤖 <b>${esc(ctx.project)}</b>`,
+    `<code>${esc(ctx.branch)}</code>`,
+    ...(ctx.tmuxWindow ? [esc(ctx.tmuxWindow)] : []),
+    esc(ctx.hostname),
+  ].join(" · ")
 
-  if (ctx.tmuxWindow !== null) {
-    lines.push(`<b>Tmux:</b>     ${esc(ctx.tmuxWindow)}`)
+  const parts = [meta]
+
+  if (lastInstruction) {
+    parts.push("", `❓ <i>${esc(truncate(lastInstruction, MAX_INSTRUCTION))}</i>`)
   }
 
-  lines.push(`<b>Session:</b>  ${esc(input.session_id)}`)
+  parts.push("", `💬 ${esc(truncate(input.last_assistant_message, MAX_RESPONSE))}`)
 
-  return [
-    ...lines,
-    "",
-    "<b>Last message:</b>",
-    esc(lastMessage),
-  ].join("\n")
+  return parts.join("\n")
 }

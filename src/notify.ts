@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url"
 import { gatherContext } from "./context.js"
 import { formatNotification } from "./format.js"
 import { sendMessage } from "./telegram.js"
+import { extractLastInstruction } from "./transcript.js"
 import type { StopHookInput } from "./types.js"
 
 const require = createRequire(import.meta.url)
@@ -39,7 +40,8 @@ async function main() {
     }
 
     const ctx = gatherContext(input.cwd)
-    const message = formatNotification(input, ctx)
+    const lastInstruction = extractLastInstruction(input.transcript_path)
+    const message = formatNotification(input, ctx, lastInstruction)
     await sendMessage(token, chatId, message)
   } catch (err) {
     process.stderr.write(`notify: unexpected error: ${err}\n`)
