@@ -45,7 +45,7 @@ async function main() {
     const lastInstruction = extractLastInstruction(input.transcript_path)
     const message = formatNotification(input, ctx, lastInstruction)
     const threadId = await getOrCreateTopic(token, chatId, ctx.project)
-    if (threadId !== null) {
+    if (threadId !== null && process.env["LISTENER_ENABLED"]) {
       upsertSession(threadId, {
         session_id: input.session_id,
         pane_id: ctx.paneId,

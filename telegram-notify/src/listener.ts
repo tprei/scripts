@@ -11,6 +11,11 @@ const dotenv = require("dotenv")
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(scriptDir, "..", ".env") })
 
+if (!process.env["LISTENER_ENABLED"]) {
+  process.stderr.write("listener: LISTENER_ENABLED not set — exiting\n")
+  process.exit(0)
+}
+
 const token = process.env["TELEGRAM_BOT_TOKEN"]
 const chatId = process.env["TELEGRAM_CHAT_ID"]
 
