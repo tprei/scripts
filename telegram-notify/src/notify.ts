@@ -32,6 +32,11 @@ async function main() {
       process.exit(0)
     }
 
+    if (process.env["TELEGRAM_NOTIFY_DISABLED"]) {
+      process.stdout.write("{}\n")
+      process.exit(0)
+    }
+
     const token = process.env["TELEGRAM_BOT_TOKEN"]
     const chatId = process.env["TELEGRAM_CHAT_ID"]
 
