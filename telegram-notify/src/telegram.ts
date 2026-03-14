@@ -55,15 +55,17 @@ export async function sendMessage(
   chatId: string,
   html: string,
   threadId?: number,
-): Promise<boolean> {
+  replyToMessageId?: number,
+): Promise<{ ok: boolean; messageId: number | null }> {
   const chunks = splitMessage(html)
 
-  const firstId = await sendOne(token, chatId, chunks[0], threadId)
-  if (firstId === null) return false
+  const firstId = await sendOne(token, chatId, chunks[0], threadId, replyToMessageId)
+  if (firstId === null) return { ok: false, messageId: null }
 
   for (let i = 1; i < chunks.length; i++) {
-    if ((await sendOne(token, chatId, chunks[i], threadId, firstId)) === null) return false
+    if ((await sendOne(token, chatId, chunks[i], threadId, firstId)) === null)
+      return { ok: false, messageId: firstId }
   }
 
-  return true
+  return { ok: true, messageId: firstId }
 }

@@ -2,11 +2,12 @@ import { createRequire } from "node:module"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { gatherContext } from "./context.js"
-import { formatNotification } from "./format.js"
+import { formatUserPrompt, formatAssistantReply } from "./format.js"
 import { sendMessage } from "./telegram.js"
 import { upsertSession, removeSession } from "./sessions.js"
 import { getOrCreateTopic, deleteTopic, getProjectByThreadId, removeTopicFromCache } from "./topics.js"
 import { extractLastInstruction } from "./transcript.js"
+import { savePromptInfo, loadPromptInfo, clearPromptInfo } from "./prompt-cache.js"
 import type { StopHookInput } from "./types.js"
 
 const require = createRequire(import.meta.url)
@@ -73,10 +74,21 @@ async function main() {
         ts: Date.now(),
       })
     }
-    if (input.hook_event_name === "Stop") {
+
+    if (input.hook_event_name === "UserPromptSubmit") {
+      const message = formatUserPrompt(input, ctx)
+      const result = await sendMessage(token, chatId, message, threadId ?? undefined)
+      if (result.ok && result.messageId !== null) {
+        savePromptInfo(input.session_id, result.messageId, Date.now())
+      }
+    } else if (input.hook_event_name === "Stop") {
+      const cached = loadPromptInfo(input.session_id)
+      const elapsedMs = cached ? Date.now() - cached.timestamp : undefined
+      const replyToMessageId = cached?.messageId ?? undefined
       const lastInstruction = extractLastInstruction(input.transcript_path)
-      const message = formatNotification(input, ctx, lastInstruction)
-      await sendMessage(token, chatId, message, threadId ?? undefined)
+      const message = formatAssistantReply(input, ctx, lastInstruction, elapsedMs)
+      await sendMessage(token, chatId, message, threadId ?? undefined, replyToMessageId)
+      clearPromptInfo(input.session_id)
     }
   } catch (err) {
     process.stderr.write(`notify: unexpected error: ${err}\n`)
