@@ -51,8 +51,9 @@ export async function safeInject(
   }
 
   process.stderr.write(`safe-inject: classifier stdout: ${JSON.stringify(classifierResult.stdout)}\n`)
-  if (classifierResult.stdout.toUpperCase().includes("UNSAFE")) {
-    return { ok: false, reason: "blocked: classifier flagged as unsafe" }
+  const output = classifierResult.stdout.toUpperCase()
+  if (!output.includes("SAFE") || output.includes("UNSAFE")) {
+    return { ok: false, reason: "blocked: classifier did not confirm SAFE" }
   }
 
   if (paneId === null) {
@@ -66,7 +67,7 @@ export async function safeInject(
   }
 
   const cmd = execSync(
-    `tmux display-message -p '#{pane_current_command}' -t ${paneId}`,
+    `tmux display-message -t ${paneId} -p '#{pane_current_command}'`,
     { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
   ).trim()
 
