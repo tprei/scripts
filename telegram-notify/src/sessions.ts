@@ -29,3 +29,9 @@ export function upsertSession(threadId: number, entry: SessionEntry): void {
   cache[threadId.toString()] = entry
   writeCache(cache)
 }
+
+export function removeSession(threadId: number): void {
+  const cache = readCache()
+  delete cache[threadId.toString()]
+  writeCache(cache)
+}

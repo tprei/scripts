@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url"
 import { gatherContext } from "./context.js"
 import { formatNotification } from "./format.js"
 import { sendMessage } from "./telegram.js"
-import { upsertSession } from "./sessions.js"
-import { getOrCreateTopic } from "./topics.js"
+import { upsertSession, removeSession } from "./sessions.js"
+import { getOrCreateTopic, deleteTopic, getProjectByThreadId, removeTopicFromCache } from "./topics.js"
 import { extractLastInstruction } from "./transcript.js"
 import type { StopHookInput } from "./types.js"
 
@@ -48,6 +48,23 @@ async function main() {
 
     const ctx = gatherContext(input.cwd)
     const threadId = await getOrCreateTopic(token, chatId, ctx.project)
+
+    if (input.hook_event_name === "SessionEnd") {
+      if (threadId !== null) {
+        const deleted = await deleteTopic(token, chatId, threadId)
+        if (deleted) {
+          removeSession(threadId)
+          const projectName = getProjectByThreadId(threadId)
+          if (projectName) {
+            removeTopicFromCache(projectName)
+          }
+        }
+      }
+      process.stdout.write("{}\n")
+      process.exit(0)
+      return
+    }
+
     if (threadId !== null && process.env["LISTENER_ENABLED"]) {
       upsertSession(threadId, {
         session_id: input.session_id,

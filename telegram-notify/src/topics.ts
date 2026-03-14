@@ -48,3 +48,43 @@ export async function getOrCreateTopic(
     return null
   }
 }
+
+export function getProjectByThreadId(threadId: number): string | null {
+  const cache = readCache()
+  for (const [project, id] of Object.entries(cache)) {
+    if (id === threadId) return project
+  }
+  return null
+}
+
+export function removeTopicFromCache(projectName: string): void {
+  const cache = readCache()
+  delete cache[projectName]
+  writeCache(cache)
+}
+
+export async function deleteTopic(
+  token: string,
+  chatId: string,
+  threadId: number,
+): Promise<boolean> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/deleteForumTopic`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, message_thread_id: threadId }),
+    })
+
+    if (!res.ok) {
+      const body = await res.text()
+      process.stderr.write(`telegram: deleteForumTopic HTTP ${res.status}: ${body}\n`)
+      return false
+    }
+
+    const data = (await res.json()) as { ok: boolean }
+    return data.ok === true
+  } catch (err) {
+    process.stderr.write(`telegram: deleteForumTopic failed: ${err}\n`)
+    return false
+  }
+}
