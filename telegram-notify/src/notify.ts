@@ -2,13 +2,13 @@ import { createRequire } from "node:module"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { gatherContext } from "./context.js"
-import { formatUserPrompt, formatAssistantReply } from "./format.js"
-import { sendMessage } from "./telegram.js"
+import { formatUserPrompt, formatAssistantReply, formatToolActivity } from "./format.js"
+import { sendMessage, editMessage } from "./telegram.js"
 import { upsertSession, removeSession } from "./sessions.js"
 import { getOrCreateTopic, deleteTopic, getProjectByThreadId, removeTopicFromCache } from "./topics.js"
 import { extractLastInstruction } from "./transcript.js"
-import { savePromptInfo, loadPromptInfo, clearPromptInfo } from "./prompt-cache.js"
-import type { StopHookInput } from "./types.js"
+import { savePromptInfo, loadPromptInfo, clearPromptInfo, saveActivityInfo, loadActivityInfo, incrementToolCount } from "./prompt-cache.js"
+import type { HookInput } from "./types.js"
 
 const require = createRequire(import.meta.url)
 const dotenv = require("dotenv")
@@ -24,9 +24,9 @@ async function main() {
     }
     const raw = Buffer.concat(chunks).toString("utf8").trim()
 
-    let input: StopHookInput
+    let input: HookInput
     try {
-      input = JSON.parse(raw) as StopHookInput
+      input = JSON.parse(raw) as HookInput
     } catch {
       process.stderr.write(`notify: invalid JSON on stdin: ${raw.slice(0, 200)}\n`)
       process.stdout.write("{}\n")
@@ -80,6 +80,39 @@ async function main() {
       const result = await sendMessage(token, chatId, message, threadId ?? undefined)
       if (result.ok && result.messageId !== null) {
         savePromptInfo(input.session_id, result.messageId, Date.now())
+      }
+    } else if (input.hook_event_name === "PostToolUse") {
+      const toolName = input.tool_name ?? ""
+      const toolInput = input.tool_input ?? {}
+      const promptInfo = loadPromptInfo(input.session_id)
+      if (promptInfo !== null) {
+        const activityInfo = loadActivityInfo(input.session_id)
+        const now = Date.now()
+        const throttleMs = Number(process.env["ACTIVITY_THROTTLE_MS"] ?? 3000)
+        const tooSoon =
+          activityInfo !== null && now - activityInfo.activityTimestamp < throttleMs
+
+        if (tooSoon) {
+          incrementToolCount(input.session_id)
+        } else {
+          const newToolCount = (activityInfo?.toolCount ?? 0) + 1
+          const message = formatToolActivity(toolName, toolInput, newToolCount)
+          if (activityInfo === null) {
+            const result = await sendMessage(
+              token,
+              chatId,
+              message,
+              threadId ?? undefined,
+              promptInfo.messageId,
+            )
+            if (result.ok && result.messageId !== null) {
+              saveActivityInfo(input.session_id, result.messageId, now, newToolCount)
+            }
+          } else {
+            await editMessage(token, chatId, activityInfo.activityMessageId, message, threadId ?? undefined)
+            saveActivityInfo(input.session_id, activityInfo.activityMessageId, now, newToolCount)
+          }
+        }
       }
     } else if (input.hook_event_name === "Stop") {
       const cached = loadPromptInfo(input.session_id)

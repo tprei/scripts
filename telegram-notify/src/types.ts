@@ -1,4 +1,4 @@
-export interface StopHookInput {
+export interface HookInput {
   session_id: string
   transcript_path: string
   cwd: string
@@ -7,6 +7,8 @@ export interface StopHookInput {
   stop_hook_active?: boolean
   last_assistant_message?: string
   prompt?: string
+  tool_name?: string
+  tool_input?: Record<string, unknown>
 }
 
 export interface HookOutput {

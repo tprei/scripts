@@ -8,6 +8,9 @@ const CACHE_FILE = path.resolve(scriptDir, "..", "prompt-cache.json")
 interface PromptInfo {
   messageId: number
   timestamp: number
+  activityMessageId?: number
+  activityTimestamp?: number
+  toolCount?: number
 }
 
 type CacheData = Record<string, PromptInfo>
@@ -39,4 +42,44 @@ export function clearPromptInfo(sessionId: string): void {
   const data = readCache()
   delete data[sessionId]
   writeCache(data)
+}
+
+export function incrementToolCount(sessionId: string): void {
+  const data = readCache()
+  if (!data[sessionId]) return
+  data[sessionId].toolCount = (data[sessionId].toolCount ?? 0) + 1
+  writeCache(data)
+}
+
+export function saveActivityInfo(
+  sessionId: string,
+  activityMessageId: number,
+  timestamp: number,
+  toolCount: number,
+): void {
+  const data = readCache()
+  if (!data[sessionId]) return
+  data[sessionId].activityMessageId = activityMessageId
+  data[sessionId].activityTimestamp = timestamp
+  data[sessionId].toolCount = toolCount
+  writeCache(data)
+}
+
+export function loadActivityInfo(
+  sessionId: string,
+): { activityMessageId: number; activityTimestamp: number; toolCount: number } | null {
+  const data = readCache()
+  const entry = data[sessionId]
+  if (
+    !entry ||
+    entry.activityMessageId === undefined ||
+    entry.activityTimestamp === undefined ||
+    entry.toolCount === undefined
+  )
+    return null
+  return {
+    activityMessageId: entry.activityMessageId,
+    activityTimestamp: entry.activityTimestamp,
+    toolCount: entry.toolCount,
+  }
 }

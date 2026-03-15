@@ -69,3 +69,39 @@ export async function sendMessage(
 
   return { ok: true, messageId: firstId }
 }
+
+export async function editMessage(
+  token: string,
+  chatId: string,
+  messageId: number,
+  html: string,
+  threadId?: number,
+): Promise<boolean> {
+  try {
+    const body: Record<string, unknown> = {
+      chat_id: chatId,
+      message_id: messageId,
+      text: html,
+      parse_mode: "HTML",
+    }
+    if (threadId !== undefined) body.message_thread_id = threadId
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      const resBody = await res.text()
+      if (resBody.includes("message is not modified")) return true
+      process.stderr.write(`telegram: editMessage HTTP ${res.status}: ${resBody}\n`)
+      return false
+    }
+
+    return true
+  } catch (err) {
+    process.stderr.write(`telegram: editMessage fetch failed: ${err}\n`)
+    return false
+  }
+}
