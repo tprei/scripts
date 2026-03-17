@@ -27,7 +27,7 @@ When `LISTENER_ENABLED=true`, a separate `listener.ts` process polls for incomin
 |---|---|
 | `src/notify.ts` | Entry point. Routes hook events, manages topics, sends messages. |
 | `src/telegram.ts` | Telegram API client. `sendMessage`, `editMessage`, splits long messages. |
-| `src/topics.ts` | Forum topic manager. Session-keyed cache with create/rename/delete. |
+| `src/topics.ts` | Forum topic manager. Session-keyed cache with create/rename/delete/purge. |
 | `src/slugs.ts` | Deterministic adjective-noun slug generator from session ID. |
 | `src/format.ts` | HTML message builders: `formatUserPrompt`, `formatToolActivity`, `formatAssistantReply`. |
 | `src/context.ts` | Git branch, tmux window/pane, hostname. Includes `renameTmuxWindow`. |
@@ -37,7 +37,8 @@ When `LISTENER_ENABLED=true`, a separate `listener.ts` process polls for incomin
 | `src/listener.ts` | Long-polls `getUpdates`, routes messages to correct tmux pane. |
 | `src/safe-inject.ts` | Sanitizes and classifier-checks incoming text before `tmux send-keys`. |
 | `src/sessions.ts` | Maps `thread_id → { session_id, pane_id, cwd, ts }` for listener routing. |
-| `topics-cache.json` | `{ sessionId → { threadId, renamed } }`. Gitignored. |
+| `src/purge.ts` | Standalone script: deletes stale topics and cleans all three caches. |
+| `topics-cache.json` | `{ sessionId → { threadId, renamed, createdAt } }`. Gitignored. |
 | `prompt-cache.json` | `{ sessionId → { messageId, timestamp, activityMessageId, toolCount } }`. Gitignored. |
 | `sessions-cache.json` | `{ threadId → { session_id, pane_id, cwd, ts } }`. Gitignored. |
 | `.env` | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. Gitignored, never commit. |
@@ -72,12 +73,24 @@ UserPromptSubmit         PostToolUse (throttled)          Stop
 
 ## Topic lifecycle
 
-1. **Create** — `UserPromptSubmit` calls `createForumTopic` with name `project (abc123)`
+1. **Create** — `UserPromptSubmit` calls `createForumTopic` with name `project (abc123)`. `createdAt` timestamp written to cache.
 2. **Rename** — After first prompt, topic renamed to `project · adj-noun` via `editForumTopic`
 3. **Tmux** — Window renamed to slug (e.g., `bold-arc`)
 4. **Delete** — `SessionEnd` calls `deleteForumTopic` and cleans caches
+5. **Purge** — Stale topics (older than `TOPIC_TTL_MS`, default 4h) are deleted opportunistically on `UserPromptSubmit` (max 3 per invocation) or via `src/purge.ts` for bulk cleanup
 
 Cache key is `session_id`, not project name. Parallel sessions create parallel topics.
+
+### Stale topic pruning
+
+Topics accumulate when `SessionEnd` doesn't fire (process kills, crashes). Two mechanisms prevent unbounded growth:
+
+- **Opportunistic**: `UserPromptSubmit` calls `purgeStaleTopics(..., { maxDeletes: 3 })` after sending the prompt message. Capped to limit latency.
+- **Standalone script**: `npx tsx src/purge.ts [--ttl <hours>] [--dry-run]` — no cap, 100ms delay between deletions.
+
+Legacy cache entries (`typeof value === "number"`, pre-`createdAt` schema) are always treated as stale and deleted immediately.
+
+`purgeStalePromptCache(ttlMs)` and `purgeStaleSessionCache(ttlMs)` run alongside topic pruning to keep all three caches clean.
 
 ---
 

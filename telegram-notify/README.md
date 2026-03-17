@@ -147,6 +147,7 @@ npx tsx src/listener.ts
 | `ALLOWED_USER_IDS` | (none) | Comma-separated Telegram user IDs allowed to inject |
 | `ACTIVITY_THROTTLE_MS` | `3000` | Throttle window for PostToolUse activity updates |
 | `TELEGRAM_NOTIFY_DISABLED` | (none) | Set to any value to disable all notifications |
+| `TOPIC_TTL_MS` | `14400000` | TTL for stale topic cleanup (4 hours) |
 
 ## Message flow
 
@@ -175,6 +176,23 @@ Topics use session-based keying for parallel session support:
 
 The slug is deterministic: same session ID always produces the same adjective-noun pair.
 
+## Purging stale topics
+
+Forum topics accumulate when `SessionEnd` doesn't fire (process kills, crashes). The purge script deletes stale Telegram topics and cleans all three caches.
+
+```sh
+# Preview what would be deleted (no network calls made)
+npx tsx src/purge.ts --dry-run
+
+# Run with default 4-hour TTL
+npx tsx src/purge.ts
+
+# Run with custom TTL
+npx tsx src/purge.ts --ttl 2
+```
+
+`purge.ts` also runs opportunistically on every `UserPromptSubmit` (capped at 3 deletions to limit latency). Set `TOPIC_TTL_MS` in `.env` to control the threshold.
+
 ## Verification
 
 ```sh
@@ -183,6 +201,9 @@ npx tsc --noEmit
 
 # End-to-end with Telegram
 echo '{"session_id":"abc123","cwd":"'$(pwd)'","hook_event_name":"UserPromptSubmit","prompt":"test","transcript_path":"/tmp/t.json","permission_mode":"default"}' | npx tsx src/notify.ts
+
+# Verify purge
+npx tsx src/purge.ts --dry-run
 ```
 
 ## Edge cases

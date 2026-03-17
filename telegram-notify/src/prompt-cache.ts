@@ -83,3 +83,17 @@ export function loadActivityInfo(
     toolCount: entry.toolCount,
   }
 }
+
+export function purgeStalePromptCache(ttlMs: number): number {
+  const data = readCache()
+  const now = Date.now()
+  let removed = 0
+  for (const key of Object.keys(data)) {
+    if (now - data[key].timestamp > ttlMs) {
+      delete data[key]
+      removed++
+    }
+  }
+  if (removed > 0) writeCache(data)
+  return removed
+}

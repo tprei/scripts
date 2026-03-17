@@ -35,3 +35,17 @@ export function removeSession(threadId: number): void {
   delete cache[threadId.toString()]
   writeCache(cache)
 }
+
+export function purgeStaleSessionCache(ttlMs: number): number {
+  const cache = readCache()
+  const now = Date.now()
+  let removed = 0
+  for (const key of Object.keys(cache)) {
+    if (now - cache[key].ts > ttlMs) {
+      delete cache[key]
+      removed++
+    }
+  }
+  if (removed > 0) writeCache(cache)
+  return removed
+}

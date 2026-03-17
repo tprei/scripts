@@ -13,10 +13,11 @@ import {
   renameTopic,
   markTopicRenamed,
   isTopicRenamed,
+  purgeStaleTopics,
 } from "./topics.js"
 import { extractLastInstruction } from "./transcript.js"
 import { generateSlug } from "./slugs.js"
-import { savePromptInfo, loadPromptInfo, clearPromptInfo, saveActivityInfo, loadActivityInfo, incrementToolCount } from "./prompt-cache.js"
+import { savePromptInfo, loadPromptInfo, clearPromptInfo, saveActivityInfo, loadActivityInfo, incrementToolCount, purgeStalePromptCache } from "./prompt-cache.js"
 import type { HookInput } from "./types.js"
 
 const require = createRequire(import.meta.url)
@@ -97,6 +98,9 @@ async function main() {
         if (ctx.paneId) renameTmuxWindow(slug)
         markTopicRenamed(input.session_id)
       }
+      const ttlMs = Number(process.env["TOPIC_TTL_MS"] ?? 14400000)
+      await purgeStaleTopics(token, chatId, ttlMs, { maxDeletes: 3 })
+      purgeStalePromptCache(ttlMs)
     } else if (input.hook_event_name === "PostToolUse") {
       const toolName = input.tool_name ?? ""
       const toolInput = input.tool_input ?? {}

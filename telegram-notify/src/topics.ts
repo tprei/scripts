@@ -8,6 +8,7 @@ const CACHE_PATH = path.resolve(scriptDir, "..", "topics-cache.json")
 interface TopicEntry {
   threadId: number
   renamed: boolean
+  createdAt?: number
 }
 
 function readCache(): Record<string, TopicEntry> {
@@ -46,7 +47,7 @@ export async function getOrCreateTopic(
 
     const data = (await res.json()) as { ok: boolean; result: { message_thread_id: number } }
     const threadId = data.result.message_thread_id
-    cache[sessionId] = { threadId, renamed: false }
+    cache[sessionId] = { threadId, renamed: false, createdAt: Date.now() }
     writeCache(cache)
     return threadId
   } catch (err) {
@@ -104,6 +105,52 @@ export function removeTopicFromCache(sessionId: string): void {
   const cache = readCache()
   delete cache[sessionId]
   writeCache(cache)
+}
+
+export async function purgeStaleTopics(
+  token: string,
+  chatId: string,
+  ttlMs: number,
+  opts?: { dryRun?: boolean; maxDeletes?: number; delayMs?: number },
+): Promise<{ legacy: number; stale: number; failed: number; skipped: number }> {
+  const cache = readCache()
+  const now = Date.now()
+  const result = { legacy: 0, stale: 0, failed: 0, skipped: 0 }
+  let deleteCount = 0
+
+  for (const [key, value] of Object.entries(cache)) {
+    if (opts?.maxDeletes !== undefined && deleteCount >= opts.maxDeletes) {
+      result.skipped++
+      continue
+    }
+
+    const isLegacy = typeof value === "number"
+    const entry = isLegacy ? null : (value as TopicEntry)
+    const isStale = isLegacy || now - (entry?.createdAt ?? 0) > ttlMs
+
+    if (!isStale) continue
+
+    const threadId = isLegacy ? (value as unknown as number) : entry!.threadId
+
+    if (opts?.dryRun) {
+      isLegacy ? result.legacy++ : result.stale++
+      deleteCount++
+      continue
+    }
+
+    if (deleteCount > 0 && opts?.delayMs) {
+      await new Promise((resolve) => setTimeout(resolve, opts.delayMs))
+    }
+
+    const deleted = await deleteTopic(token, chatId, threadId)
+    if (!deleted) result.failed++
+    delete cache[key]
+    isLegacy ? result.legacy++ : result.stale++
+    deleteCount++
+  }
+
+  if (!opts?.dryRun) writeCache(cache)
+  return result
 }
 
 export async function deleteTopic(
