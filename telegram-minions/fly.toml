@@ -1,0 +1,28 @@
+app = "telegram-minions"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  WORKSPACE_ROOT = "/workspace"
+  GOOSE_PROVIDER = "anthropic"
+  GOOSE_MODEL = "claude-4-sonnet"
+  GOOSE_MODE = "auto"
+
+[[mounts]]
+  source = "workspace_data"
+  destination = "/workspace"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"
+
+[checks]
+  [checks.health]
+    type = "tcp"
+    port = 8080
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"

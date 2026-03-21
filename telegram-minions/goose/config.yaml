@@ -1,0 +1,17 @@
+GOOSE_MODE: auto
+GOOSE_MAX_TURNS: 200
+GOOSE_CONTEXT_STRATEGY: summarize
+GOOSE_CLI_SHOW_COST: false
+GOOSE_TELEMETRY_ENABLED: false
+SECURITY_PROMPT_ENABLED: true
+SECURITY_PROMPT_THRESHOLD: "0.8"
+GOOSE_AUTO_COMPACT_THRESHOLD: "0.8"
+GOOSE_DISABLE_SESSION_NAMING: "true"
+
+extensions:
+  developer:
+    bundled: true
+    enabled: true
+    name: developer
+    type: builtin
+    timeout: 300
