@@ -27,6 +27,26 @@ Telegram-controlled Goose coding agents on fly.io. The Dispatcher polls Telegram
 | `src/types.ts` | TypeScript types for Goose events and Telegram API |
 | `goose/config.yaml` | Goose agent configuration (mode, extensions, limits) |
 
+## Claude authentication (ACP provider)
+
+Sessions use `GOOSE_PROVIDER=claude-acp` which delegates to your Claude Code subscription — no API key needed. It wraps `@zed-industries/claude-agent-acp` which calls the `claude` CLI.
+
+**Local setup (one time):**
+```sh
+npm install -g @zed-industries/claude-agent-acp
+claude auth login    # opens browser, authorizes your Claude subscription
+```
+
+Credentials persist at `~/.claude/.credentials.json`.
+
+**Fly.io setup (one time after first deploy):**
+```sh
+fly ssh console
+claude auth login    # paste URL into local browser to authorize
+```
+
+Credentials write to `/workspace/home/.claude/` (HOME=/workspace/home in fly.toml) and persist across redeploys on the volume.
+
 ## Development
 
 ```sh
@@ -59,7 +79,20 @@ Content block types in `message.content`:
 ## Fly.io deployment
 
 ```sh
-fly secrets set TELEGRAM_BOT_TOKEN=... ANTHROPIC_API_KEY=... TELEGRAM_CHAT_ID=... ALLOWED_USER_IDS=...
+# Secrets — no ANTHROPIC_API_KEY needed when using claude-acp
+fly secrets set \
+  TELEGRAM_BOT_TOKEN=... \
+  TELEGRAM_CHAT_ID=... \
+  ALLOWED_USER_IDS=... \
+  GITHUB_TOKEN=...
+
+# Create persistent volume (stores cloned repos + claude auth)
 fly volumes create workspace_data --size 10
+
 fly deploy
+
+# Authenticate Claude after first deploy (one time)
+fly ssh console
+# inside the machine:
+claude auth login   # paste URL into local browser
 ```

@@ -7,9 +7,14 @@ primary_region = "iad"
 [env]
   NODE_ENV = "production"
   WORKSPACE_ROOT = "/workspace"
-  GOOSE_PROVIDER = "anthropic"
-  GOOSE_MODEL = "claude-4-sonnet"
-  GOOSE_MODE = "auto"
+  GOOSE_PROVIDER = "claude-acp"
+  GOOSE_MODEL = "default"
+  HOME = "/workspace/home"
+
+[http_service]
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
 
 [[mounts]]
   source = "workspace_data"
@@ -19,10 +24,3 @@ primary_region = "iad"
   size = "shared-cpu-2x"
   memory = "2gb"
 
-[checks]
-  [checks.health]
-    type = "tcp"
-    port = 8080
-    interval = "30s"
-    timeout = "5s"
-    grace_period = "10s"

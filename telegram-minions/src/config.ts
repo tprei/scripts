@@ -37,8 +37,8 @@ export const config = {
       .map(Number),
   },
   goose: {
-    provider: optional("GOOSE_PROVIDER", "anthropic"),
-    model: optional("GOOSE_MODEL", "claude-sonnet-4-5"),
+    provider: optional("GOOSE_PROVIDER", "claude-acp"),
+    model: optional("GOOSE_MODEL", "default"),
   },
   workspace: {
     root: optional("WORKSPACE_ROOT", "/workspace"),
