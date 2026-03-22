@@ -10,7 +10,6 @@ import { generateSlug } from "./slugs.js"
 import { config } from "./config.js"
 import { SessionStore } from "./store.js"
 import {
-  formatPlanStart,
   formatPlanIteration,
   formatPlanExecuting,
   formatPlanComplete,
@@ -327,13 +326,6 @@ export class Dispatcher {
     }
 
     this.topicSessions.set(threadId, topicSession)
-
-    if (mode === "plan") {
-      await this.telegram.sendMessage(
-        formatPlanStart(repo, slug, task),
-        threadId,
-      )
-    }
 
     await this.spawnTopicAgent(topicSession, fullTask)
   }
