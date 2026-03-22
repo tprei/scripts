@@ -17,6 +17,7 @@ import {
   formatTaskComplete,
   formatFollowUpIteration,
   formatStatus,
+  formatHelp,
 } from "../src/format.js"
 
 describe("esc", () => {
@@ -243,7 +244,7 @@ describe("formatTaskComplete", () => {
     const msg = formatTaskComplete("bold-arc", 90000, 2000)
     expect(msg).toContain("1m 30s")
     expect(msg).toContain("2,000 tokens")
-    expect(msg).toContain("Reply in this thread")
+    expect(msg).toContain("/reply")
   })
 })
 
@@ -307,5 +308,38 @@ describe("formatStatus", () => {
     }]
     const msg = formatStatus([], topicSessions, 5)
     expect(msg).not.toContain("calm-bay")
+  })
+})
+
+describe("formatHelp", () => {
+  it("includes top-level commands", () => {
+    const msg = formatHelp()
+    expect(msg).toContain("/task")
+    expect(msg).toContain("/plan")
+    expect(msg).toContain("/status")
+    expect(msg).toContain("/help")
+  })
+
+  it("includes thread commands", () => {
+    const msg = formatHelp()
+    expect(msg).toContain("/reply")
+    expect(msg).toContain("/execute")
+    expect(msg).toContain("/close")
+  })
+
+  it("includes section headers", () => {
+    const msg = formatHelp()
+    expect(msg).toContain("Available commands")
+    expect(msg).toContain("Inside a thread")
+  })
+
+  it("includes shorthand notation for reply", () => {
+    const msg = formatHelp()
+    expect(msg).toContain("/r text")
+  })
+
+  it("describes close as deleting the topic", () => {
+    const msg = formatHelp()
+    expect(msg).toContain("delete the topic")
   })
 })
