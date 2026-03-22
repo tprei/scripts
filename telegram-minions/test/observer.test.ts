@@ -1,0 +1,481 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { Observer } from "../src/observer.js"
+import type { SessionMeta, GooseStreamEvent } from "../src/types.js"
+
+function makeTelegram() {
+  return {
+    sendMessage: vi.fn().mockResolvedValue({ messageId: 1 }),
+    editMessage: vi.fn().mockResolvedValue(undefined),
+    deleteMessage: vi.fn().mockResolvedValue(undefined),
+    deleteForumTopic: vi.fn().mockResolvedValue(undefined),
+    createForumTopic: vi.fn().mockResolvedValue({ message_thread_id: 1 }),
+    getUpdates: vi.fn().mockResolvedValue([]),
+    answerCallbackQuery: vi.fn().mockResolvedValue(undefined),
+    sendMessageWithKeyboard: vi.fn().mockResolvedValue(1),
+    downloadFile: vi.fn().mockResolvedValue(true),
+  }
+}
+
+function makeMeta(overrides: Partial<SessionMeta> = {}): SessionMeta {
+  return {
+    sessionId: "sess-1",
+    threadId: 42,
+    topicName: "bold-arc",
+    repo: "test-repo",
+    cwd: "/tmp/test",
+    startedAt: Date.now(),
+    mode: "task",
+    ...overrides,
+  }
+}
+
+describe("Observer", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  describe("onSessionStart", () => {
+    it("sends a session start message for task mode", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta({ mode: "task" })
+
+      await observer.onSessionStart(meta, "fix the bug")
+
+      expect(telegram.sendMessage).toHaveBeenCalledOnce()
+      const msg = telegram.sendMessage.mock.calls[0][0]
+      expect(msg).toContain("Session started")
+      expect(msg).toContain("bold-arc")
+    })
+
+    it("sends a plan start message for plan mode", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta({ mode: "plan" })
+
+      await observer.onSessionStart(meta, "plan the feature")
+
+      const msg = telegram.sendMessage.mock.calls[0][0]
+      expect(msg).toContain("Planning started")
+      expect(msg).toContain("/execute")
+    })
+  })
+
+  describe("onEvent — text buffering", () => {
+    it("buffers text and flushes after debounce timeout", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      telegram.sendMessage.mockClear()
+
+      const textEvent: GooseStreamEvent = {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{ type: "text", text: "A".repeat(100) }],
+        },
+      }
+
+      await observer.onEvent(meta, textEvent)
+
+      expect(telegram.sendMessage).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(telegram.sendMessage).toHaveBeenCalledOnce()
+      const msg = telegram.sendMessage.mock.calls[0][0]
+      expect(msg).toContain("Reply")
+    })
+
+    it("does not flush text shorter than MIN_TEXT_LENGTH", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      telegram.sendMessage.mockClear()
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{ type: "text", text: "short" }],
+        },
+      })
+
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(telegram.sendMessage).not.toHaveBeenCalled()
+    })
+
+    it("calls onTextCapture callback when flushing", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+      const captured: string[] = []
+
+      await observer.onSessionStart(meta, "task", (_sid, text) => {
+        captured.push(text)
+      })
+      telegram.sendMessage.mockClear()
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{ type: "text", text: "captured text here plus padding to exceed min length" }],
+        },
+      })
+
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(captured).toHaveLength(1)
+      expect(captured[0]).toContain("captured text here")
+    })
+
+    it("accumulates multiple text chunks before flushing", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      telegram.sendMessage.mockClear()
+
+      for (let i = 0; i < 5; i++) {
+        await observer.onEvent(meta, {
+          type: "message",
+          message: {
+            role: "assistant",
+            created: 0,
+            content: [{ type: "text", text: "chunk ".repeat(5) }],
+          },
+        })
+      }
+
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(telegram.sendMessage).toHaveBeenCalledOnce()
+    })
+  })
+
+  describe("onEvent — tool requests", () => {
+    it("sends a tool activity message", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      telegram.sendMessage.mockClear()
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{
+            type: "toolRequest",
+            id: "t1",
+            toolCall: { name: "Bash", arguments: { command: "npm test" } },
+          }],
+        },
+      })
+
+      expect(telegram.sendMessage).toHaveBeenCalledOnce()
+      const msg = telegram.sendMessage.mock.calls[0][0]
+      expect(msg).toContain("Activity")
+    })
+
+    it("edits existing activity message within throttle window", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      telegram.sendMessage.mockClear()
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{
+            type: "toolRequest",
+            id: "t1",
+            toolCall: { name: "Bash", arguments: { command: "ls" } },
+          }],
+        },
+      })
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{
+            type: "toolRequest",
+            id: "t2",
+            toolCall: { name: "Read", arguments: { file_path: "/a.ts" } },
+          }],
+        },
+      })
+
+      expect(telegram.sendMessage).toHaveBeenCalledOnce()
+      expect(telegram.editMessage).toHaveBeenCalledOnce()
+    })
+
+    it("sends new activity message after throttle window expires", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 1000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      telegram.sendMessage.mockClear()
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{
+            type: "toolRequest",
+            id: "t1",
+            toolCall: { name: "Bash", arguments: { command: "ls" } },
+          }],
+        },
+      })
+
+      vi.advanceTimersByTime(1500)
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{
+            type: "toolRequest",
+            id: "t2",
+            toolCall: { name: "Read", arguments: { file_path: "/b.ts" } },
+          }],
+        },
+      })
+
+      expect(telegram.sendMessage).toHaveBeenCalledTimes(2)
+    })
+
+    it("flushes text buffer before tool request", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      telegram.sendMessage.mockClear()
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{ type: "text", text: "A".repeat(250) }],
+        },
+      })
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{
+            type: "toolRequest",
+            id: "t1",
+            toolCall: { name: "Bash", arguments: { command: "ls" } },
+          }],
+        },
+      })
+
+      expect(telegram.sendMessage).toHaveBeenCalledTimes(2)
+      expect(telegram.sendMessage.mock.calls[0][0]).toContain("Reply")
+      expect(telegram.sendMessage.mock.calls[1][0]).toContain("Activity")
+    })
+
+    it("skips tool requests with errors", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      telegram.sendMessage.mockClear()
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{
+            type: "toolRequest",
+            id: "t1",
+            toolCall: { error: "tool failed" },
+          }],
+        },
+      })
+
+      expect(telegram.sendMessage).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("onEvent — errors", () => {
+    it("sends error message on error event", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      telegram.sendMessage.mockClear()
+
+      await observer.onEvent(meta, { type: "error", error: "something broke" })
+
+      expect(telegram.sendMessage).toHaveBeenCalledOnce()
+      const msg = telegram.sendMessage.mock.calls[0][0]
+      expect(msg).toContain("Error")
+      expect(msg).toContain("something broke")
+    })
+  })
+
+  describe("onEvent — ignores non-assistant messages", () => {
+    it("ignores user role messages", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      telegram.sendMessage.mockClear()
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "user",
+          created: 0,
+          content: [{ type: "text", text: "user message" }],
+        },
+      })
+
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(telegram.sendMessage).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("onSessionComplete", () => {
+    it("sends completion message for completed sessions", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      telegram.sendMessage.mockClear()
+
+      await observer.onSessionComplete(meta, "completed", 60000)
+
+      expect(telegram.sendMessage).toHaveBeenCalledOnce()
+      const msg = telegram.sendMessage.mock.calls[0][0]
+      expect(msg).toContain("Complete")
+    })
+
+    it("sends error message for errored sessions", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      telegram.sendMessage.mockClear()
+
+      await observer.onSessionComplete(meta, "errored", 30000)
+
+      expect(telegram.sendMessage).toHaveBeenCalledOnce()
+      const msg = telegram.sendMessage.mock.calls[0][0]
+      expect(msg).toContain("Error")
+    })
+
+    it("flushes remaining text buffer before completing", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      telegram.sendMessage.mockClear()
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{ type: "text", text: "B".repeat(100) }],
+        },
+      })
+
+      await observer.onSessionComplete(meta, "completed", 60000)
+
+      expect(telegram.sendMessage).toHaveBeenCalledTimes(2)
+      expect(telegram.sendMessage.mock.calls[0][0]).toContain("Reply")
+      expect(telegram.sendMessage.mock.calls[1][0]).toContain("Complete")
+    })
+  })
+
+  describe("flushAndComplete", () => {
+    it("flushes text and cleans up session without sending completion message", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      telegram.sendMessage.mockClear()
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{ type: "text", text: "C".repeat(100) }],
+        },
+      })
+
+      await observer.flushAndComplete(meta, "completed", 60000)
+
+      expect(telegram.sendMessage).toHaveBeenCalledOnce()
+      expect(telegram.sendMessage.mock.calls[0][0]).toContain("Reply")
+    })
+  })
+
+  describe("clearSession", () => {
+    it("removes session state and cancels flush timer", async () => {
+      const telegram = makeTelegram()
+      const observer = new Observer(telegram as any, 3000)
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{ type: "text", text: "buffered text here" }],
+        },
+      })
+
+      observer.clearSession(meta.sessionId)
+
+      await vi.advanceTimersByTimeAsync(2000)
+
+      telegram.sendMessage.mockClear()
+      expect(telegram.sendMessage).not.toHaveBeenCalled()
+    })
+  })
+})
