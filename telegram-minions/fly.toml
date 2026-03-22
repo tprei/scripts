@@ -10,6 +10,7 @@ primary_region = "iad"
   GOOSE_PROVIDER = "claude-acp"
   GOOSE_MODEL = "default"
   HOME = "/workspace/home"
+  IS_SANDBOX = "true"
 
 [[mounts]]
   source = "workspace_data"
