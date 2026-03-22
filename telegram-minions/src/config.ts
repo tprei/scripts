@@ -52,6 +52,9 @@ export const config = {
     staleTtlMs: optionalNumber("SESSION_STALE_TTL_MS", 2 * 24 * 60 * 60 * 1000),
     cleanupIntervalMs: optionalNumber("CLEANUP_INTERVAL_MS", 60 * 60 * 1000),
   },
+  mcp: {
+    browserEnabled: optional("ENABLE_BROWSER_MCP", "true") === "true",
+  },
   observer: {
     activityThrottleMs: optionalNumber("ACTIVITY_THROTTLE_MS", 3000),
   },

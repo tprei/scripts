@@ -19,7 +19,8 @@
       "Agent(explorer)",
       "Agent(planner)",
       "Agent(technical-architect)",
-      "Agent(git-commit-specialist)"
+      "Agent(git-commit-specialist)",
+      "mcp__playwright__*"
     ]
   },
   "sandbox": {

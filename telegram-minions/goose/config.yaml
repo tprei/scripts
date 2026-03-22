@@ -15,3 +15,10 @@ extensions:
     name: developer
     type: builtin
     timeout: 300
+  playwright:
+    name: playwright
+    type: stdio
+    cmd: npx
+    args: ["@playwright/mcp", "--headless", "--caps", "vision"]
+    enabled: true
+    timeout: 300

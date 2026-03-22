@@ -11,6 +11,7 @@ primary_region = "iad"
   GOOSE_MODEL = "default"
   HOME = "/workspace/home"
   IS_SANDBOX = "true"
+  ENABLE_BROWSER_MCP = "true"
 
 [[mounts]]
   source = "workspace_data"

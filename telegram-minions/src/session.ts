@@ -133,6 +133,9 @@ export class SessionHandle {
         "--system", prompt,
         "--no-profile",
         "--with-builtin", "developer",
+        ...(config.mcp.browserEnabled ? [
+          "--with-extension", "npx @playwright/mcp --headless --caps vision",
+        ] : []),
         "--quiet",
       ],
       {
@@ -161,6 +164,16 @@ export class SessionHandle {
         "--dangerously-skip-permissions",
         "--no-session-persistence",
         "--disallowed-tools", ...PLAN_DISALLOWED_TOOLS,
+        ...(config.mcp.browserEnabled ? [
+          "--mcp-config", JSON.stringify({
+            mcpServers: {
+              playwright: {
+                command: "npx",
+                args: ["@playwright/mcp", "--headless", "--caps", "vision"],
+              },
+            },
+          }),
+        ] : []),
         "--append-system-prompt", PLAN_SYSTEM_PROMPT,
         "--model", config.claude.planModel,
         task,
@@ -191,6 +204,16 @@ export class SessionHandle {
         "--dangerously-skip-permissions",
         "--no-session-persistence",
         "--disallowed-tools", ...THINK_DISALLOWED_TOOLS,
+        ...(config.mcp.browserEnabled ? [
+          "--mcp-config", JSON.stringify({
+            mcpServers: {
+              playwright: {
+                command: "npx",
+                args: ["@playwright/mcp", "--headless", "--caps", "vision"],
+              },
+            },
+          }),
+        ] : []),
         "--append-system-prompt", THINK_SYSTEM_PROMPT,
         "--model", config.claude.thinkModel,
         task,

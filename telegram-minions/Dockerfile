@@ -19,7 +19,10 @@ RUN curl -fsSL -o /tmp/goose.tar.bz2 \
     && rm /tmp/goose.tar.bz2
 
 # Install Claude Code CLI (needed for claude auth login + claude-agent-acp)
-RUN npm install -g @anthropic-ai/claude-code @zed-industries/claude-agent-acp
+RUN npm install -g @anthropic-ai/claude-code @zed-industries/claude-agent-acp @playwright/mcp
+
+# Install Playwright browsers for MCP vision capability
+RUN npx playwright install --with-deps chromium
 
 WORKDIR /app
 
