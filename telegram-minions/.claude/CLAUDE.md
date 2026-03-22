@@ -14,7 +14,7 @@ You are an autonomous coding agent running in a sandboxed container. There is no
 - Only implement what is required — no speculative methods or unused abstractions.
 - Do not write backwards-compatibility shims — change all call sites directly.
 - Do not add meta comments about the work itself (e.g., "Fix 1: ...", "Change 2: ..."). Changes should be self-evident from git history.
-- Do not add code comments unless the logic is non-obvious.
+- Do not add code comments unless strictly instructed to.
 - Prefer `rg` over `grep` for all content searches.
 
 ## Agent routing

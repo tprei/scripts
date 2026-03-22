@@ -16,9 +16,7 @@ const TEXT_FLUSH_DEBOUNCE_MS = 1500
 // Maximum number of recent tool lines to keep in the activity log.
 const MAX_ACTIVITY_LINES = 6
 
-// Text flushed before a tool call that is shorter than this is almost certainly
-// agent narration ("Let me read…", "Now I'll…") — suppress it from Telegram.
-// Longer pre-tool text (e.g. an explanation before running a command) still gets sent.
+const MIN_TEXT_LENGTH = 80
 const PRE_TOOL_NARRATION_LIMIT = 200
 
 export type TextCaptureCallback = (sessionId: string, text: string) => void
@@ -133,13 +131,11 @@ export class Observer {
 
     if (!text) return
 
-    // Always forward to plan-mode capture regardless of Telegram filtering
     if (state.onTextCapture) {
       state.onTextCapture(meta.sessionId, text)
     }
 
-    // Short text flushed right before a tool call is narration — suppress it.
-    // Timer/end flushes and longer pre-tool text still get sent.
+    if (text.length < MIN_TEXT_LENGTH) return
     if (reason === "tool" && text.length < PRE_TOOL_NARRATION_LIMIT) return
 
     await this.telegram.sendMessage(
