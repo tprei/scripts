@@ -4,6 +4,7 @@ import {
   formatToolLine,
   formatActivityLog,
   formatSessionStart,
+  formatPlanStart,
   formatSessionComplete,
   formatSessionError,
   formatAssistantText,
@@ -57,10 +58,10 @@ export class Observer {
       activityLog: [],
       onTextCapture,
     })
-    await this.telegram.sendMessage(
-      formatSessionStart(meta.repo, meta.topicName, task),
-      meta.threadId,
-    )
+    const msg = meta.mode === "plan"
+      ? formatPlanStart(meta.repo, meta.topicName, task)
+      : formatSessionStart(meta.repo, meta.topicName, task)
+    await this.telegram.sendMessage(msg, meta.threadId)
   }
 
   async onEvent(meta: SessionMeta, event: GooseStreamEvent): Promise<void> {
