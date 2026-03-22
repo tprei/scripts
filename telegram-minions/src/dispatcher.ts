@@ -19,6 +19,7 @@ import {
   formatStatus,
   formatTaskComplete,
   formatFollowUpIteration,
+  formatHelp,
 } from "./format.js"
 
 const POLL_TIMEOUT = 30
@@ -29,6 +30,8 @@ const EXECUTE_CMD = "/execute"
 const STATUS_CMD = "/status"
 const REPLY_PREFIX = "/reply"
 const REPLY_SHORT = "/r"
+const CLOSE_CMD = "/close"
+const HELP_CMD = "/help"
 
 interface ActiveSession {
   handle: SessionHandle
@@ -183,9 +186,15 @@ export class Dispatcher {
     const photos = message.photo
     if (!text && !photos) return
 
-    if (text === STATUS_CMD && message.message_thread_id === undefined) {
-      await this.handleStatusCommand()
-      return
+    if (message.message_thread_id === undefined) {
+      if (text === STATUS_CMD) {
+        await this.handleStatusCommand()
+        return
+      }
+      if (text === HELP_CMD) {
+        await this.handleHelpCommand()
+        return
+      }
     }
 
     if (text?.startsWith(THINK_PREFIX)) {
@@ -206,7 +215,9 @@ export class Dispatcher {
     if (message.message_thread_id !== undefined) {
       const topicSession = this.topicSessions.get(message.message_thread_id)
       if (topicSession) {
-        if ((topicSession.mode === "plan" || topicSession.mode === "think") && text === EXECUTE_CMD) {
+        if (text === CLOSE_CMD) {
+          await this.handleCloseCommand(topicSession)
+        } else if ((topicSession.mode === "plan" || topicSession.mode === "think") && text === EXECUTE_CMD) {
           await this.handleExecuteCommand(topicSession)
         } else if (text?.startsWith(REPLY_PREFIX + " ") || text?.startsWith(REPLY_SHORT + " ") || text === REPLY_PREFIX || text === REPLY_SHORT) {
           const stripped = text.startsWith(REPLY_PREFIX)
@@ -279,6 +290,10 @@ export class Dispatcher {
     const topicSessionList = [...this.topicSessions.values()]
     const msg = formatStatus(taskSessions, topicSessionList, config.workspace.maxConcurrentSessions)
     await this.telegram.sendMessage(msg)
+  }
+
+  private async handleHelpCommand(): Promise<void> {
+    await this.telegram.sendMessage(formatHelp())
   }
 
   private async handleTaskCommand(args: string, replyThreadId?: number, photos?: TelegramPhotoSize[]): Promise<void> {
@@ -597,6 +612,33 @@ export class Dispatcher {
     topicSession.pendingFeedback = []
 
     await this.spawnTopicAgent(topicSession, executionTask)
+  }
+
+  private async handleCloseCommand(topicSession: TopicSession): Promise<void> {
+    const threadId = topicSession.threadId
+
+    if (topicSession.activeSessionId) {
+      const activeSession = this.sessions.get(threadId)
+      if (activeSession) {
+        activeSession.handle.interrupt()
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      this.sessions.delete(threadId)
+    }
+
+    if (topicSession.cwd && fs.existsSync(topicSession.cwd)) {
+      try {
+        fs.rmSync(topicSession.cwd, { recursive: true, force: true })
+        process.stderr.write(`dispatcher: removed workspace ${topicSession.cwd}\n`)
+      } catch (err) {
+        process.stderr.write(`dispatcher: failed to remove workspace ${topicSession.cwd}: ${err}\n`)
+      }
+    }
+
+    this.topicSessions.delete(threadId)
+    this.persistTopicSessions()
+    await this.telegram.deleteForumTopic(threadId)
+    process.stderr.write(`dispatcher: closed and deleted topic ${topicSession.slug} (thread ${threadId})\n`)
   }
 
   private async downloadPhotos(photos: TelegramPhotoSize[] | undefined, _cwd: string): Promise<string[]> {

@@ -241,6 +241,23 @@ export function formatStatus(
   return lines.join("\n")
 }
 
+export function formatHelp(): string {
+  return [
+    `<b>Available commands</b>`,
+    ``,
+    `<code>/task [repo] description</code> — start a one-shot coding task`,
+    `<code>/plan [repo] description</code> — start a multi-turn planning session`,
+    `<code>/status</code> — show active sessions`,
+    `<code>/help</code> — show this message`,
+    ``,
+    `<b>Inside a thread</b>`,
+    ``,
+    `<code>/reply text</code> (or <code>/r text</code>) — give feedback to the agent`,
+    `<code>/execute</code> — finalize plan and start implementation (plan mode)`,
+    `<code>/close</code> — stop the session, wipe data, and delete the topic`,
+  ].join("\n")
+}
+
 function formatElapsed(ms: number): string {
   const secs = Math.round(ms / 1000)
   return secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`
