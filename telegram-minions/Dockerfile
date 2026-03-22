@@ -24,10 +24,10 @@ RUN npm install -g @anthropic-ai/claude-code @zed-industries/claude-agent-acp
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci
 
 COPY . .
-RUN npm run build
+RUN npm run build && npm prune --production
 
 # Non-root user (claude-agent-acp SIGKILL's under root)
 RUN useradd -m -s /bin/bash minion
