@@ -109,7 +109,7 @@ export function formatSessionInterrupted(slug: string): string {
 }
 
 export function formatAssistantText(slug: string, text: string): string {
-  const MAX_TEXT = 1200
+  const MAX_TEXT = 3800
   return [
     `🤖 <b>Reply</b>  ·  🏷 <code>${esc(slug)}</code>`,
     ``,

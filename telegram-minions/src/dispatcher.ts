@@ -182,6 +182,7 @@ export class Dispatcher {
         execSync(`git clone --depth=1 ${JSON.stringify(repoUrl)} ${JSON.stringify(workDir)}`, {
           stdio: ["ignore", "pipe", "pipe"],
           timeout: 120_000,
+          env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
         })
       }
 

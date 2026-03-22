@@ -26,8 +26,22 @@ export class SessionHandle {
       GOOSE_CONTEXT_STRATEGY: "summarize",
       GOOSE_TELEMETRY_ENABLED: "false",
       GOOSE_CLI_SHOW_COST: "false",
+      CLAUDE_THINKING_TYPE: "enabled",
+      CLAUDE_THINKING_BUDGET: "16000",
       HOME: process.env["HOME"] ?? "/root",
     }
+
+    const systemPrompt = [
+      "You are a coding minion running in a sandboxed environment.",
+      "Your working directory is a fresh clone — local changes do not persist after this session ends.",
+      "To deliver your work, you MUST:",
+      "1. Create a new branch from the current HEAD",
+      "2. Commit your changes to that branch",
+      "3. Push the branch and open a pull request using `gh pr create`",
+      "If you skip the PR, your work is lost.",
+      "Use conventional commit messages. Keep PRs focused and well-described.",
+      "The `gh` CLI is available and authenticated via GITHUB_TOKEN.",
+    ].join("\n")
 
     this.process = spawn(
       "goose",
@@ -38,6 +52,7 @@ export class SessionHandle {
         "--name", this.meta.topicName,
         "--provider", config.goose.provider,
         "--model", config.goose.model,
+        "--system", systemPrompt,
         "--no-profile",
         "--with-builtin", "developer",
         "--quiet",
