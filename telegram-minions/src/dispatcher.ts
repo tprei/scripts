@@ -42,6 +42,7 @@ export class Dispatcher {
   private readonly store: SessionStore
   private offset = 0
   private running = false
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(
     private readonly telegram: TelegramClient,
@@ -71,11 +72,64 @@ export class Dispatcher {
 
   stop(): void {
     this.running = false
+    this.stopCleanupTimer()
     for (const { handle } of this.sessions.values()) {
       handle.interrupt()
     }
     this.persistTopicSessions()
     process.stderr.write("dispatcher: stopped\n")
+  }
+
+  startCleanupTimer(): void {
+    this.cleanupTimer = setInterval(() => {
+      this.cleanupStaleSessions().catch((err) => {
+        process.stderr.write(`dispatcher: cleanup error: ${err}\n`)
+      })
+    }, config.workspace.cleanupIntervalMs)
+    process.stderr.write(
+      `dispatcher: cleanup timer started (interval=${Math.round(config.workspace.cleanupIntervalMs / 60000)}m, ttl=${Math.round(config.workspace.staleTtlMs / 86400000)}d)\n`,
+    )
+  }
+
+  private stopCleanupTimer(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer)
+      this.cleanupTimer = null
+    }
+  }
+
+  private async cleanupStaleSessions(): Promise<void> {
+    const now = Date.now()
+    const stale: [number, TopicSession][] = []
+
+    for (const [threadId, session] of this.topicSessions) {
+      if (session.activeSessionId) continue
+      if (now - session.lastActivityAt > config.workspace.staleTtlMs) {
+        stale.push([threadId, session])
+      }
+    }
+
+    if (stale.length === 0) return
+
+    process.stderr.write(`dispatcher: cleaning up ${stale.length} stale session(s)\n`)
+
+    for (const [threadId, session] of stale) {
+      await this.telegram.deleteForumTopic(threadId)
+
+      if (session.cwd && fs.existsSync(session.cwd)) {
+        try {
+          fs.rmSync(session.cwd, { recursive: true, force: true })
+          process.stderr.write(`dispatcher: removed workspace ${session.cwd}\n`)
+        } catch (err) {
+          process.stderr.write(`dispatcher: failed to remove workspace ${session.cwd}: ${err}\n`)
+        }
+      }
+
+      this.topicSessions.delete(threadId)
+      process.stderr.write(`dispatcher: cleaned up stale session ${session.slug} (topic ${threadId})\n`)
+    }
+
+    this.persistTopicSessions()
   }
 
   private persistTopicSessions(): void {
