@@ -573,7 +573,7 @@ export class Dispatcher {
   }
 }
 
-function parseTaskArgs(args: string): { repoUrl?: string; task: string } {
+export function parseTaskArgs(args: string): { repoUrl?: string; task: string } {
   const urlPattern = /^(https?:\/\/[^\s]+)\s+([\s\S]+)$/
   const match = urlPattern.exec(args)
 
@@ -594,7 +594,7 @@ function parseTaskArgs(args: string): { repoUrl?: string; task: string } {
   return { task: args.trim() }
 }
 
-function buildRepoKeyboard(
+export function buildRepoKeyboard(
   repoKeys: string[],
   prefix: "repo" | "plan" = "repo",
 ): { text: string; callback_data: string }[][] {
@@ -610,11 +610,11 @@ function buildRepoKeyboard(
   return rows
 }
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
-function extractRepoName(url: string): string {
+export function extractRepoName(url: string): string {
   try {
     const parts = url.replace(/\.git$/, "").split("/")
     return parts[parts.length - 1] ?? "repo"
@@ -623,14 +623,14 @@ function extractRepoName(url: string): string {
   }
 }
 
-function appendImageContext(task: string, imagePaths: string[]): string {
+export function appendImageContext(task: string, imagePaths: string[]): string {
   if (imagePaths.length === 0) return task
 
   const imageRefs = imagePaths.map((p) => `- \`${p}\``).join("\n")
   return `${task}\n\n## Attached images\n\nThe user attached the following image(s). Read them with your file-reading tool to view their contents:\n${imageRefs}`
 }
 
-function buildContextPrompt(topicSession: TopicSession): string {
+export function buildContextPrompt(topicSession: TopicSession): string {
   const isPlan = topicSession.mode === "plan"
   const header = isPlan
     ? "## Planning context\n\nYou are continuing a planning conversation. Here is the history:"
@@ -661,7 +661,7 @@ function buildContextPrompt(topicSession: TopicSession): string {
   return lines.join("\n")
 }
 
-function buildExecutionPrompt(topicSession: TopicSession): string {
+export function buildExecutionPrompt(topicSession: TopicSession): string {
   const planMessages = topicSession.conversation
     .filter((m) => m.role === "assistant")
   const lastPlan = planMessages.length > 0
