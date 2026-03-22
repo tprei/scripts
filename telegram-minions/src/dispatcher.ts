@@ -1,4 +1,7 @@
-import { execSync } from "node:child_process"
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
+
+const execFileAsync = promisify(execFile)
 import os from "node:os"
 import path from "node:path"
 import fs from "node:fs"
@@ -665,9 +668,9 @@ export class Dispatcher {
 
       if (repoUrl) {
         process.stderr.write(`dispatcher: cloning ${repoUrl} into ${workDir}\n`)
-        execSync(`git clone --depth=1 ${JSON.stringify(repoUrl)} ${JSON.stringify(workDir)}`, {
-          stdio: ["ignore", "pipe", "pipe"],
+        await execFileAsync("git", ["clone", "--depth=1", repoUrl, workDir], {
           timeout: 120_000,
+          killSignal: "SIGKILL",
           env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
         })
       }
