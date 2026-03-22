@@ -21,7 +21,6 @@ interface ClaudeStreamEvent {
   }
   result?: string
   is_error?: boolean
-  total_cost_usd?: number
   usage?: { output_tokens?: number; input_tokens?: number }
   session_id?: string
 }
@@ -83,7 +82,10 @@ export function translateClaudeEvent(raw: ClaudeStreamEvent): GooseStreamEvent |
         ? (raw.usage.input_tokens ?? 0) + (raw.usage.output_tokens ?? 0)
         : null
 
-      return { type: "complete", total_tokens: totalTokens }
+      return {
+        type: "complete",
+        total_tokens: totalTokens,
+      }
     }
 
     default:

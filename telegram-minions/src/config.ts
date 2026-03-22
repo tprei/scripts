@@ -47,7 +47,7 @@ export const config = {
   workspace: {
     root: optional("WORKSPACE_ROOT", "/workspace"),
     maxConcurrentSessions: optionalNumber("MAX_CONCURRENT_SESSIONS", 5),
-    sessionBudgetUsd: optionalNumber("SESSION_BUDGET_USD", 10),
+    sessionTokenBudget: optionalNumber("SESSION_TOKEN_BUDGET", 200_000),
     sessionTimeoutMs: optionalNumber("SESSION_TIMEOUT_MS", 3600000),
     staleTtlMs: optionalNumber("SESSION_STALE_TTL_MS", 2 * 24 * 60 * 60 * 1000),
     cleanupIntervalMs: optionalNumber("CLEANUP_INTERVAL_MS", 60 * 60 * 1000),
