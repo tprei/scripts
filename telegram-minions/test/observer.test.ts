@@ -1,19 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 import { Observer } from "../src/observer.js"
 import type { SessionMeta, GooseStreamEvent } from "../src/types.js"
-
-vi.mock("node:fs", async () => {
-  const actual = await vi.importActual<typeof import("node:fs")>("node:fs")
-  return {
-    ...actual,
-    default: {
-      ...actual,
-      readdirSync: vi.fn().mockReturnValue([]),
-      readFileSync: vi.fn().mockReturnValue(Buffer.from("fake-png")),
-    },
-  }
-})
 
 function makeTelegram() {
   return {
@@ -472,10 +462,23 @@ describe("Observer", () => {
   })
 
   describe("screenshot detection", () => {
+    let tmpDir: string
+    let screenshotDir: string
+
+    beforeEach(() => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "obs-screenshot-"))
+      screenshotDir = path.join(tmpDir, ".screenshots")
+      fs.mkdirSync(screenshotDir)
+    })
+
+    afterEach(() => {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    })
+
     it("sends screenshot photo after detecting browser_take_screenshot tool", async () => {
       const telegram = makeTelegram()
       const observer = new Observer(telegram as any, 3000)
-      const meta = makeMeta()
+      const meta = makeMeta({ cwd: tmpDir })
 
       await observer.onSessionStart(meta, "task")
       telegram.sendMessage.mockClear()
@@ -493,7 +496,7 @@ describe("Observer", () => {
         },
       })
 
-      vi.mocked(fs.readdirSync).mockReturnValue(["screenshot-1.png"] as any)
+      fs.writeFileSync(path.join(screenshotDir, "screenshot-1.png"), Buffer.from("fake-png"))
 
       await observer.onEvent(meta, {
         type: "message",
@@ -506,7 +509,7 @@ describe("Observer", () => {
 
       expect(telegram.sendPhoto).toHaveBeenCalledOnce()
       expect(telegram.sendPhoto).toHaveBeenCalledWith(
-        "/tmp/test/.screenshots/screenshot-1.png",
+        path.join(screenshotDir, "screenshot-1.png"),
         42,
         "📸 screenshot-1.png",
       )
@@ -515,12 +518,12 @@ describe("Observer", () => {
     it("does not send the same screenshot twice", async () => {
       const telegram = makeTelegram()
       const observer = new Observer(telegram as any, 3000)
-      const meta = makeMeta()
+      const meta = makeMeta({ cwd: tmpDir })
 
       await observer.onSessionStart(meta, "task")
       telegram.sendMessage.mockClear()
 
-      vi.mocked(fs.readdirSync).mockReturnValue(["screenshot-1.png"] as any)
+      fs.writeFileSync(path.join(screenshotDir, "screenshot-1.png"), Buffer.from("fake-png"))
 
       await observer.onEvent(meta, {
         type: "message",
@@ -572,7 +575,7 @@ describe("Observer", () => {
     it("sends pending screenshots on session complete", async () => {
       const telegram = makeTelegram()
       const observer = new Observer(telegram as any, 3000)
-      const meta = makeMeta()
+      const meta = makeMeta({ cwd: tmpDir })
 
       await observer.onSessionStart(meta, "task")
       telegram.sendMessage.mockClear()
@@ -590,13 +593,13 @@ describe("Observer", () => {
         },
       })
 
-      vi.mocked(fs.readdirSync).mockReturnValue(["page-capture.png"] as any)
+      fs.writeFileSync(path.join(screenshotDir, "page-capture.png"), Buffer.from("fake-png"))
 
       await observer.onSessionComplete(meta, "completed", 60000)
 
       expect(telegram.sendPhoto).toHaveBeenCalledOnce()
       expect(telegram.sendPhoto).toHaveBeenCalledWith(
-        "/tmp/test/.screenshots/page-capture.png",
+        path.join(screenshotDir, "page-capture.png"),
         42,
         "📸 page-capture.png",
       )
