@@ -499,6 +499,7 @@ export class Dispatcher {
           process.stderr.write(`observer: onEvent error: ${err}\n`)
         })
 
+
         if (event.type === "complete" && meta.totalTokens != null && meta.totalTokens > config.workspace.sessionTokenBudget) {
           process.stderr.write(
             `dispatcher: session ${sessionId} exceeded token budget (${meta.totalTokens} > ${config.workspace.sessionTokenBudget})\n`,
