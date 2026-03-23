@@ -36,9 +36,9 @@ export async function waitForCI(prUrl: string, cwd: string): Promise<CIWaitResul
       return { passed: false, checks: [], timedOut: true }
     }
 
-    const pending = checks.filter((c) => c.state === "pending" || c.state === "queued")
+    const pending = checks.filter((c) => c.bucket === "pending")
     if (pending.length === 0 && checks.length > 0) {
-      const failed = checks.filter((c) => c.state !== "success")
+      const failed = checks.filter((c) => c.bucket === "fail")
       return { passed: failed.length === 0, checks, timedOut: false }
     }
 

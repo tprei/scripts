@@ -699,7 +699,7 @@ export class Dispatcher {
       return
     }
 
-    const failedChecks = result.checks.filter((c) => c.state !== "success")
+    const failedChecks = result.checks.filter((c) => c.bucket === "fail")
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       await this.telegram.sendMessage(
@@ -738,7 +738,7 @@ export class Dispatcher {
         return
       }
 
-      const newFailed = recheck.checks.filter((c) => c.state !== "success")
+      const newFailed = recheck.checks.filter((c) => c.bucket === "fail")
       if (newFailed.length > failedChecks.length) {
         process.stderr.write(`dispatcher: CI failures grew from ${failedChecks.length} to ${newFailed.length}, aborting\n`)
         break
