@@ -20,7 +20,7 @@ RUN curl -fsSL -o /tmp/goose.tar.bz2 \
 
 # Install Claude Code CLI (needed for claude auth login + claude-agent-acp)
 RUN npm install -g @anthropic-ai/claude-code @zed-industries/claude-agent-acp @playwright/mcp \
-    @upstash/context7-mcp @modelcontextprotocol/server-memory
+    @upstash/context7-mcp
 
 # Install GitHub MCP server (official Go binary)
 RUN curl -fsSL -o /tmp/github-mcp-server.tar.gz \

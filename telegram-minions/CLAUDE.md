@@ -102,11 +102,9 @@ All MCPs are installed globally in the Docker image and enabled by default via e
 | **Playwright** | `ENABLE_BROWSER_MCP` | Headless Chromium for web browsing | Pre-installed browsers at `PLAYWRIGHT_BROWSERS_PATH` |
 | **GitHub** | `ENABLE_GITHUB_MCP` | PRs, issues, reviews, code search via GitHub API | `GITHUB_TOKEN` must be set (logs warning if missing) |
 | **Context7** | `ENABLE_CONTEXT7_MCP` | Up-to-date library/framework documentation lookup | None (uses public docs) |
-| **Memory** | `ENABLE_MEMORY_MCP` | Persistent knowledge graph shared across sessions | `MEMORY_FILE_PATH` (default: `/workspace/home/.memory/graph.json`) |
+| **Sentry** | `ENABLE_SENTRY_MCP` | Error tracking, issue search, stack traces via Sentry API | `SENTRY_AUTH_TOKEN` must be set as a Fly secret |
 
 MCP config is built dynamically in `src/session.ts` via `buildMcpServers()`. For Goose sessions it generates `--with-extension` flags; for Claude sessions it generates `--mcp-config` JSON. If an MCP's prerequisites aren't met (e.g., missing `GITHUB_TOKEN`), it's skipped with a stderr warning rather than crashing.
-
-The memory knowledge graph file lives on the persistent volume so it survives redeployments. All sessions share the same graph file.
 
 ## Fly.io deployment
 

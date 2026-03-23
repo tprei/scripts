@@ -36,10 +36,10 @@ extensions:
     args: []
     enabled: true
     timeout: 300
-  memory:
-    name: memory
+  sentry:
+    name: sentry
     type: stdio
-    cmd: mcp-server-memory
-    args: []
+    cmd: npx
+    args: ["-y", "@sentry/mcp-server@latest", "--auth-token", "${SENTRY_AUTH_TOKEN}"]
     enabled: true
     timeout: 300

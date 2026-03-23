@@ -63,8 +63,7 @@ export const config = {
     browserEnabled: optional("ENABLE_BROWSER_MCP", "true") === "true",
     githubEnabled: optional("ENABLE_GITHUB_MCP", "true") === "true",
     context7Enabled: optional("ENABLE_CONTEXT7_MCP", "true") === "true",
-    memoryEnabled: optional("ENABLE_MEMORY_MCP", "true") === "true",
-    memoryFilePath: optional("MEMORY_FILE_PATH", "/workspace/home/.memory/graph.json"),
+    sentryEnabled: optional("ENABLE_SENTRY_MCP", "true") === "true",
   },
   observer: {
     activityThrottleMs: optionalNumber("ACTIVITY_THROTTLE_MS", 3000),

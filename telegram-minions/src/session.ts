@@ -148,11 +148,15 @@ function buildMcpServers(): Record<string, McpServerConfig> {
     }
   }
 
-  if (config.mcp.memoryEnabled) {
-    servers.memory = {
-      command: "mcp-server-memory",
-      args: [],
-      env: { MEMORY_FILE_PATH: config.mcp.memoryFilePath },
+  if (config.mcp.sentryEnabled) {
+    const sentryToken = process.env["SENTRY_AUTH_TOKEN"]
+    if (sentryToken) {
+      servers.sentry = {
+        command: "npx",
+        args: ["-y", "@sentry/mcp-server@latest", "--auth-token", sentryToken],
+      }
+    } else {
+      process.stderr.write("MCP: Sentry MCP enabled but SENTRY_AUTH_TOKEN is not set — skipping\n")
     }
   }
 
@@ -243,7 +247,7 @@ export class SessionHandle {
         process.env["PLAYWRIGHT_BROWSERS_PATH"] ?? "/opt/pw-browsers",
       CLAUDE_CODE_STREAM_CLOSE_TIMEOUT: "30000",
       GITHUB_PERSONAL_ACCESS_TOKEN: process.env["GITHUB_TOKEN"] ?? "",
-      MEMORY_FILE_PATH: config.mcp.memoryFilePath,
+      SENTRY_AUTH_TOKEN: process.env["SENTRY_AUTH_TOKEN"] ?? "",
     }
   }
 
