@@ -238,8 +238,9 @@ export class Dispatcher {
       if (topicSession) {
         if (text === CLOSE_CMD) {
           await this.handleCloseCommand(topicSession)
-        } else if ((topicSession.mode === "plan" || topicSession.mode === "think") && text === EXECUTE_CMD) {
-          await this.handleExecuteCommand(topicSession)
+        } else if ((topicSession.mode === "plan" || topicSession.mode === "think") && (text === EXECUTE_CMD || text?.startsWith(EXECUTE_CMD + " "))) {
+          const directive = text!.slice(EXECUTE_CMD.length).trim() || undefined
+          await this.handleExecuteCommand(topicSession, directive)
         } else if (text?.startsWith(REPLY_PREFIX + " ") || text?.startsWith(REPLY_SHORT + " ") || text === REPLY_PREFIX || text === REPLY_SHORT) {
           const stripped = text.startsWith(REPLY_PREFIX)
             ? text.slice(REPLY_PREFIX.length).trim()
@@ -677,7 +678,7 @@ export class Dispatcher {
     await this.spawnTopicAgent(topicSession, contextTask)
   }
 
-  private async handleExecuteCommand(topicSession: TopicSession): Promise<void> {
+  private async handleExecuteCommand(topicSession: TopicSession, directive?: string): Promise<void> {
     // If agent is still running, interrupt it first
     if (topicSession.activeSessionId) {
       const activeSession = this.sessions.get(topicSession.threadId)
@@ -688,7 +689,7 @@ export class Dispatcher {
       await new Promise((resolve) => setTimeout(resolve, 500))
     }
 
-    const executionTask = buildExecutionPrompt(topicSession)
+    const executionTask = buildExecutionPrompt(topicSession, directive)
 
     await this.telegram.sendMessage(
       formatPlanExecuting(topicSession.slug, "starting…"),
@@ -925,7 +926,7 @@ export function buildContextPrompt(topicSession: TopicSession): string {
   return lines.join("\n")
 }
 
-export function buildExecutionPrompt(topicSession: TopicSession): string {
+export function buildExecutionPrompt(topicSession: TopicSession, directive?: string): string {
   const MAX_ASSISTANT_CHARS = 4000
   const conversation = topicSession.conversation
 
@@ -955,7 +956,11 @@ export function buildExecutionPrompt(topicSession: TopicSession): string {
   }
 
   lines.push("---")
-  lines.push("Implement the plan above. Follow the plan closely.")
+  if (directive) {
+    lines.push(directive)
+  } else {
+    lines.push("Implement the plan above. Follow the plan closely.")
+  }
 
   return lines.join("\n")
 }
