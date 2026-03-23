@@ -15,6 +15,8 @@ primary_region = "iad"
   ENABLE_GITHUB_MCP = "true"
   ENABLE_CONTEXT7_MCP = "true"
   ENABLE_SENTRY_MCP = "true"
+  SENTRY_ORG_SLUG = ""
+  SENTRY_PROJECT_SLUG = ""
   PLAYWRIGHT_BROWSERS_PATH = "/opt/pw-browsers"
 
 [[mounts]]

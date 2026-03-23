@@ -40,6 +40,6 @@ extensions:
     name: sentry
     type: stdio
     cmd: npx
-    args: ["-y", "@sentry/mcp-server@latest", "--auth-token", "${SENTRY_AUTH_TOKEN}"]
+    args: ["-y", "@sentry/mcp-server@latest", "--access-token", "${SENTRY_ACCESS_TOKEN}"]
     enabled: true
     timeout: 300

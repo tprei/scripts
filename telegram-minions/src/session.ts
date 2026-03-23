@@ -149,14 +149,21 @@ function buildMcpServers(): Record<string, McpServerConfig> {
   }
 
   if (config.mcp.sentryEnabled) {
-    const sentryToken = process.env["SENTRY_AUTH_TOKEN"]
+    const sentryToken = process.env["SENTRY_ACCESS_TOKEN"]
     if (sentryToken) {
+      const sentryArgs = ["-y", "@sentry/mcp-server@latest", "--access-token", sentryToken]
+      if (config.mcp.sentryOrgSlug) {
+        sentryArgs.push("--organization-slug", config.mcp.sentryOrgSlug)
+      }
+      if (config.mcp.sentryProjectSlug) {
+        sentryArgs.push("--project-slug", config.mcp.sentryProjectSlug)
+      }
       servers.sentry = {
         command: "npx",
-        args: ["-y", "@sentry/mcp-server@latest", "--auth-token", sentryToken],
+        args: sentryArgs,
       }
     } else {
-      process.stderr.write("MCP: Sentry MCP enabled but SENTRY_AUTH_TOKEN is not set — skipping\n")
+      process.stderr.write("MCP: Sentry MCP enabled but SENTRY_ACCESS_TOKEN is not set — skipping\n")
     }
   }
 
@@ -247,7 +254,7 @@ export class SessionHandle {
         process.env["PLAYWRIGHT_BROWSERS_PATH"] ?? "/opt/pw-browsers",
       CLAUDE_CODE_STREAM_CLOSE_TIMEOUT: "30000",
       GITHUB_PERSONAL_ACCESS_TOKEN: process.env["GITHUB_TOKEN"] ?? "",
-      SENTRY_AUTH_TOKEN: process.env["SENTRY_AUTH_TOKEN"] ?? "",
+      SENTRY_ACCESS_TOKEN: process.env["SENTRY_ACCESS_TOKEN"] ?? "",
     }
   }
 
