@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - "telegram-minions/**"
+  workflow_dispatch:
 
 jobs:
   deploy:
