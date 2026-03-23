@@ -25,7 +25,14 @@ Telegram-controlled Goose coding agents on fly.io. The Dispatcher polls Telegram
 | `src/config.ts` | Centralized config from env vars |
 | `src/slugs.ts` | Deterministic adjective-noun slug generator |
 | `src/types.ts` | TypeScript types for Goose events and Telegram API |
+| `src/ci-babysit.ts` | CI polling, failure log parsing, fix prompt builder |
 | `goose/config.yaml` | Goose agent configuration (mode, extensions, limits) |
+| `.claude/agents/post-task-router.md` | Haiku classifier — routes completed work to the right action |
+| `.claude/agents/ci-fix.md` | CI fix specialist — diagnoses and fixes CI failures |
+| `.claude/agents/git-commit-specialist.md` | Git workflow — commits, pushes, opens PRs |
+| `.claude/agents/explorer.md` | Read-only codebase exploration |
+| `.claude/agents/planner.md` | Implementation planning |
+| `.claude/agents/technical-architect.md` | System architecture design |
 
 ## Claude authentication (ACP provider)
 
