@@ -116,7 +116,7 @@ export class SessionHandle {
 
     const credSrc = path.join(parentHome, ".claude", ".credentials.json")
     const credDst = path.join(sessionHome, ".claude", ".credentials.json")
-    if (fs.existsSync(credSrc) && !fs.existsSync(credDst)) {
+    if (fs.existsSync(credSrc)) {
       fs.copyFileSync(credSrc, credDst)
     }
 
