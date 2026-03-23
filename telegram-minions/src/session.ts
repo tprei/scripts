@@ -125,11 +125,15 @@ export class SessionHandle {
     const sessionTmp = path.join(sessionHome, "tmp")
     const sessionConfig = path.join(sessionHome, ".config")
     const sessionCache = path.join(sessionHome, ".cache")
+    const sessionDataDir = path.join(sessionHome, ".local", "share")
+    const sessionStateDir = path.join(sessionHome, ".local", "state")
 
     fs.mkdirSync(path.join(sessionHome, ".claude"), { recursive: true })
     fs.mkdirSync(sessionTmp, { recursive: true })
     fs.mkdirSync(sessionConfig, { recursive: true })
     fs.mkdirSync(sessionCache, { recursive: true })
+    fs.mkdirSync(sessionDataDir, { recursive: true })
+    fs.mkdirSync(sessionStateDir, { recursive: true })
 
     const settingsSrc = path.join(parentClaudeDir, "settings.json")
     const settingsDst = path.join(sessionHome, ".claude", "settings.json")
