@@ -90,9 +90,28 @@ main() {
   step "Creating project directory"
 
   PROJECT_DIR="$MINION_NAME"
-  mkdir -p "$PROJECT_DIR"/{src,scripts}
+  mkdir -p "$PROJECT_DIR"/{src,scripts,.claude/agents}
 
   success "Created $PROJECT_DIR/"
+
+  # --- Copy agent templates from package ---
+  AGENT_SRC=""
+  if [[ -d "node_modules/@tprei/telegram-minions/assets/agents" ]]; then
+    AGENT_SRC="node_modules/@tprei/telegram-minions/assets/agents"
+  elif command -v npm &>/dev/null; then
+    # Try to find in global npm prefix
+    GLOBAL_PREFIX=$(npm root -g 2>/dev/null)
+    if [[ -d "$GLOBAL_PREFIX/@tprei/telegram-minions/assets/agents" ]]; then
+      AGENT_SRC="$GLOBAL_PREFIX/@tprei/telegram-minions/assets/agents"
+    fi
+  fi
+
+  if [[ -n "$AGENT_SRC" ]]; then
+    cp -r "$AGENT_SRC"/* "$PROJECT_DIR/.claude/agents/" 2>/dev/null || true
+    success "Copied agent templates to .claude/agents/"
+  else
+    warn "Could not find agent templates - create .claude/agents/ manually"
+  fi
 
   # --- Generate files ---
   step "Generating files"
@@ -303,6 +322,40 @@ ENABLE_GITHUB_MCP=true
 ENABLE_CONTEXT7_MCP=true
 EOF
   success ".env.example"
+
+  # .gitignore
+  cat > "$PROJECT_DIR/.gitignore" <<'EOF'
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+.npmrc
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Claude (but keep agents)
+.claude/*
+!.claude/agents/
+EOF
+  success ".gitignore"
 
   # --- Install dependencies ---
   step "Installing dependencies"
