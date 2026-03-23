@@ -24,9 +24,16 @@ RUN npm install -g \
   @zed-industries/claude-agent-acp \
   @playwright/mcp \
   @upstash/context7-mcp \
-  github-mcp-server \
   vitest \
   typescript
+
+# Install GitHub MCP server (official Go binary)
+RUN curl -fsSL -o /tmp/github-mcp-server.tar.gz \
+      https://github.com/github/github-mcp-server/releases/latest/download/github-mcp-server_Linux_x86_64.tar.gz \
+    && tar -xzf /tmp/github-mcp-server.tar.gz -C /tmp \
+    && mv /tmp/github-mcp-server /usr/local/bin/github-mcp-server \
+    && chmod +x /usr/local/bin/github-mcp-server \
+    && rm /tmp/github-mcp-server.tar.gz
 
 # Install Playwright browsers to a shared path accessible by non-root users
 ENV PLAYWRIGHT_BROWSERS_PATH="/opt/pw-browsers"
