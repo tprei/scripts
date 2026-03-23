@@ -56,6 +56,7 @@ export class Dispatcher {
   private readonly sessions = new Map<number, ActiveSession>()
   private readonly topicSessions = new Map<number, TopicSession>()
   private readonly pendingTasks = new Map<number, PendingTask>()
+  private readonly generalMessageIds: number[] = []
   private readonly store: SessionStore
   private offset = 0
   private running = false
@@ -310,16 +311,16 @@ export class Dispatcher {
     const taskSessions = [...this.sessions.values()]
     const topicSessionList = [...this.topicSessions.values()]
     const msg = formatStatus(taskSessions, topicSessionList, config.workspace.maxConcurrentSessions)
-    await this.telegram.sendMessage(msg)
+    await this.sendToGeneral(msg)
   }
 
   private async handleStatsCommand(): Promise<void> {
     const agg = this.stats.aggregate(7)
-    await this.telegram.sendMessage(formatStats(agg))
+    await this.sendToGeneral(formatStats(agg))
   }
 
   private async handleHelpCommand(): Promise<void> {
-    await this.telegram.sendMessage(formatHelp())
+    await this.sendToGeneral(formatHelp())
   }
 
   private async handleCleanCommand(): Promise<void> {
@@ -330,8 +331,10 @@ export class Dispatcher {
       }
     }
 
+    await this.clearGeneralHistory()
+
     if (idle.length === 0) {
-      await this.telegram.sendMessage("🧹 No idle sessions to clean.")
+      await this.sendToGeneral("🧹 No idle sessions to clean.")
       return
     }
 
@@ -343,7 +346,7 @@ export class Dispatcher {
     }
 
     this.persistTopicSessions()
-    await this.telegram.sendMessage(`🧹 Cleaned ${idle.length} idle session(s).`)
+    await this.sendToGeneral(`🧹 Cleaned ${idle.length} idle session(s).`)
   }
 
   private async handleTaskCommand(args: string, replyThreadId?: number, photos?: TelegramPhotoSize[]): Promise<void> {
@@ -806,6 +809,18 @@ export class Dispatcher {
         fs.rmSync(topicSession.cwd, { recursive: true, force: true })
       } catch { /* best effort */ }
     }
+  }
+
+  private async sendToGeneral(html: string): Promise<void> {
+    const { messageId } = await this.telegram.sendMessage(html)
+    if (messageId) this.generalMessageIds.push(messageId)
+  }
+
+  private async clearGeneralHistory(): Promise<void> {
+    for (const msgId of this.generalMessageIds) {
+      await this.telegram.deleteMessage(msgId)
+    }
+    this.generalMessageIds.length = 0
   }
 
   activeSessions(): number {
