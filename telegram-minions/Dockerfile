@@ -21,9 +21,9 @@ RUN curl -fsSL -o /tmp/goose.tar.bz2 \
 # Install Claude Code CLI (needed for claude auth login + claude-agent-acp)
 RUN npm install -g @anthropic-ai/claude-code @zed-industries/claude-agent-acp @playwright/mcp
 
-# Install Playwright browsers for MCP vision capability
-# Need apt-get update because lists were cleaned earlier
-RUN chmod 1777 /tmp && apt-get update && npx playwright install --with-deps chromium && rm -rf /var/lib/apt/lists/*
+# Install Playwright browsers to a shared path accessible by non-root users
+ENV PLAYWRIGHT_BROWSERS_PATH="/opt/pw-browsers"
+RUN chmod 1777 /tmp && apt-get update && npx playwright install --with-deps chromium && chmod -R o+rx /opt/pw-browsers && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

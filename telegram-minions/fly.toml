@@ -12,6 +12,7 @@ primary_region = "iad"
   HOME = "/workspace/home"
   IS_SANDBOX = "true"
   ENABLE_BROWSER_MCP = "true"
+  PLAYWRIGHT_BROWSERS_PATH = "/opt/pw-browsers"
 
 [[mounts]]
   source = "workspace_data"
