@@ -1,4 +1,8 @@
-import { describe, it, expect, vi } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { execSync } from "node:child_process"
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 
 vi.mock("../src/config.js", () => ({
   config: {
@@ -33,6 +37,7 @@ import {
   appendImageContext,
   buildContextPrompt,
   buildExecutionPrompt,
+  resolveDefaultBranch,
 } from "../src/dispatcher.js"
 import type { TopicSession } from "../src/types.js"
 
@@ -347,5 +352,53 @@ describe("buildExecutionPrompt", () => {
     }))
     expect(prompt).toContain("[earlier output truncated]")
     expect(prompt).not.toContain("x".repeat(5000))
+  })
+})
+
+describe("resolveDefaultBranch", () => {
+  let bareDir: string
+  const gitOpts = { stdio: ["ignore", "pipe", "pipe"] as const, timeout: 10_000 }
+
+  beforeEach(() => {
+    bareDir = fs.mkdtempSync(path.join(os.tmpdir(), "resolve-branch-"))
+    execSync("git init --bare", { cwd: bareDir })
+  })
+
+  afterEach(() => {
+    fs.rmSync(bareDir, { recursive: true, force: true })
+  })
+
+  function createRef(refName: string): void {
+    const commitHash = execSync(
+      "git commit-tree -m init $(git hash-object -t tree /dev/null -w)",
+      { cwd: bareDir },
+    ).toString().trim()
+    execSync(`git update-ref ${refName} ${commitHash}`, { cwd: bareDir })
+  }
+
+  it("resolves via symbolic-ref when origin/HEAD is set", () => {
+    createRef("refs/remotes/origin/main")
+    execSync("git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main", { cwd: bareDir })
+    expect(resolveDefaultBranch(bareDir, gitOpts)).toBe("origin/main")
+  })
+
+  it("falls back to origin/main when origin/HEAD is missing", () => {
+    createRef("refs/remotes/origin/main")
+    expect(resolveDefaultBranch(bareDir, gitOpts)).toBe("origin/main")
+  })
+
+  it("falls back to origin/master when origin/main is missing", () => {
+    createRef("refs/remotes/origin/master")
+    expect(resolveDefaultBranch(bareDir, gitOpts)).toBe("origin/master")
+  })
+
+  it("prefers origin/main over origin/master when both exist", () => {
+    createRef("refs/remotes/origin/main")
+    createRef("refs/remotes/origin/master")
+    expect(resolveDefaultBranch(bareDir, gitOpts)).toBe("origin/main")
+  })
+
+  it("throws when no default branch can be found", () => {
+    expect(() => resolveDefaultBranch(bareDir, gitOpts)).toThrow("cannot determine default branch")
   })
 })
