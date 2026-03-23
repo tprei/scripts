@@ -29,6 +29,8 @@ export const TASK_SYSTEM_PROMPT = [
   "Use the `git-commit-specialist` agent after making significant changes.",
   "If no tests exist for the area you're modifying, note this in the PR description.",
   "Document assumptions in your PR description since there's no human to ask.",
+  "",
+  "A headless Chromium browser is pre-installed. Use the Playwright MCP tools (browser_navigate, browser_snapshot, browser_screenshot, browser_click, etc.) for any web browsing tasks. Do NOT attempt to install a browser — it is already available.",
 ].join("\n")
 
 export const PLAN_SYSTEM_PROMPT = [
@@ -47,6 +49,8 @@ export const PLAN_SYSTEM_PROMPT = [
   "",
   "Present your plan in a clear, structured format with file paths and specific changes.",
   "When the user gives feedback, refine the plan accordingly.",
+  "",
+  "A headless Chromium browser is pre-installed. Use the Playwright MCP tools (browser_navigate, browser_snapshot, browser_screenshot, browser_click, etc.) for any web browsing tasks. Do NOT attempt to install a browser — it is already available.",
 ].join("\n")
 
 const PLAN_DISALLOWED_TOOLS = ["Edit", "Write", "NotebookEdit"]
@@ -82,6 +86,8 @@ export const THINK_SYSTEM_PROMPT = [
   "- Surface non-obvious insights, risks, and connections",
   "- Present findings in a structured, readable format",
   "- When the user gives follow-up questions, dig deeper",
+  "",
+  "A headless Chromium browser is pre-installed. Use the Playwright MCP tools (browser_navigate, browser_snapshot, browser_screenshot, browser_click, etc.) for any web browsing tasks. Do NOT attempt to install a browser — it is already available.",
 ].join("\n")
 
 const THINK_DISALLOWED_TOOLS = ["Edit", "Write", "NotebookEdit"]
