@@ -6,6 +6,41 @@ import type { TelegramUpdate, TelegramForumTopic, TelegramCallbackQuery } from "
 const MAX_LENGTH = 4096
 const BASE = "https://api.telegram.org"
 
+/** Remove control characters that Telegram rejects as invalid UTF-8. */
+function sanitizeText(text: string): string {
+  // Strip C0 control chars except \t \n \r, plus DEL
+  return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+}
+
+/** Strip HTML tags and unescape entities for plain-text fallback. */
+function stripHtmlTags(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+}
+
+/** Track unclosed HTML tags in a chunk and return closing/reopening strings. */
+function balanceHtmlTags(chunk: string): { closingTags: string; reopenTags: string } {
+  const tagPattern = /<\/?(\w+)>/g
+  const stack: string[] = []
+  let match: RegExpExecArray | null
+
+  while ((match = tagPattern.exec(chunk)) !== null) {
+    if (match[0].startsWith("</")) {
+      const idx = stack.lastIndexOf(match[1])
+      if (idx !== -1) stack.splice(idx, 1)
+    } else {
+      stack.push(match[1])
+    }
+  }
+
+  const closingTags = [...stack].reverse().map((t) => `</${t}>`).join("")
+  const reopenTags = stack.map((t) => `<${t}>`).join("")
+  return { closingTags, reopenTags }
+}
+
 function splitMessage(html: string): string[] {
   if (html.length <= MAX_LENGTH) return [html]
 
@@ -15,9 +50,21 @@ function splitMessage(html: string): string[] {
   while (remaining.length > MAX_LENGTH) {
     const slice = remaining.slice(0, MAX_LENGTH)
     const lastNewline = slice.lastIndexOf("\n")
-    const splitAt = lastNewline > MAX_LENGTH / 2 ? lastNewline : MAX_LENGTH
-    chunks.push(remaining.slice(0, splitAt))
+    let splitAt = lastNewline > MAX_LENGTH / 2 ? lastNewline : MAX_LENGTH
+
+    // Avoid splitting inside an HTML tag
+    const lastOpen = slice.lastIndexOf("<")
+    const lastClose = slice.lastIndexOf(">")
+    if (lastOpen > lastClose && lastOpen < splitAt) {
+      splitAt = lastOpen
+    }
+
+    const chunk = remaining.slice(0, splitAt)
     remaining = remaining.slice(splitAt).trimStart()
+
+    const { closingTags, reopenTags } = balanceHtmlTags(chunk)
+    chunks.push(chunk + closingTags)
+    if (reopenTags) remaining = reopenTags + remaining
   }
 
   if (remaining) chunks.push(remaining)
@@ -71,10 +118,11 @@ export class TelegramClient {
     threadId?: number,
     replyToMessageId?: number,
   ): Promise<number | null> {
+    const sanitized = sanitizeText(html)
     try {
       const body: Record<string, unknown> = {
         chat_id: this.chatId,
-        text: html,
+        text: sanitized,
         parse_mode: "HTML",
       }
       if (threadId !== undefined) body.message_thread_id = threadId
@@ -83,6 +131,22 @@ export class TelegramClient {
       const result = await this.call<{ message_id: number }>("sendMessage", body)
       return result.message_id
     } catch (err) {
+      const msg = String(err)
+      if (msg.includes("can't parse entities") || msg.includes("UTF-8")) {
+        try {
+          const body: Record<string, unknown> = {
+            chat_id: this.chatId,
+            text: stripHtmlTags(sanitized),
+          }
+          if (threadId !== undefined) body.message_thread_id = threadId
+          if (replyToMessageId !== undefined) body.reply_to_message_id = replyToMessageId
+          const result = await this.call<{ message_id: number }>("sendMessage", body)
+          return result.message_id
+        } catch (retryErr) {
+          process.stderr.write(`telegram: sendMessage retry failed: ${retryErr}\n`)
+          return null
+        }
+      }
       process.stderr.write(`telegram: sendMessage failed: ${err}\n`)
       return null
     }
@@ -112,11 +176,12 @@ export class TelegramClient {
     html: string,
     threadId?: number,
   ): Promise<boolean> {
+    const sanitized = sanitizeText(html)
     try {
       const body: Record<string, unknown> = {
         chat_id: this.chatId,
         message_id: messageId,
-        text: html,
+        text: sanitized,
         parse_mode: "HTML",
       }
       if (threadId !== undefined) body.message_thread_id = threadId
@@ -126,6 +191,22 @@ export class TelegramClient {
     } catch (err) {
       const msg = String(err)
       if (msg.includes("message is not modified")) return true
+      if (msg.includes("can't parse entities") || msg.includes("UTF-8")) {
+        try {
+          const body: Record<string, unknown> = {
+            chat_id: this.chatId,
+            message_id: messageId,
+            text: stripHtmlTags(sanitized),
+          }
+          if (threadId !== undefined) body.message_thread_id = threadId
+          await this.call("editMessageText", body)
+          return true
+        } catch (retryErr) {
+          if (String(retryErr).includes("message is not modified")) return true
+          process.stderr.write(`telegram: editMessage retry failed: ${retryErr}\n`)
+          return false
+        }
+      }
       process.stderr.write(`telegram: editMessage failed: ${err}\n`)
       return false
     }
