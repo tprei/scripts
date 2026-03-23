@@ -18,8 +18,22 @@ RUN curl -fsSL -o /tmp/goose.tar.bz2 \
     && chmod +x /usr/local/bin/goose \
     && rm /tmp/goose.tar.bz2
 
-# Install Claude Code CLI (needed for claude auth login + claude-agent-acp)
-RUN npm install -g @anthropic-ai/claude-code @zed-industries/claude-agent-acp @playwright/mcp
+# Install Claude Code CLI + MCP servers + dev tools
+RUN npm install -g \
+  @anthropic-ai/claude-code \
+  @zed-industries/claude-agent-acp \
+  @playwright/mcp \
+  @upstash/context7-mcp \
+  vitest \
+  typescript
+
+# Install GitHub MCP server (official Go binary)
+RUN curl -fsSL -o /tmp/github-mcp-server.tar.gz \
+      https://github.com/github/github-mcp-server/releases/latest/download/github-mcp-server_Linux_x86_64.tar.gz \
+    && tar -xzf /tmp/github-mcp-server.tar.gz -C /tmp \
+    && mv /tmp/github-mcp-server /usr/local/bin/github-mcp-server \
+    && chmod +x /usr/local/bin/github-mcp-server \
+    && rm /tmp/github-mcp-server.tar.gz
 
 # Install Playwright browsers to a shared path accessible by non-root users
 ENV PLAYWRIGHT_BROWSERS_PATH="/opt/pw-browsers"
@@ -42,5 +56,5 @@ RUN chmod +x /app/entrypoint.sh /app/scripts/*.sh
 # Entrypoint runs as root to fix volume ownership, then drops to minion user.
 # After first deploy:
 #   fly ssh console
-#   su - minion -c 'HOME=/workspace/home claude auth login'
+#   su -s /bin/bash -p minion -c 'claude auth login'
 CMD ["/app/entrypoint.sh"]
