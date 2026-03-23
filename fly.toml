@@ -24,6 +24,6 @@ primary_region = "iad"
   destination = "/workspace"
 
 [[vm]]
-  size = "shared-cpu-4x"
-  memory = "4gb"
+  size = "shared-cpu-2x"
+  memory = "2gb"
   auto_stop = false
