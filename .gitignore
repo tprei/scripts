@@ -3,3 +3,4 @@ dist/
 .env
 topics-cache.json
 .minion-images/
+.home/
