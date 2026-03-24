@@ -3,8 +3,8 @@ mkdir -p /workspace/home/.claude
 chown -R minion:minion /workspace
 
 # Copy custom agent definitions if provided (falls back to package defaults)
-if [ -d /app/agents ]; then
-  cp -r /app/agents /workspace/home/.claude/
+if [ -d /app/.claude/agents ]; then
+  cp -r /app/.claude/agents /workspace/home/.claude/
 fi
 if [ -f /app/.claude/settings.json ]; then
   cp /app/.claude/settings.json /workspace/home/.claude/
