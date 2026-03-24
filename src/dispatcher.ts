@@ -580,6 +580,8 @@ export class Dispatcher {
         }
       },
       (m, state) => {
+        if (topicSession.activeSessionId !== m.sessionId) return
+
         const durationMs = Date.now() - m.startedAt
         this.sessions.delete(topicSession.threadId)
         topicSession.activeSessionId = undefined
@@ -808,6 +810,8 @@ export class Dispatcher {
         })
       },
       (m, state) => {
+        if (topicSession.activeSessionId !== m.sessionId) return
+
         const durationMs = Date.now() - m.startedAt
         this.sessions.delete(topicSession.threadId)
         topicSession.activeSessionId = undefined
@@ -883,14 +887,13 @@ export class Dispatcher {
   }
 
   private async handleExecuteCommand(topicSession: TopicSession, directive?: string): Promise<void> {
-    // If agent is still running, interrupt it first
+    // If agent is still running, kill it and wait for exit before spawning the new session
     if (topicSession.activeSessionId) {
       const activeSession = this.sessions.get(topicSession.threadId)
       if (activeSession) {
-        activeSession.handle.interrupt()
+        await activeSession.handle.kill()
       }
-      // Wait briefly for the process to exit so the session slot frees up
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      this.sessions.delete(topicSession.threadId)
     }
 
     const executionTask = buildExecutionPrompt(topicSession, directive)
