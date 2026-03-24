@@ -39,6 +39,7 @@ import { DEFAULT_CI_FIX_PROMPT } from "./prompts.js"
 
 const POLL_TIMEOUT = 30
 const TASK_PREFIX = "/task"
+const TASK_SHORT = "/w"
 const PLAN_PREFIX = "/plan"
 const THINK_PREFIX = "/think"
 const EXECUTE_CMD = "/execute"
@@ -239,8 +240,11 @@ export class Dispatcher {
       return
     }
 
-    if (text?.startsWith(TASK_PREFIX)) {
-      await this.handleTaskCommand(text.slice(TASK_PREFIX.length).trim(), message.message_thread_id, photos)
+    if (text?.startsWith(TASK_PREFIX) || text?.startsWith(TASK_SHORT + " ") || text === TASK_SHORT) {
+      const body = text.startsWith(TASK_PREFIX)
+        ? text.slice(TASK_PREFIX.length).trim()
+        : text.slice(TASK_SHORT.length).trim()
+      await this.handleTaskCommand(body, message.message_thread_id, photos)
       return
     }
 
@@ -374,7 +378,7 @@ export class Dispatcher {
     if (!task) {
       if (replyThreadId !== undefined) {
         await this.telegram.sendMessage(
-          `Usage: <code>/task [repo] description of the task</code>\n` +
+          `Usage: <code>/task [repo] description of the task</code> (alias: <code>/w</code>)\n` +
           `Repos: ${Object.keys(this.config.repos).map((s) => `<code>${s}</code>`).join(", ")}\n` +
           `Or use a full URL or omit repo entirely.`,
           replyThreadId,
