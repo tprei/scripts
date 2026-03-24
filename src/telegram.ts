@@ -11,7 +11,6 @@ const BASE = "https://api.telegram.org"
 /** Remove control characters that Telegram rejects as invalid UTF-8. */
 function sanitizeText(text: string): string {
   // Strip C0 control chars except \t \n \r, plus DEL
-  // eslint-disable-next-line no-control-regex
   return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
 }
 
