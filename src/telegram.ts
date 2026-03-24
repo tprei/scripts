@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { pipeline } from "node:stream/promises"
 import { Readable } from "node:stream"
-import type { TelegramUpdate, TelegramForumTopic, TelegramCallbackQuery } from "./types.js"
+import type { TelegramUpdate, TelegramForumTopic } from "./types.js"
 import { captureException } from "./sentry.js"
 
 const MAX_LENGTH = 4096
@@ -11,6 +11,7 @@ const BASE = "https://api.telegram.org"
 /** Remove control characters that Telegram rejects as invalid UTF-8. */
 function sanitizeText(text: string): string {
   // Strip C0 control chars except \t \n \r, plus DEL
+  // eslint-disable-next-line no-control-regex
   return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
 }
 
