@@ -254,7 +254,7 @@ export function formatHelp(): string {
   return [
     `<b>Available commands</b>`,
     ``,
-    `<code>/task [repo] description</code> — start a one-shot coding task`,
+    `<code>/task [repo] description</code> (or <code>/w</code>) — start a one-shot coding task`,
     `<code>/plan [repo] description</code> — start a multi-turn planning session`,
     `<code>/think [repo] question</code> — start a deep research session`,
     `<code>/status</code> — show active sessions`,
