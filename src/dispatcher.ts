@@ -724,6 +724,7 @@ export class Dispatcher {
       claude: this.config.claude,
       mcp: this.config.mcp,
       profile,
+      sessionEnvPassthrough: this.config.sessionEnvPassthrough,
     }
 
     const handle = new SessionHandle(
@@ -965,6 +966,7 @@ export class Dispatcher {
       goose: this.config.goose,
       claude: this.config.claude,
       mcp: this.config.mcp,
+      sessionEnvPassthrough: this.config.sessionEnvPassthrough,
     }
 
     const handle = new SessionHandle(
