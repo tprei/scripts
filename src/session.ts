@@ -371,6 +371,32 @@ export class SessionHandle {
     }
   }
 
+  kill(gracefulMs = 5000): Promise<void> {
+    if (!this.process || !this.isActive()) {
+      return Promise.resolve()
+    }
+
+    return new Promise<void>((resolve) => {
+      const proc = this.process!
+
+      const onExit = () => {
+        clearTimeout(escalation)
+        resolve()
+      }
+
+      proc.once("close", onExit)
+
+      proc.kill("SIGINT")
+
+      const escalation = setTimeout(() => {
+        if (this.isActive()) {
+          process.stderr.write(`session ${this.meta.sessionId}: SIGINT timeout, sending SIGKILL\n`)
+          proc.kill("SIGKILL")
+        }
+      }, gracefulMs)
+    })
+  }
+
   private clearTimeout(): void {
     if (this.timeoutHandle !== null) {
       clearTimeout(this.timeoutHandle)
