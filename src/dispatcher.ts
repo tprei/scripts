@@ -914,9 +914,8 @@ export class Dispatcher {
     if (topicSession.activeSessionId) {
       const activeSession = this.sessions.get(threadId)
       if (activeSession) {
-        activeSession.handle.interrupt()
+        await activeSession.handle.kill()
       }
-      await new Promise((resolve) => setTimeout(resolve, 500))
       this.sessions.delete(threadId)
     }
 
