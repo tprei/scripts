@@ -5,6 +5,11 @@ import { captureException } from "./sentry.js"
 
 const STORE_FILENAME = "profiles.json"
 
+interface ProfileStoreData {
+  profiles: ProviderProfile[]
+  defaultProfileId?: string
+}
+
 const DEFAULT_PROFILE: ProviderProfile = {
   id: "claude-acp",
   name: "Claude Code (default)",
@@ -13,6 +18,7 @@ const DEFAULT_PROFILE: ProviderProfile = {
 export class ProfileStore {
   private readonly filePath: string
   private profiles: ProviderProfile[] = []
+  private defaultProfileId?: string
 
   constructor(workspaceRoot: string) {
     this.filePath = path.join(workspaceRoot, STORE_FILENAME)
@@ -26,9 +32,17 @@ export class ProfileStore {
         return
       }
       const raw = fs.readFileSync(this.filePath, "utf-8")
-      const data = JSON.parse(raw) as ProviderProfile[]
-      const hasDefault = data.some((p) => p.id === DEFAULT_PROFILE.id)
-      this.profiles = hasDefault ? data : [DEFAULT_PROFILE, ...data]
+      const data = JSON.parse(raw) as ProfileStoreData | ProviderProfile[]
+      // Handle both old format (array) and new format (object with profiles + defaultProfileId)
+      if (Array.isArray(data)) {
+        const hasDefault = data.some((p) => p.id === DEFAULT_PROFILE.id)
+        this.profiles = hasDefault ? data : [DEFAULT_PROFILE, ...data]
+        this.defaultProfileId = undefined
+      } else {
+        const hasDefault = data.profiles.some((p) => p.id === DEFAULT_PROFILE.id)
+        this.profiles = hasDefault ? data.profiles : [DEFAULT_PROFILE, ...data.profiles]
+        this.defaultProfileId = data.defaultProfileId
+      }
     } catch (err) {
       process.stderr.write(`profile-store: failed to load profiles: ${err}\n`)
       captureException(err, { operation: "profile-store.load" })
@@ -38,7 +52,11 @@ export class ProfileStore {
 
   save(): void {
     try {
-      fs.writeFileSync(this.filePath, JSON.stringify(this.profiles, null, 2), "utf-8")
+      const data: ProfileStoreData = {
+        profiles: this.profiles,
+        defaultProfileId: this.defaultProfileId,
+      }
+      fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2), "utf-8")
     } catch (err) {
       process.stderr.write(`profile-store: failed to save profiles: ${err}\n`)
       captureException(err, { operation: "profile-store.save" })
@@ -75,7 +93,26 @@ export class ProfileStore {
     const idx = this.profiles.findIndex((p) => p.id === id)
     if (idx === -1) return false
     this.profiles.splice(idx, 1)
+    if (this.defaultProfileId === id) {
+      this.defaultProfileId = undefined
+    }
     this.save()
     return true
+  }
+
+  getDefaultId(): string | undefined {
+    return this.defaultProfileId
+  }
+
+  setDefaultId(id: string): boolean {
+    if (!this.profiles.some((p) => p.id === id)) return false
+    this.defaultProfileId = id
+    this.save()
+    return true
+  }
+
+  clearDefault(): void {
+    this.defaultProfileId = undefined
+    this.save()
   }
 }

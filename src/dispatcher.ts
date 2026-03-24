@@ -335,19 +335,24 @@ export class Dispatcher {
         pending.repoSlug = repoSlug
         pending.repoUrl = repoUrl
 
-        const profiles = this.profileStore.list()
-        if (profiles.length > 1) {
-          const keyboard = buildProfileKeyboard(profiles)
-          const msgId = await this.telegram.sendMessageWithKeyboard(
-            `Pick a profile for: <i>${escapeHtml(pending.task)}</i>`,
-            keyboard,
-            pending.threadId,
-          )
-          if (msgId) {
-            this.pendingProfiles.set(msgId, pending)
-          }
+        const defaultProfileId = this.profileStore.getDefaultId()
+        if (defaultProfileId) {
+          await this.startTopicSessionWithProfile(repoUrl, pending.task, pending.mode, defaultProfileId)
         } else {
-          await this.startTopicSessionWithProfile(repoUrl, pending.task, pending.mode, undefined)
+          const profiles = this.profileStore.list()
+          if (profiles.length > 1) {
+            const keyboard = buildProfileKeyboard(profiles)
+            const msgId = await this.telegram.sendMessageWithKeyboard(
+              `Pick a profile for: <i>${escapeHtml(pending.task)}</i>`,
+              keyboard,
+              pending.threadId,
+            )
+            if (msgId) {
+              this.pendingProfiles.set(msgId, pending)
+            }
+          } else {
+            await this.startTopicSessionWithProfile(repoUrl, pending.task, pending.mode, undefined)
+          }
         }
         return
       }
@@ -397,7 +402,8 @@ export class Dispatcher {
   private async handleConfigCommand(args: string): Promise<void> {
     if (!args) {
       const profiles = this.profileStore.list()
-      await this.telegram.sendMessage(formatProfileList(profiles))
+      const defaultId = this.profileStore.getDefaultId()
+      await this.telegram.sendMessage(formatProfileList(profiles, defaultId))
       return
     }
 
@@ -441,6 +447,29 @@ export class Dispatcher {
         await this.telegram.sendMessage(`✅ Removed profile <code>${escapeHtml(id)}</code>`)
       } else {
         await this.telegram.sendMessage(`❌ Cannot remove <code>${escapeHtml(id)}</code> (not found or is default)`)
+      }
+      return
+    }
+
+    if (subcommand === "default") {
+      if (parts.length === 1) {
+        // /config default - clear the default
+        this.profileStore.clearDefault()
+        await this.telegram.sendMessage(`✅ Cleared default profile`)
+        return
+      }
+      const id = parts[1]
+      if (id === "clear") {
+        this.profileStore.clearDefault()
+        await this.telegram.sendMessage(`✅ Cleared default profile`)
+        return
+      }
+      const set = this.profileStore.setDefaultId(id)
+      if (set) {
+        const profile = this.profileStore.get(id)
+        await this.telegram.sendMessage(`✅ Default profile set to <code>${escapeHtml(id)}</code> (${escapeHtml(profile?.name ?? id)})`)
+      } else {
+        await this.telegram.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> not found`)
       }
       return
     }
@@ -513,6 +542,12 @@ export class Dispatcher {
       }
     }
 
+    const defaultProfileId = this.profileStore.getDefaultId()
+    if (defaultProfileId) {
+      await this.startTopicSession(repoUrl, task, "task", photos, defaultProfileId)
+      return
+    }
+
     const profiles = this.profileStore.list()
     if (profiles.length > 1) {
       const keyboard = buildProfileKeyboard(profiles)
@@ -559,6 +594,12 @@ export class Dispatcher {
       }
     }
 
+    const defaultProfileId = this.profileStore.getDefaultId()
+    if (defaultProfileId) {
+      await this.startTopicSession(repoUrl, task, "plan", photos, defaultProfileId)
+      return
+    }
+
     const profiles = this.profileStore.list()
     if (profiles.length > 1) {
       const keyboard = buildProfileKeyboard(profiles)
@@ -603,6 +644,12 @@ export class Dispatcher {
         }
         return
       }
+    }
+
+    const defaultProfileId = this.profileStore.getDefaultId()
+    if (defaultProfileId) {
+      await this.startTopicSession(repoUrl, task, "think", photos, defaultProfileId)
+      return
     }
 
     const profiles = this.profileStore.list()

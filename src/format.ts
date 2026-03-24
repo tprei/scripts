@@ -351,13 +351,16 @@ function formatElapsed(ms: number): string {
   return secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`
 }
 
-export function formatProfileList(profiles: { id: string; name: string; baseUrl?: string }[]): string {
+export function formatProfileList(profiles: { id: string; name: string; baseUrl?: string }[], defaultId?: string): string {
   const lines: string[] = [`⚙️ <b>Provider profiles</b>`, ""]
   for (const p of profiles) {
     const url = p.baseUrl ? ` · ${esc(p.baseUrl)}` : ""
-    lines.push(`• <code>${esc(p.id)}</code> — ${esc(p.name)}${url}`)
+    const marker = p.id === defaultId ? " ⭐" : ""
+    lines.push(`• <code>${esc(p.id)}</code> — ${esc(p.name)}${url}${marker}`)
   }
   lines.push("")
+  lines.push(`<code>/config default &lt;id&gt;</code> — set default profile`)
+  lines.push(`<code>/config default clear</code> — clear default`)
   lines.push(`<code>/config add &lt;id&gt; &lt;name&gt;</code> — add new profile`)
   lines.push(`<code>/config set &lt;id&gt; &lt;field&gt; &lt;value&gt;</code> — update field`)
   lines.push(`<code>/config remove &lt;id&gt;</code> — remove profile`)
@@ -369,6 +372,8 @@ export function formatConfigHelp(): string {
     `⚙️ <b>Config commands</b>`,
     ``,
     `<code>/config</code> — list profiles`,
+    `<code>/config default &lt;id&gt;</code> — set default profile`,
+    `<code>/config default clear</code> — clear default`,
     `<code>/config add &lt;id&gt; &lt;name&gt;</code> — add new profile`,
     `<code>/config set &lt;id&gt; &lt;field&gt; &lt;value&gt;</code> — update field`,
     `<code>/config remove &lt;id&gt;</code> — remove profile`,
