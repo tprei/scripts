@@ -67,7 +67,6 @@ function runClaudeExtraction(task: string, timeoutMs: number): Promise<string> {
     const child = spawn("claude", args, {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env },
-      timeout: timeoutMs,
     })
 
     let stdout = ""
