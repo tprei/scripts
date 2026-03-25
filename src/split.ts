@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process"
+import fs from "node:fs"
+import path from "node:path"
 import type { TopicMessage } from "./types.js"
 
 export interface SplitItem {
@@ -64,9 +66,19 @@ function runClaudeExtraction(task: string, timeoutMs: number): Promise<string> {
 
     logResourceUsage("spawning claude CLI")
 
+    // Ensure claude CLI can find credentials - use /workspace/home/.claude if available
+    const parentHome = process.env["HOME"] ?? "/root"
+    const claudeConfigDir = process.env["CLAUDE_CONFIG_DIR"]
+      ?? (fs.existsSync("/workspace/home/.claude") ? "/workspace/home/.claude" : path.join(parentHome, ".claude"))
+
+    process.stderr.write(`split: using CLAUDE_CONFIG_DIR=${claudeConfigDir}\n`)
+
     const child = spawn("claude", args, {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        CLAUDE_CONFIG_DIR: claudeConfigDir,
+      },
     })
 
     let stdout = ""
