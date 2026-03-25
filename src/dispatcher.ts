@@ -2244,7 +2244,7 @@ export class Dispatcher {
       try {
         // Merge the PR with squash
         execSync(
-          `gh pr merge ${JSON.stringify(node.prUrl!)} --squash --delete-branch`,
+          `gh pr merge ${JSON.stringify(node.prUrl!)} --squash`,
           { ...gitOpts, cwd: topicSession.cwd, env: { ...process.env } },
         )
         succeeded++
@@ -2309,7 +2309,7 @@ export class Dispatcher {
     for (const { title, prUrl } of prUrls) {
       try {
         execSync(
-          `gh pr merge ${JSON.stringify(prUrl)} --squash --delete-branch`,
+          `gh pr merge ${JSON.stringify(prUrl)} --squash`,
           { ...gitOpts, cwd: anyCwd, env: { ...process.env } },
         )
         succeeded++
