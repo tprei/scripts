@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process"
+import fs from "node:fs"
+import path from "node:path"
 import type { TopicMessage } from "./types.js"
 
 export interface SplitItem {
@@ -37,6 +39,27 @@ const INITIAL_DELAY_MS = 2000
 const MAX_ASSISTANT_CHARS = 4000
 
 /**
+ * Resolve the Claude config directory for CLI authentication.
+ * Priority:
+ * 1. CLAUDE_CONFIG_DIR env var if already set
+ * 2. /workspace/home/.claude if it exists (Fly.io deployment)
+ * 3. $HOME/.claude as fallback
+ */
+export function getClaudeConfigDir(
+  env: Record<string, string | undefined> = process.env,
+  fsExists: (path: string) => boolean = (p) => fs.existsSync(p),
+): string {
+  if (env["CLAUDE_CONFIG_DIR"]) {
+    return env["CLAUDE_CONFIG_DIR"]
+  }
+  if (fsExists("/workspace/home/.claude")) {
+    return "/workspace/home/.claude"
+  }
+  const home = env["HOME"] ?? "/root"
+  return path.join(home, ".claude")
+}
+
+/**
  * Log current resource usage for debugging
  */
 function logResourceUsage(label: string): void {
@@ -64,9 +87,15 @@ function runClaudeExtraction(task: string, timeoutMs: number): Promise<string> {
 
     logResourceUsage("spawning claude CLI")
 
+    const claudeConfigDir = getClaudeConfigDir()
+    process.stderr.write(`split: using CLAUDE_CONFIG_DIR=${claudeConfigDir}\n`)
+
     const child = spawn("claude", args, {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        CLAUDE_CONFIG_DIR: claudeConfigDir,
+      },
     })
 
     let stdout = ""

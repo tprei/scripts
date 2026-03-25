@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { parseSplitItems, buildSplitChildPrompt } from "../src/split.js"
+import { parseSplitItems, buildSplitChildPrompt, getClaudeConfigDir } from "../src/split.js"
 import type { TopicMessage } from "../src/types.js"
 
 describe("parseSplitItems", () => {
@@ -115,5 +115,49 @@ describe("buildSplitChildPrompt", () => {
     const prompt = buildSplitChildPrompt(short, items[0], items)
     expect(prompt).toContain("Do the thing")
     expect(prompt).not.toContain("Planning thread")
+  })
+})
+
+describe("getClaudeConfigDir", () => {
+  it("returns CLAUDE_CONFIG_DIR from env when set", () => {
+    const env = { CLAUDE_CONFIG_DIR: "/custom/config", HOME: "/home/user" }
+    const result = getClaudeConfigDir(env, () => false)
+    expect(result).toBe("/custom/config")
+  })
+
+  it("returns /workspace/home/.claude when it exists and CLAUDE_CONFIG_DIR not set", () => {
+    const env = { HOME: "/home/user" }
+    const fsExists = (p: string) => p === "/workspace/home/.claude"
+    const result = getClaudeConfigDir(env, fsExists)
+    expect(result).toBe("/workspace/home/.claude")
+  })
+
+  it("prefers CLAUDE_CONFIG_DIR over /workspace/home/.claude", () => {
+    const env = { CLAUDE_CONFIG_DIR: "/custom/config", HOME: "/home/user" }
+    const fsExists = (p: string) => p === "/workspace/home/.claude"
+    const result = getClaudeConfigDir(env, fsExists)
+    expect(result).toBe("/custom/config")
+  })
+
+  it("falls back to HOME/.claude when /workspace/home/.claude does not exist", () => {
+    const env = { HOME: "/home/testuser" }
+    const fsExists = () => false
+    const result = getClaudeConfigDir(env, fsExists)
+    expect(result).toBe("/home/testuser/.claude")
+  })
+
+  it("uses /root as default HOME when HOME not set", () => {
+    const env = {}
+    const fsExists = () => false
+    const result = getClaudeConfigDir(env, fsExists)
+    expect(result).toBe("/root/.claude")
+  })
+
+  it("handles empty CLAUDE_CONFIG_DIR by checking filesystem", () => {
+    const env = { CLAUDE_CONFIG_DIR: "", HOME: "/home/user" }
+    const fsExists = (p: string) => p === "/workspace/home/.claude"
+    const result = getClaudeConfigDir(env, fsExists)
+    // Empty string is falsy, so it should check filesystem
+    expect(result).toBe("/workspace/home/.claude")
   })
 })
