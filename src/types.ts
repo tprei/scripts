@@ -148,4 +148,7 @@ export interface TopicSession {
   mode: SessionMode
   lastActivityAt: number
   profileId?: string
+  parentThreadId?: number
+  childThreadIds?: number[]
+  splitLabel?: string
 }

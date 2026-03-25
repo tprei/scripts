@@ -23,6 +23,10 @@ import {
   formatHelp,
   formatQualityReport,
   formatQualityReportForContext,
+  formatSplitAnalyzing,
+  formatSplitStart,
+  formatSplitChildComplete,
+  formatSplitAllDone,
   formatUsage,
 } from "../src/format.js"
 import type { ClaudeUsageResponse } from "../src/claude-usage.js"
@@ -469,6 +473,11 @@ describe("formatHelp", () => {
     expect(msg).toContain("delete the topic")
   })
 
+  it("includes /split command", () => {
+    const msg = formatHelp()
+    expect(msg).toContain("/split")
+  })
+
   it("includes /review command", () => {
     const msg = formatHelp()
     expect(msg).toContain("/review")
@@ -477,6 +486,54 @@ describe("formatHelp", () => {
   it("includes /usage command", () => {
     const msg = formatHelp()
     expect(msg).toContain("/usage")
+  })
+})
+
+describe("formatSplitAnalyzing", () => {
+  it("includes slug and analyzing message", () => {
+    const msg = formatSplitAnalyzing("calm-bay")
+    expect(msg).toContain("calm-bay")
+    expect(msg).toContain("Analyzing conversation")
+  })
+})
+
+describe("formatSplitStart", () => {
+  it("lists all children with titles", () => {
+    const children = [
+      { repo: "myrepo", slug: "bold-arc", title: "Add auth" },
+      { repo: "myrepo", slug: "keen-elm", title: "Fix tests" },
+    ]
+    const msg = formatSplitStart("calm-bay", children)
+    expect(msg).toContain("Split into 2 sub-tasks")
+    expect(msg).toContain("calm-bay")
+    expect(msg).toContain("bold-arc")
+    expect(msg).toContain("keen-elm")
+    expect(msg).toContain("Add auth")
+    expect(msg).toContain("Fix tests")
+  })
+})
+
+describe("formatSplitChildComplete", () => {
+  it("shows success with PR link", () => {
+    const msg = formatSplitChildComplete("bold-arc", "completed", "Add auth", "https://github.com/org/repo/pull/42")
+    expect(msg).toContain("bold-arc")
+    expect(msg).toContain("completed")
+    expect(msg).toContain("Add auth")
+    expect(msg).toContain("PR")
+  })
+
+  it("shows error without PR", () => {
+    const msg = formatSplitChildComplete("bold-arc", "errored", "Add auth")
+    expect(msg).toContain("❌")
+    expect(msg).toContain("errored")
+  })
+})
+
+describe("formatSplitAllDone", () => {
+  it("shows succeeded count", () => {
+    const msg = formatSplitAllDone(2, 3)
+    expect(msg).toContain("2/3")
+    expect(msg).toContain("Split complete")
   })
 })
 

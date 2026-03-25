@@ -292,6 +292,7 @@ export function formatHelp(): string {
     ``,
     `<code>/reply text</code> (or <code>/r text</code>) — give feedback to the agent`,
     `<code>/execute [directive]</code> — finalize plan and start implementation (plan/think mode)`,
+    `<code>/split [directive]</code> — split plan into parallel sub-tasks (plan/think mode)`,
     `<code>/close</code> — stop the session, wipe data, and delete the topic`,
   ].join("\n")
 }
@@ -495,6 +496,36 @@ export function formatProfileList(profiles: { id: string; name: string; baseUrl?
   lines.push(`<code>/config set &lt;id&gt; &lt;field&gt; &lt;value&gt;</code> — update field`)
   lines.push(`<code>/config remove &lt;id&gt;</code> — remove profile`)
   return lines.join("\n")
+}
+
+export function formatSplitAnalyzing(slug: string): string {
+  return `🔀 <b>Analyzing conversation</b>  ·  🏷 <code>${esc(slug)}</code>\nExtracting parallelizable work items…`
+}
+
+export function formatSplitStart(
+  slug: string,
+  children: { repo: string; slug: string; title: string }[],
+): string {
+  const lines: string[] = [
+    `🔀 <b>Split into ${children.length} sub-tasks</b>  ·  🏷 <code>${esc(slug)}</code>`,
+    "",
+  ]
+  for (let i = 0; i < children.length; i++) {
+    lines.push(`${i + 1}. ⚡ <b>${esc(children[i].repo)} · ${esc(children[i].slug)}</b> — ${esc(children[i].title)}`)
+  }
+  lines.push("")
+  lines.push("Each sub-minion has its own worktree and branch. Progress updates will appear here.")
+  return lines.join("\n")
+}
+
+export function formatSplitChildComplete(slug: string, state: string, label: string, prUrl?: string): string {
+  const emoji = state === "errored" ? "❌" : "✅"
+  const prSuffix = prUrl ? ` — <a href="${esc(prUrl)}">PR</a>` : ""
+  return `${emoji} <b>${esc(slug)}</b> ${esc(state)}: ${esc(label)}${prSuffix}`
+}
+
+export function formatSplitAllDone(succeeded: number, total: number): string {
+  return `📊 <b>Split complete</b>: ${succeeded}/${total} succeeded`
 }
 
 export function formatConfigHelp(): string {

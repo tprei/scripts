@@ -41,6 +41,7 @@ export function configFromEnv(overrides?: Partial<MinionConfig>): MinionConfig {
     workspace: {
       root: optional("WORKSPACE_ROOT", "/workspace"),
       maxConcurrentSessions: optionalNumber("MAX_CONCURRENT_SESSIONS", 5),
+      maxSplitItems: optionalNumber("MAX_SPLIT_ITEMS", 5),
       sessionTokenBudget: optionalNumber("SESSION_TOKEN_BUDGET", 200_000),
       sessionBudgetUsd: optionalNumber("SESSION_BUDGET_USD", 10),
       sessionTimeoutMs: optionalNumber("SESSION_TIMEOUT_MS", 3600000),
