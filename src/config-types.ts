@@ -23,6 +23,7 @@ export interface WorkspaceConfig {
   sessionTokenBudget: number
   sessionBudgetUsd: number
   sessionTimeoutMs: number
+  sessionInactivityTimeoutMs: number
   staleTtlMs: number
   cleanupIntervalMs: number
 }

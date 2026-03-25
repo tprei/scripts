@@ -44,12 +44,14 @@ export class SessionHandle {
   private process: ChildProcess | null = null
   private state: SessionState = "spawning"
   private timeoutHandle: ReturnType<typeof setTimeout> | null = null
+  private inactivityHandle: ReturnType<typeof setTimeout> | null = null
 
   constructor(
     readonly meta: SessionMeta,
     private readonly onEvent: SessionEventCallback,
     private readonly onDone: SessionDoneCallback,
     private readonly timeoutMs: number,
+    private readonly inactivityTimeoutMs: number,
     private readonly sessionConfig: SessionConfig,
   ) {}
 
@@ -427,9 +429,25 @@ export class SessionHandle {
 
     const rl = createInterface({ input: proc.stdout! })
 
+    const resetInactivityTimer = () => {
+      if (this.inactivityHandle !== null) clearTimeout(this.inactivityHandle)
+      this.inactivityHandle = setTimeout(() => {
+        process.stderr.write(`session ${this.meta.sessionId}: inactivity timeout after ${this.inactivityTimeoutMs}ms — no stdout, killing\n`)
+        captureException(new Error("Session inactivity timeout"), {
+          sessionId: this.meta.sessionId,
+          repo: this.meta.repo,
+          mode: this.meta.mode,
+          inactivityTimeoutMs: this.inactivityTimeoutMs,
+        })
+        this.interrupt()
+      }, this.inactivityTimeoutMs)
+    }
+    resetInactivityTimer()
+
     rl.on("line", (line) => {
       const trimmed = line.trim()
       if (!trimmed) return
+      resetInactivityTimer()
       parseLine(trimmed)
     })
 
@@ -529,6 +547,10 @@ export class SessionHandle {
     if (this.timeoutHandle !== null) {
       clearTimeout(this.timeoutHandle)
       this.timeoutHandle = null
+    }
+    if (this.inactivityHandle !== null) {
+      clearTimeout(this.inactivityHandle)
+      this.inactivityHandle = null
     }
   }
 
