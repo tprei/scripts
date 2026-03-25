@@ -1251,25 +1251,7 @@ export class Dispatcher {
   }
 
   private cleanBuildArtifacts(cwd: string): void {
-    const artifacts = ["node_modules", ".next", ".turbo", ".cache", "dist", ".npm"]
-    for (const name of artifacts) {
-      const target = path.join(cwd, name)
-      try {
-        if (fs.existsSync(target)) {
-          fs.rmSync(target, { recursive: true, force: true })
-          process.stderr.write(`dispatcher: cleaned ${name} from ${cwd}\n`)
-        }
-      } catch (err) {
-        process.stderr.write(`dispatcher: failed to clean ${name} from ${cwd}: ${err}\n`)
-      }
-    }
-    const homeCacheDir = path.join(cwd, ".home", ".npm")
-    try {
-      if (fs.existsSync(homeCacheDir)) {
-        fs.rmSync(homeCacheDir, { recursive: true, force: true })
-        process.stderr.write(`dispatcher: cleaned .home/.npm from ${cwd}\n`)
-      }
-    } catch { /* best effort */ }
+    cleanBuildArtifacts(cwd)
   }
 
   private removeWorkspace(topicSession: TopicSession): void {
@@ -1405,7 +1387,29 @@ export function appendImageContext(task: string, imagePaths: string[]): string {
   return `${task}\n\n## Attached images\n\nThe user attached the following image(s). Read them with your file-reading tool to view their contents:\n${imageRefs}`
 }
 
-function dirSizeBytes(dirPath: string): number {
+export function cleanBuildArtifacts(cwd: string): void {
+  const artifacts = ["node_modules", ".next", ".turbo", ".cache", "dist", ".npm"]
+  for (const name of artifacts) {
+    const target = path.join(cwd, name)
+    try {
+      if (fs.existsSync(target)) {
+        fs.rmSync(target, { recursive: true, force: true })
+        process.stderr.write(`dispatcher: cleaned ${name} from ${cwd}\n`)
+      }
+    } catch (err) {
+      process.stderr.write(`dispatcher: failed to clean ${name} from ${cwd}: ${err}\n`)
+    }
+  }
+  const homeCacheDir = path.join(cwd, ".home", ".npm")
+  try {
+    if (fs.existsSync(homeCacheDir)) {
+      fs.rmSync(homeCacheDir, { recursive: true, force: true })
+      process.stderr.write(`dispatcher: cleaned .home/.npm from ${cwd}\n`)
+    }
+  } catch { /* best effort */ }
+}
+
+export function dirSizeBytes(dirPath: string): number {
   try {
     const output = execSync(`du -sb ${JSON.stringify(dirPath)}`, {
       stdio: ["ignore", "pipe", "pipe"],
