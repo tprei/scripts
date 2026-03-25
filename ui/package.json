@@ -14,15 +14,20 @@
   },
   "dependencies": {
     "@preact/signals": "^2.0.2",
+    "@reactflow/background": "^11.3.14",
+    "@reactflow/controls": "^11.2.14",
     "@reactflow/core": "^11.11.4",
+    "@reactflow/minimap": "^11.7.14",
     "@telegram-apps/telegram-ui": "^2.1.13",
     "@twa.js/sdk": "^0.11.2",
+    "dagre": "^0.8.5",
     "preact": "^10.26.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
     "@preact/preset-vite": "^2.10.1",
     "@testing-library/preact": "^3.2.4",
+    "@types/dagre": "^0.7.52",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "jsdom": "^26.0.0",

@@ -1,7 +1,8 @@
 import { useSignalEffect } from '@preact/signals'
-import { sessions, isLoading, error, refresh } from './store'
+import { sessions, dags, isLoading, error, refresh } from './store'
 import { SessionList } from './components/SessionList'
-import type { MinionSession } from './types'
+import { DagList } from './components/DagView'
+import type { MinionSession, DagNode } from './types'
 
 function handleThreadClick(session: MinionSession) {
   if (window.Telegram?.WebApp) {
@@ -13,6 +14,12 @@ function handleThreadClick(session: MinionSession) {
   } else if (session.threadId && session.chatId) {
     const threadUrl = `https://t.me/c/${Math.abs(session.chatId)}/${session.threadId}`
     window.open(threadUrl, '_blank')
+  }
+}
+
+function handleDagNodeClick(node: DagNode) {
+  if (node.session) {
+    handleThreadClick(node.session)
   }
 }
 
@@ -59,6 +66,12 @@ export default function App() {
           onThreadClick={handleThreadClick}
         />
       </section>
+
+      <DagList
+        dags={dags.value}
+        isLoading={isLoading.value}
+        onNodeClick={handleDagNodeClick}
+      />
     </div>
   )
 }
