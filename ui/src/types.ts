@@ -6,6 +6,8 @@ export interface MinionSession {
   repo?: string
   branch?: string
   prUrl?: string
+  threadId?: number
+  chatId?: number
   createdAt: string
   updatedAt: string
   parentId?: string
