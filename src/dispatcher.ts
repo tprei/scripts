@@ -57,13 +57,12 @@ import {
   formatStackNodeRebase,
   formatStackConflict,
   formatStackComplete,
-  formatStackHelp,
   formatStackNoItems,
   formatStackValidationError,
 } from "./format.js"
 import { extractSplitItems, buildSplitChildPrompt } from "./split.js"
 import { extractStackItems, buildStackChildPrompt } from "./stack-extract.js"
-import { StackOrchestrator, type StackItem, type StackOrchestratorCallbacks } from "./stack-orchestrator.js"
+import { StackOrchestrator, type StackOrchestratorCallbacks } from "./stack-orchestrator.js"
 import { StackGraph, createStackMetadata } from "./stack-graph.js"
 import type { StackMetadata, StackNode } from "./types.js"
 import { runQualityGates, type QualityReport } from "./quality-gates.js"
@@ -2035,8 +2034,8 @@ export class Dispatcher {
     parent: TopicSession,
     node: StackNode,
     worktree: string,
-    branch: string,
-    task: string,
+    _branch: string,
+    _task: string,
   ): Promise<number> {
     const sessionId = crypto.randomUUID()
     const slug = generateSlug(sessionId)

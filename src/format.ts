@@ -591,8 +591,6 @@ export function formatStackStart(
   ]
 
   // Build tree representation
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]))
-  const depths = calculateDepths(nodes)
   const printed = new Set<string>()
 
   const printNode = (node: StackNode, prefix: string): void => {
@@ -607,7 +605,6 @@ export function formatStackStart(
     // Print children (nodes that depend on this node)
     const children = nodes.filter((n) => n.dependencies.includes(node.id))
     for (let i = 0; i < children.length; i++) {
-      const childPrefix = prefix + (i === children.length - 1 ? "└─ " : "├─ ")
       printNode(children[i], prefix + (i === children.length - 1 ? "   " : "│  "))
     }
   }
@@ -623,34 +620,6 @@ export function formatStackStart(
   lines.push(`<code>/stack-status</code> — view current state`)
 
   return lines.join("\n")
-}
-
-function calculateDepths(nodes: StackNode[]): Map<string, number> {
-  const depths = new Map<string, number>()
-
-  const calc = (node: StackNode): number => {
-    if (depths.has(node.id)) return depths.get(node.id)!
-    if (node.dependencies.length === 0) {
-      depths.set(node.id, 0)
-      return 0
-    }
-    const nodeMap = new Map(nodes.map((n) => [n.id, n]))
-    const maxParentDepth = Math.max(
-      ...node.dependencies.map((depId) => {
-        const dep = nodeMap.get(depId)
-        return dep ? calc(dep) : 0
-      }),
-    )
-    const depth = maxParentDepth + 1
-    depths.set(node.id, depth)
-    return depth
-  }
-
-  for (const node of nodes) {
-    calc(node)
-  }
-
-  return depths
 }
 
 export function formatStackStatus(metadata: StackMetadata): string {

@@ -1,9 +1,7 @@
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
-import fs from "node:fs/promises"
-import path from "node:path"
-import type { StackMetadata, StackNode, StackNodeStatus, TopicSession } from "./types.js"
-import { StackGraph, createStackMetadata } from "./stack-graph.js"
+import type { StackMetadata, StackNode } from "./types.js"
+import { StackGraph } from "./stack-graph.js"
 
 const execFileAsync = promisify(execFile)
 
