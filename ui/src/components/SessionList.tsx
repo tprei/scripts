@@ -1,4 +1,6 @@
+import { useState, useCallback } from 'preact/hooks'
 import type { MinionSession } from '../types'
+import { ConfirmDialog, ReplyDialog } from './ConfirmDialog'
 
 type StatusType = MinionSession['status']
 
@@ -26,6 +28,10 @@ export function StatusBadge({ status }: StatusBadgeProps) {
 interface SessionCardProps {
   session: MinionSession
   onThreadClick?: (session: MinionSession) => void
+  onSendReply?: (sessionId: string, message: string) => Promise<void>
+  onStopMinion?: (sessionId: string) => Promise<void>
+  onCloseSession?: (sessionId: string) => Promise<void>
+  isActionLoading?: boolean
 }
 
 function formatRelativeTime(dateString: string): string {
@@ -43,69 +49,189 @@ function formatRelativeTime(dateString: string): string {
   return date.toLocaleDateString()
 }
 
-export function SessionCard({ session, onThreadClick }: SessionCardProps) {
-  const handleClick = () => {
+export function SessionCard({
+  session,
+  onThreadClick,
+  onSendReply,
+  onStopMinion,
+  onCloseSession,
+  isActionLoading = false,
+}: SessionCardProps) {
+  const [showStopConfirm, setShowStopConfirm] = useState(false)
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+  const [showReplyDialog, setShowReplyDialog] = useState(false)
+
+  const handleCardClick = useCallback(() => {
     if (onThreadClick) {
       onThreadClick(session)
     } else if (session.threadId && session.chatId) {
       const threadUrl = `https://t.me/c/${Math.abs(session.chatId)}/${session.threadId}`
       window.open(threadUrl, '_blank')
     }
-  }
+  }, [session, onThreadClick])
 
+  const handleStopClick = useCallback((e: Event) => {
+    e.stopPropagation()
+    setShowStopConfirm(true)
+  }, [])
+
+  const handleCloseClick = useCallback((e: Event) => {
+    e.stopPropagation()
+    setShowCloseConfirm(true)
+  }, [])
+
+  const handleReplyClick = useCallback((e: Event) => {
+    e.stopPropagation()
+    setShowReplyDialog(true)
+  }, [])
+
+  const handleConfirmStop = useCallback(async () => {
+    if (onStopMinion) {
+      await onStopMinion(session.id)
+      setShowStopConfirm(false)
+    }
+  }, [session.id, onStopMinion])
+
+  const handleConfirmClose = useCallback(async () => {
+    if (onCloseSession) {
+      await onCloseSession(session.id)
+      setShowCloseConfirm(false)
+    }
+  }, [session.id, onCloseSession])
+
+  const handleSendReply = useCallback(
+    async (_sessionId: string, message: string) => {
+      if (onSendReply) {
+        await onSendReply(session.id, message)
+        setShowReplyDialog(false)
+      }
+    },
+    [session.id, onSendReply]
+  )
+
+  const isActive = session.status === 'running' || session.status === 'pending'
   const isClickable = Boolean(session.threadId && session.chatId)
 
   return (
-    <div
-      class={`bg-telegram-secondary rounded-lg p-4 mb-3 ${isClickable ? 'cursor-pointer hover:opacity-90 transition-opacity active:scale-[0.98]' : ''}`}
-      onClick={isClickable ? handleClick : undefined}
-      role={isClickable ? 'button' : undefined}
-      tabIndex={isClickable ? 0 : undefined}
-    >
-      <div class="flex items-center justify-between mb-2">
-        <div class="flex items-center gap-2">
-          <h3 class="font-semibold text-telegram-text">{session.slug}</h3>
-          {session.threadId && (
-            <span class="text-xs text-telegram-hint font-mono">#{session.threadId}</span>
-          )}
+    <>
+      <div
+        class={`bg-telegram-secondary rounded-lg p-4 mb-3 ${isClickable ? 'cursor-pointer hover:opacity-90 transition-opacity active:scale-[0.98]' : ''}`}
+        onClick={isClickable ? handleCardClick : undefined}
+        role={isClickable ? 'button' : undefined}
+        tabIndex={isClickable ? 0 : undefined}
+      >
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <h3 class="font-semibold text-telegram-text">{session.slug}</h3>
+            {session.threadId && (
+              <span class="text-xs text-telegram-hint font-mono">#{session.threadId}</span>
+            )}
+          </div>
+          <StatusBadge status={session.status} />
         </div>
-        <StatusBadge status={session.status} />
+
+        <p class="text-sm text-telegram-hint mb-2 line-clamp-2">{session.command}</p>
+
+        <div class="flex items-center justify-between text-xs text-telegram-hint">
+          <div class="flex items-center gap-2">
+            {session.repo && (
+              <span class="truncate max-w-[180px]">{session.repo.split('/').slice(-2).join('/')}</span>
+            )}
+            {session.branch && (
+              <span class="bg-telegram-secondary px-1.5 py-0.5 rounded text-telegram-hint">
+                {session.branch}
+              </span>
+            )}
+          </div>
+          <span>{formatRelativeTime(session.updatedAt)}</span>
+        </div>
+
+        {session.prUrl && (
+          <a
+            href={session.prUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-xs text-telegram-link underline mt-2 block hover:opacity-80"
+            onClick={(e) => e.stopPropagation()}
+          >
+            View PR
+          </a>
+        )}
+
+        {session.childIds.length > 0 && (
+          <div class="mt-2 text-xs text-telegram-hint">
+            {session.childIds.length} child{session.childIds.length > 1 ? 'ren' : ''}
+          </div>
+        )}
+
+        {/* Action buttons for active sessions */}
+        {isActive && (onSendReply || onStopMinion || onCloseSession) && (
+          <div class="flex gap-2 mt-3 pt-3 border-t border-gray-200">
+            {onSendReply && (
+              <button
+                onClick={handleReplyClick}
+                disabled={isActionLoading}
+                class="flex-1 px-3 py-1.5 text-xs font-medium bg-telegram-button text-telegram-buttonText rounded hover:opacity-90 transition-opacity disabled:opacity-50"
+                title="Send a reply to the minion thread"
+              >
+                Reply
+              </button>
+            )}
+            {onStopMinion && session.status === 'running' && (
+              <button
+                onClick={handleStopClick}
+                disabled={isActionLoading}
+                class="px-3 py-1.5 text-xs font-medium bg-orange-100 text-orange-700 rounded hover:bg-orange-200 transition-colors disabled:opacity-50"
+                title="Stop the running minion"
+              >
+                Stop
+              </button>
+            )}
+            {onCloseSession && (
+              <button
+                onClick={handleCloseClick}
+                disabled={isActionLoading}
+                class="px-3 py-1.5 text-xs font-medium bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors disabled:opacity-50"
+                title="Close this session"
+              >
+                Close
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      <p class="text-sm text-telegram-hint mb-2 line-clamp-2">{session.command}</p>
+      {/* Confirmation dialogs */}
+      <ConfirmDialog
+        isOpen={showStopConfirm}
+        title="Stop Minion"
+        message="Are you sure you want to stop this minion? Any in-progress work will be interrupted."
+        confirmLabel="Stop"
+        confirmVariant="danger"
+        isLoading={isActionLoading}
+        onConfirm={handleConfirmStop}
+        onCancel={() => setShowStopConfirm(false)}
+      />
 
-      <div class="flex items-center justify-between text-xs text-telegram-hint">
-        <div class="flex items-center gap-2">
-          {session.repo && (
-            <span class="truncate max-w-[180px]">{session.repo.split('/').slice(-2).join('/')}</span>
-          )}
-          {session.branch && (
-            <span class="bg-telegram-secondary px-1.5 py-0.5 rounded text-telegram-hint">
-              {session.branch}
-            </span>
-          )}
-        </div>
-        <span>{formatRelativeTime(session.updatedAt)}</span>
-      </div>
+      <ConfirmDialog
+        isOpen={showCloseConfirm}
+        title="Close Session"
+        message="Are you sure you want to close this session? This will terminate the minion and clean up resources."
+        confirmLabel="Close"
+        confirmVariant="danger"
+        isLoading={isActionLoading}
+        onConfirm={handleConfirmClose}
+        onCancel={() => setShowCloseConfirm(false)}
+      />
 
-      {session.prUrl && (
-        <a
-          href={session.prUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="text-xs text-telegram-link underline mt-2 block hover:opacity-80"
-          onClick={(e) => e.stopPropagation()}
-        >
-          View PR
-        </a>
-      )}
-
-      {session.childIds.length > 0 && (
-        <div class="mt-2 text-xs text-telegram-hint">
-          {session.childIds.length} child{session.childIds.length > 1 ? 'ren' : ''}
-        </div>
-      )}
-    </div>
+      <ReplyDialog
+        isOpen={showReplyDialog}
+        sessionId={session.id}
+        isLoading={isActionLoading}
+        onSend={handleSendReply}
+        onCancel={() => setShowReplyDialog(false)}
+      />
+    </>
   )
 }
 
@@ -113,9 +239,21 @@ interface SessionListProps {
   sessions: MinionSession[]
   isLoading: boolean
   onThreadClick?: (session: MinionSession) => void
+  onSendReply?: (sessionId: string, message: string) => Promise<void>
+  onStopMinion?: (sessionId: string) => Promise<void>
+  onCloseSession?: (sessionId: string) => Promise<void>
+  isActionLoading?: boolean
 }
 
-export function SessionList({ sessions, isLoading, onThreadClick }: SessionListProps) {
+export function SessionList({
+  sessions,
+  isLoading,
+  onThreadClick,
+  onSendReply,
+  onStopMinion,
+  onCloseSession,
+  isActionLoading = false,
+}: SessionListProps) {
   if (isLoading && sessions.length === 0) {
     return (
       <div class="text-center py-8">
@@ -144,7 +282,15 @@ export function SessionList({ sessions, isLoading, onThreadClick }: SessionListP
             Active ({activeSessions.length})
           </h3>
           {activeSessions.map((session) => (
-            <SessionCard key={session.id} session={session} onThreadClick={onThreadClick} />
+            <SessionCard
+              key={session.id}
+              session={session}
+              onThreadClick={onThreadClick}
+              onSendReply={onSendReply}
+              onStopMinion={onStopMinion}
+              onCloseSession={onCloseSession}
+              isActionLoading={isActionLoading}
+            />
           ))}
         </section>
       )}
@@ -155,7 +301,13 @@ export function SessionList({ sessions, isLoading, onThreadClick }: SessionListP
             Recent ({completedSessions.length})
           </h3>
           {completedSessions.map((session) => (
-            <SessionCard key={session.id} session={session} onThreadClick={onThreadClick} />
+            <SessionCard
+              key={session.id}
+              session={session}
+              onThreadClick={onThreadClick}
+              onCloseSession={onCloseSession}
+              isActionLoading={isActionLoading}
+            />
           ))}
         </section>
       )}

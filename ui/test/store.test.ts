@@ -1,13 +1,35 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { sessions, dags, isLoading, error, loadSessions, loadDags, refresh } from '../src/store'
-import { fetchSessions, fetchDags } from '../src/api'
-import type { MinionSession, DagGraph } from '../src/types'
-
-import { signal } from '@preact/signals'
+import {
+  sessions,
+  dags,
+  isLoading,
+  error,
+  actionState,
+  sseConnected,
+  loadSessions,
+  loadDags,
+  refresh,
+  sendReply,
+  stopMinion,
+  closeSession,
+  clearActionError,
+} from '../src/store'
+import {
+  fetchSessions,
+  fetchDags,
+  sendReply as apiSendReply,
+  stopMinion as apiStopMinion,
+  closeSession as apiCloseSession,
+} from '../src/api'
+import type { MinionSession, DagGraph, CommandResult } from '../src/types'
 
 vi.mock('../src/api', () => ({
   fetchSessions: vi.fn(),
   fetchDags: vi.fn(),
+  sendReply: vi.fn(),
+  stopMinion: vi.fn(),
+  closeSession: vi.fn(),
+  createSseConnection: vi.fn(),
 }))
 
 describe('Store', () => {
@@ -29,6 +51,9 @@ describe('Store', () => {
       id: 'dag-1',
       rootTaskId: 'task-1',
       nodes: {},
+      status: 'pending',
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
     },
   ]
 
@@ -38,6 +63,8 @@ describe('Store', () => {
     dags.value = []
     isLoading.value = false
     error.value = null
+    actionState.value = { isLoading: false, error: null, lastAction: null }
+    sseConnected.value = false
   })
 
   afterEach(() => {
@@ -88,6 +115,74 @@ describe('Store', () => {
       await refresh()
       expect(sessions.value).toEqual(mockSessions)
       expect(dags.value).toEqual(mockDags)
+    })
+  })
+
+  describe('sendReply', () => {
+    it('should send reply successfully', async () => {
+      const mockResult: CommandResult = { success: true }
+      ;(apiSendReply as ReturnType<typeof vi.fn>).mockResolvedValue(mockResult)
+
+      await sendReply('session-1', 'Hello!')
+
+      expect(apiSendReply).toHaveBeenCalledWith('session-1', 'Hello!')
+      expect(actionState.value.isLoading).toBe(false)
+      expect(actionState.value.lastAction).toBe('sendReply')
+    })
+
+    it('should handle errors with retry', async () => {
+      ;(apiSendReply as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Network error'))
+
+      await expect(sendReply('session-1', 'Hello!')).rejects.toThrow('Network error')
+      expect(actionState.value.error).toBe('Network error')
+    })
+  })
+
+  describe('stopMinion', () => {
+    it('should stop minion successfully', async () => {
+      const mockResult: CommandResult = { success: true }
+      ;(apiStopMinion as ReturnType<typeof vi.fn>).mockResolvedValue(mockResult)
+
+      await stopMinion('session-1')
+
+      expect(apiStopMinion).toHaveBeenCalledWith('session-1')
+      expect(actionState.value.isLoading).toBe(false)
+      expect(actionState.value.lastAction).toBe('stopMinion')
+    })
+
+    it('should handle errors', async () => {
+      ;(apiStopMinion as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Forbidden'))
+
+      await expect(stopMinion('session-1')).rejects.toThrow('Forbidden')
+      expect(actionState.value.error).toBe('Forbidden')
+    })
+  })
+
+  describe('closeSession', () => {
+    it('should close session successfully', async () => {
+      const mockResult: CommandResult = { success: true }
+      ;(apiCloseSession as ReturnType<typeof vi.fn>).mockResolvedValue(mockResult)
+
+      await closeSession('session-1')
+
+      expect(apiCloseSession).toHaveBeenCalledWith('session-1')
+      expect(actionState.value.isLoading).toBe(false)
+      expect(actionState.value.lastAction).toBe('closeSession')
+    })
+
+    it('should handle errors', async () => {
+      ;(apiCloseSession as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Not found'))
+
+      await expect(closeSession('session-1')).rejects.toThrow('Not found')
+      expect(actionState.value.error).toBe('Not found')
+    })
+  })
+
+  describe('clearActionError', () => {
+    it('should clear action error', () => {
+      actionState.value = { isLoading: false, error: 'Some error', lastAction: 'sendReply' }
+      clearActionError()
+      expect(actionState.value.error).toBe(null)
     })
   })
 })

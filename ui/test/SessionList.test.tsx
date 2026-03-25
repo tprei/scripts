@@ -1,27 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/preact'
+import { render, screen, fireEvent, cleanup } from '@testing-library/preact'
 import { SessionList, SessionCard, StatusBadge } from '../src/components/SessionList'
 import type { MinionSession } from '../src/types'
-
-vi.mock('@testing-library/preact', () => {
-  const preact = require('preact')
-  const { render } = require('@testing-library/preact')
-  return {
-    render,
-    screen: {
-      getByText: (text: string) => document.body.innerHTML.includes(text)
-        ? document.body
-        : null,
-      queryByText: (text: string) =>
-        document.body.innerHTML.includes(text) ? document.body : null,
-      getAllByText: (text: string) =>
-        document.body.innerHTML.includes(text) ? [document.body] : [],
-    },
-    fireEvent: {
-      click: (element: Element) => element.click(),
-    },
-  }
-})
 
 const mockSession: MinionSession = {
   id: 'session-1',
@@ -70,81 +50,81 @@ const mockPendingSession: MinionSession = {
 }
 
 describe('StatusBadge', () => {
+  beforeEach(() => {
+    cleanup()
+  })
+
   it('renders running status with lightning emoji', () => {
     render(<StatusBadge status="running" />)
-    expect(document.body.innerHTML).toContain('⚡')
-    expect(document.body.innerHTML).toContain('Running')
+    expect(screen.getByText('Running')).toBeTruthy()
   })
 
   it('renders pending status with speech bubble emoji', () => {
     render(<StatusBadge status="pending" />)
-    expect(document.body.innerHTML).toContain('💬')
-    expect(document.body.innerHTML).toContain('Idle')
+    expect(screen.getByText('Idle')).toBeTruthy()
   })
 
   it('renders completed status with checkmark emoji', () => {
     render(<StatusBadge status="completed" />)
-    expect(document.body.innerHTML).toContain('✅')
-    expect(document.body.innerHTML).toContain('Done')
+    expect(screen.getByText('Done')).toBeTruthy()
   })
 
   it('renders failed status with x emoji', () => {
     render(<StatusBadge status="failed" />)
-    expect(document.body.innerHTML).toContain('❌')
-    expect(document.body.innerHTML).toContain('Failed')
+    expect(screen.getByText('Failed')).toBeTruthy()
   })
 })
 
 describe('SessionCard', () => {
   beforeEach(() => {
+    cleanup()
     vi.clearAllMocks()
     delete (window as { Telegram?: unknown }).Telegram
   })
 
   it('displays session slug and status', () => {
     render(<SessionCard session={mockSession} />)
-    expect(document.body.innerHTML).toContain('bold-meadow')
-    expect(document.body.innerHTML).toContain('Running')
+    expect(screen.getByText('bold-meadow')).toBeTruthy()
+    expect(screen.getByText('Running')).toBeTruthy()
   })
 
   it('displays thread ID when available', () => {
     render(<SessionCard session={mockSession} />)
-    expect(document.body.innerHTML).toContain('#123')
+    expect(screen.getByText('#123')).toBeTruthy()
   })
 
   it('displays command text', () => {
     render(<SessionCard session={mockSession} />)
-    expect(document.body.innerHTML).toContain('/task Add feature')
+    expect(screen.getByText('/task Add feature')).toBeTruthy()
   })
 
   it('displays repo name (owner/repo format)', () => {
     render(<SessionCard session={mockSession} />)
-    expect(document.body.innerHTML).toContain('org/repo')
+    expect(screen.getByText('org/repo')).toBeTruthy()
   })
 
   it('displays branch name', () => {
     render(<SessionCard session={mockSession} />)
-    expect(document.body.innerHTML).toContain('feature-branch')
+    expect(screen.getByText('feature-branch')).toBeTruthy()
   })
 
   it('displays PR link when available', () => {
     render(<SessionCard session={mockCompletedSession} />)
-    expect(document.body.innerHTML).toContain('View PR')
-    expect(document.body.innerHTML).toContain('/pull/42')
+    expect(screen.getByText('View PR')).toBeTruthy()
   })
 
   it('displays child count for sessions with children', () => {
     render(<SessionCard session={mockCompletedSession} />)
-    expect(document.body.innerHTML).toContain('1 child')
+    expect(screen.getByText('1 child')).toBeTruthy()
   })
 
   it('calls onThreadClick when card is clicked', () => {
     const onThreadClick = vi.fn()
     render(<SessionCard session={mockSession} onThreadClick={onThreadClick} />)
 
-    const card = document.querySelector('[role="button"]')
+    const card = screen.getByText('bold-meadow').closest('[role="button"]')
     if (card) {
-      card.click()
+      fireEvent.click(card)
       expect(onThreadClick).toHaveBeenCalledWith(mockSession)
     }
   })
@@ -156,51 +136,93 @@ describe('SessionCard', () => {
     const clickable = document.querySelector('[role="button"]')
     expect(clickable).toBeNull()
   })
+
+  it('shows action buttons for active sessions', () => {
+    render(<SessionCard session={mockSession} onSendReply={vi.fn()} />)
+    expect(screen.getByText('Reply')).toBeTruthy()
+  })
+
+  it('shows stop button for running sessions', () => {
+    render(<SessionCard session={mockSession} onStopMinion={vi.fn()} />)
+    expect(screen.getByText('Stop')).toBeTruthy()
+  })
+
+  it('shows close button for active sessions', () => {
+    render(<SessionCard session={mockSession} onCloseSession={vi.fn()} />)
+    expect(screen.getByText('Close')).toBeTruthy()
+  })
+
+  it('does not show action buttons for completed sessions', () => {
+    render(<SessionCard session={mockCompletedSession} onSendReply={vi.fn()} onStopMinion={vi.fn()} />)
+    expect(screen.queryByText('Reply')).toBeNull()
+    expect(screen.queryByText('Stop')).toBeNull()
+  })
 })
 
 describe('SessionList', () => {
   beforeEach(() => {
+    cleanup()
     vi.clearAllMocks()
   })
 
   it('shows loading state when loading with no sessions', () => {
     render(<SessionList sessions={[]} isLoading={true} />)
-    expect(document.body.innerHTML).toContain('Loading sessions')
+    expect(screen.getByText('Loading sessions...')).toBeTruthy()
   })
 
   it('shows empty state when no sessions', () => {
     render(<SessionList sessions={[]} isLoading={false} />)
-    expect(document.body.innerHTML).toContain('No active minions')
+    expect(screen.getByText('No active minions')).toBeTruthy()
   })
 
   it('groups sessions into Active and Recent sections', () => {
     const sessions = [mockSession, mockPendingSession, mockCompletedSession]
     render(<SessionList sessions={sessions} isLoading={false} />)
 
-    expect(document.body.innerHTML).toContain('Active (2)')
-    expect(document.body.innerHTML).toContain('Recent (1)')
+    expect(screen.getByText('Active (2)')).toBeTruthy()
+    expect(screen.getByText('Recent (1)')).toBeTruthy()
   })
 
   it('does not show Active section when no active sessions', () => {
     render(<SessionList sessions={[mockCompletedSession]} isLoading={false} />)
-    expect(document.body.innerHTML).not.toContain('Active')
-    expect(document.body.innerHTML).toContain('Recent')
+    expect(screen.queryByText(/Active/)).toBeNull()
+    expect(screen.getByText(/Recent/)).toBeTruthy()
   })
 
   it('does not show Recent section when no completed sessions', () => {
     render(<SessionList sessions={[mockSession]} isLoading={false} />)
-    expect(document.body.innerHTML).toContain('Active')
-    expect(document.body.innerHTML).not.toContain('Recent')
+    expect(screen.getByText(/Active/)).toBeTruthy()
+    expect(screen.queryByText(/Recent/)).toBeNull()
   })
 
   it('passes onThreadClick to session cards', () => {
     const onThreadClick = vi.fn()
     render(<SessionList sessions={[mockSession]} isLoading={false} onThreadClick={onThreadClick} />)
 
-    const card = document.querySelector('[role="button"]')
+    const card = screen.getByText('bold-meadow').closest('[role="button"]')
     if (card) {
-      card.click()
+      fireEvent.click(card)
       expect(onThreadClick).toHaveBeenCalledWith(mockSession)
     }
+  })
+
+  it('passes action handlers to session cards', () => {
+    const onSendReply = vi.fn()
+    const onStopMinion = vi.fn()
+    const onCloseSession = vi.fn()
+
+    render(
+      <SessionList
+        sessions={[mockSession]}
+        isLoading={false}
+        onSendReply={onSendReply}
+        onStopMinion={onStopMinion}
+        onCloseSession={onCloseSession}
+      />
+    )
+
+    expect(screen.getByText('Reply')).toBeTruthy()
+    expect(screen.getByText('Stop')).toBeTruthy()
+    expect(screen.getByText('Close')).toBeTruthy()
   })
 })

@@ -1,6 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { fetchSessions, fetchDags, fetchSession, fetchDag, API_BASE } from '../src/api'
-import type { ApiResponse } from '../src/types'
+import {
+  fetchSessions,
+  fetchDags,
+  fetchSession,
+  fetchDag,
+  sendReply,
+  stopMinion,
+  closeSession,
+  API_BASE,
+} from '../src/api'
+import type { ApiResponse, CommandResult } from '../src/types'
 
 describe('API Client', () => {
   const originalFetch = global.fetch
@@ -31,7 +40,6 @@ describe('API Client', () => {
       ]
 
       const mockResponse: ApiResponse<typeof mockSessions> = {
-        success: true,
         data: mockSessions,
       }
 
@@ -72,7 +80,6 @@ describe('API Client', () => {
       }
 
       const mockResponse: ApiResponse<typeof mockSession> = {
-        success: true,
         data: mockSession,
       }
 
@@ -104,11 +111,13 @@ describe('API Client', () => {
           id: 'dag-1',
           rootTaskId: 'task-1',
           nodes: {},
+          status: 'pending',
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
         },
       ]
 
       const mockResponse: ApiResponse<typeof mockDags> = {
-        success: true,
         data: mockDags,
       }
 
@@ -138,6 +147,9 @@ describe('API Client', () => {
       const mockDag = {
         id: 'dag-1',
         rootTaskId: 'task-1',
+        status: 'running',
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
         nodes: {
           'node-1': {
             id: 'node-1',
@@ -157,7 +169,6 @@ describe('API Client', () => {
       }
 
       const mockResponse: ApiResponse<typeof mockDag> = {
-        success: true,
         data: mockDag,
       }
 
@@ -170,6 +181,93 @@ describe('API Client', () => {
 
       expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/dags/dag-1`)
       expect(result).toEqual(mockDag)
+    })
+  })
+
+  describe('sendReply', () => {
+    it('should send a reply successfully', async () => {
+      const mockResult: CommandResult = { success: true }
+
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(mockResult),
+      })
+
+      const result = await sendReply('session-1', 'Hello minion!')
+
+      expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/commands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reply', sessionId: 'session-1', message: 'Hello minion!' }),
+      })
+      expect(result).toEqual(mockResult)
+    })
+
+    it('should throw on API error', async () => {
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: false,
+        statusText: 'Bad Request',
+      })
+
+      await expect(sendReply('session-1', 'Hello')).rejects.toThrow('Failed to send reply: Bad Request')
+    })
+  })
+
+  describe('stopMinion', () => {
+    it('should stop a minion successfully', async () => {
+      const mockResult: CommandResult = { success: true }
+
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(mockResult),
+      })
+
+      const result = await stopMinion('session-1')
+
+      expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/commands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'stop', sessionId: 'session-1' }),
+      })
+      expect(result).toEqual(mockResult)
+    })
+
+    it('should throw on API error', async () => {
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: false,
+        statusText: 'Forbidden',
+      })
+
+      await expect(stopMinion('session-1')).rejects.toThrow('Failed to stop minion: Forbidden')
+    })
+  })
+
+  describe('closeSession', () => {
+    it('should close a session successfully', async () => {
+      const mockResult: CommandResult = { success: true }
+
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(mockResult),
+      })
+
+      const result = await closeSession('session-1')
+
+      expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/commands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'close', sessionId: 'session-1' }),
+      })
+      expect(result).toEqual(mockResult)
+    })
+
+    it('should throw on API error', async () => {
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: false,
+        statusText: 'Not Found',
+      })
+
+      await expect(closeSession('session-1')).rejects.toThrow('Failed to close session: Not Found')
     })
   })
 })
