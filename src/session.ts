@@ -128,7 +128,8 @@ export class SessionHandle {
     }
 
     if (this.sessionConfig.mcp.zaiEnabled && this.sessionConfig.goose.provider === "z-ai") {
-      const zaiKey = process.env["ZAI_API_KEY"]
+      // Prefer profile.authToken for z-ai, fall back to env var
+      const zaiKey = this.sessionConfig.profile?.authToken || process.env["ZAI_API_KEY"]
       if (zaiKey) {
         servers["web-search-prime"] = {
           type: "http",
@@ -241,7 +242,14 @@ export class SessionHandle {
     const profile = this.sessionConfig.profile
     if (profile) {
       if (profile.baseUrl) baseEnv["ANTHROPIC_BASE_URL"] = profile.baseUrl
-      if (profile.authToken) baseEnv["ANTHROPIC_AUTH_TOKEN"] = profile.authToken
+      if (profile.authToken) {
+        // Use authToken for the appropriate provider
+        if (this.sessionConfig.goose.provider === "z-ai") {
+          baseEnv["ZAI_API_KEY"] = profile.authToken
+        } else {
+          baseEnv["ANTHROPIC_AUTH_TOKEN"] = profile.authToken
+        }
+      }
       if (profile.opusModel) baseEnv["ANTHROPIC_DEFAULT_OPUS_MODEL"] = profile.opusModel
       if (profile.sonnetModel) baseEnv["ANTHROPIC_DEFAULT_SONNET_MODEL"] = profile.sonnetModel
       if (profile.haikuModel) baseEnv["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = profile.haikuModel

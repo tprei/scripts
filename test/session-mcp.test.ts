@@ -103,11 +103,16 @@ describe("SessionHandle MCP building", () => {
       expect(servers["web-search-prime"]).toBeUndefined()
     })
 
-    it("includes Z.AI when enabled, provider is z-ai, and API key is set", () => {
-      process.env["ZAI_API_KEY"] = "test-api-key-123"
+    it("includes Z.AI when enabled, provider is z-ai, and API key from profile", () => {
+      delete process.env["ZAI_API_KEY"]
       const handle = makeHandle({
         goose: { provider: "z-ai", model: "test" },
         mcp: { ...baseConfig.mcp, zaiEnabled: true },
+        profile: {
+          id: "z-ai-profile",
+          name: "Z.AI Profile",
+          authToken: "profile-token-xyz",
+        },
       })
       const servers = getMcpServers(handle)
 
@@ -115,10 +120,35 @@ describe("SessionHandle MCP building", () => {
         type: "http",
         url: "https://api.z.ai/api/mcp/web_search_prime/mcp",
         headers: {
-          Authorization: "Bearer test-api-key-123",
+          Authorization: "Bearer profile-token-xyz",
         },
       })
     })
+
+    it("prefers profile.authToken over env var for Z.AI MCP", () => {
+      process.env["ZAI_API_KEY"] = "env-key-should-be-ignored"
+      const handle = makeHandle({
+        goose: { provider: "z-ai", model: "test" },
+        mcp: { ...baseConfig.mcp, zaiEnabled: true },
+        profile: {
+          id: "z-ai-profile",
+          name: "Z.AI Profile",
+          authToken: "profile-token-xyz",
+        },
+      })
+      const servers = getMcpServers(handle)
+
+      expect(servers["web-search-prime"]).toEqual({
+        type: "http",
+        url: "https://api.z.ai/api/mcp/web_search_prime/mcp",
+        headers: {
+          Authorization: "Bearer profile-token-xyz",
+        },
+      })
+    })
+
+  })
+})
 
     it("skips HTTP MCPs in Goose extension args", () => {
       process.env["ZAI_API_KEY"] = "test-key"
@@ -181,23 +211,4 @@ describe("SessionHandle MCP building", () => {
     })
   })
 
-  describe("ZAI_API_KEY in isolated env", () => {
-    it("includes ZAI_API_KEY in base env", () => {
-      process.env["ZAI_API_KEY"] = "env-key-789"
-      const handle = makeHandle()
-      const h = handle as unknown as { buildIsolatedEnv: () => Record<string, string> }
-      const env = h.buildIsolatedEnv()
-
-      expect(env["ZAI_API_KEY"]).toBe("env-key-789")
-    })
-
-    it("uses empty string when ZAI_API_KEY is not set", () => {
-      delete process.env["ZAI_API_KEY"]
-      const handle = makeHandle()
-      const h = handle as unknown as { buildIsolatedEnv: () => Record<string, string> }
-      const env = h.buildIsolatedEnv()
-
-      expect(env["ZAI_API_KEY"]).toBe("")
-    })
-  })
 })

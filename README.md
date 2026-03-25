@@ -63,7 +63,7 @@ By default, the system uses `claude-acp` (Claude Code subscription) which requir
 * `ENABLE_SENTRY_MCP` - (default: `true`)
 * `SENTRY_ACCESS_TOKEN` - Required if Sentry MCP is enabled.
 * `ENABLE_ZAI_MCP` - (default: `true`) - Z.AI web search (only enabled when `GOOSE_PROVIDER=z-ai`)
-* `ZAI_API_KEY` - Required for Z.AI MCP. Get from https://z.ai/manage-apikey/apikey-list
+* `ZAI_API_KEY` - Required for z-ai provider. Get from https://z.ai/manage-apikey/apikey-list
 
 ## Deployment (Fly.io)
 
