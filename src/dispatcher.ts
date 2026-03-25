@@ -34,7 +34,12 @@ import {
   formatCIGaveUp,
   formatProfileList,
   formatConfigHelp,
+  formatSplitAnalyzing,
+  formatSplitStart,
+  formatSplitChildComplete,
+  formatSplitAllDone,
 } from "./format.js"
+import { extractSplitItems, buildSplitChildPrompt } from "./split.js"
 import { runQualityGates, type QualityReport } from "./quality-gates.js"
 import { StatsTracker } from "./stats.js"
 import { writeSessionLog } from "./session-log.js"
@@ -55,6 +60,7 @@ const CLOSE_CMD = "/close"
 const HELP_CMD = "/help"
 const CLEAN_CMD = "/clean"
 const CONFIG_CMD = "/config"
+const SPLIT_CMD = "/split"
 
 interface ActiveSession {
   handle: SessionHandle
@@ -271,6 +277,9 @@ export class Dispatcher {
         } else if ((topicSession.mode === "plan" || topicSession.mode === "think") && (text === EXECUTE_CMD || text?.startsWith(EXECUTE_CMD + " "))) {
           const directive = text!.slice(EXECUTE_CMD.length).trim() || undefined
           await this.handleExecuteCommand(topicSession, directive)
+        } else if ((topicSession.mode === "plan" || topicSession.mode === "think") && (text === SPLIT_CMD || text?.startsWith(SPLIT_CMD + " "))) {
+          const directive = text!.slice(SPLIT_CMD.length).trim() || undefined
+          await this.handleSplitCommand(topicSession, directive)
         } else if (text?.startsWith(REPLY_PREFIX + " ") || text?.startsWith(REPLY_SHORT + " ") || text === REPLY_PREFIX || text === REPLY_SHORT) {
           const stripped = text.startsWith(REPLY_PREFIX)
             ? text.slice(REPLY_PREFIX.length).trim()
@@ -950,6 +959,10 @@ export class Dispatcher {
         this.persistTopicSessions()
         this.cleanBuildArtifacts(topicSession.cwd)
 
+        this.notifyParentOfChildComplete(topicSession, state).catch((err) => {
+          process.stderr.write(`dispatcher: parent notify error: ${err}\n`)
+        })
+
         if (topicSession.pendingFeedback.length > 0) {
           const feedback = topicSession.pendingFeedback.join("\n\n")
           topicSession.pendingFeedback = []
@@ -1235,6 +1248,179 @@ export class Dispatcher {
     await this.spawnTopicAgent(topicSession, executionTask)
   }
 
+  private async notifyParentOfChildComplete(
+    childSession: TopicSession,
+    state: string,
+  ): Promise<void> {
+    if (!childSession.parentThreadId) return
+
+    const parent = this.topicSessions.get(childSession.parentThreadId)
+    if (!parent) return
+
+    const label = childSession.splitLabel ?? childSession.slug
+    const prUrl = this.extractPRFromConversation(childSession) ?? undefined
+
+    await this.telegram.sendMessage(
+      formatSplitChildComplete(childSession.slug, state, label, prUrl),
+      parent.threadId,
+    )
+
+    if (!parent.childThreadIds) return
+
+    const allDone = parent.childThreadIds.every((id) => {
+      const child = this.topicSessions.get(id)
+      return child && !child.activeSessionId
+    })
+
+    if (allDone) {
+      let succeeded = 0
+      for (const id of parent.childThreadIds) {
+        const child = this.topicSessions.get(id)
+        if (child) {
+          const prFound = this.extractPRFromConversation(child)
+          if (prFound) succeeded++
+        }
+      }
+
+      await this.telegram.sendMessage(
+        formatSplitAllDone(succeeded, parent.childThreadIds.length),
+        parent.threadId,
+      )
+      await this.updateTopicTitle(parent, succeeded === parent.childThreadIds.length ? "✅" : "⚠️")
+    }
+  }
+
+  private async handleSplitCommand(topicSession: TopicSession, directive?: string): Promise<void> {
+    if (topicSession.activeSessionId) {
+      const activeSession = this.sessions.get(topicSession.threadId)
+      if (activeSession) await activeSession.handle.kill()
+      this.sessions.delete(topicSession.threadId)
+      topicSession.activeSessionId = undefined
+    }
+
+    await this.telegram.sendMessage(
+      formatSplitAnalyzing(topicSession.slug),
+      topicSession.threadId,
+    )
+
+    const items = extractSplitItems(topicSession.conversation, directive)
+
+    if (items.length === 0) {
+      await this.telegram.sendMessage(
+        `⚠️ Could not extract discrete work items from the conversation. Try <code>/execute</code> instead.`,
+        topicSession.threadId,
+      )
+      return
+    }
+
+    if (items.length === 1) {
+      await this.telegram.sendMessage(
+        `Only 1 item found — using <code>/execute</code> instead of splitting.`,
+        topicSession.threadId,
+      )
+      await this.handleExecuteCommand(topicSession, items[0].description)
+      return
+    }
+
+    const maxItems = this.config.workspace.maxSplitItems
+    if (items.length > maxItems) {
+      items.splice(maxItems)
+    }
+
+    const available = this.config.workspace.maxConcurrentSessions - this.sessions.size
+    if (items.length > available) {
+      await this.telegram.sendMessage(
+        `⚠️ Found ${items.length} items but only ${available} session slot${available === 1 ? "" : "s"} available. Free up sessions or try with fewer items.`,
+        topicSession.threadId,
+      )
+      return
+    }
+
+    topicSession.childThreadIds = []
+
+    const childSummaries: { repo: string; slug: string; title: string }[] = []
+
+    for (const item of items) {
+      const childThreadId = await this.spawnSplitChild(topicSession, item, items)
+      if (childThreadId) {
+        topicSession.childThreadIds.push(childThreadId)
+        const childSession = this.topicSessions.get(childThreadId)!
+        childSummaries.push({
+          repo: childSession.repo,
+          slug: childSession.slug,
+          title: item.title,
+        })
+      }
+    }
+
+    if (childSummaries.length === 0) {
+      await this.telegram.sendMessage(
+        `❌ Failed to spawn any sub-tasks. Try <code>/execute</code> instead.`,
+        topicSession.threadId,
+      )
+      return
+    }
+
+    await this.telegram.sendMessage(
+      formatSplitStart(topicSession.slug, childSummaries),
+      topicSession.threadId,
+    )
+
+    await this.updateTopicTitle(topicSession, "🔀")
+    this.persistTopicSessions()
+  }
+
+  private async spawnSplitChild(
+    parent: TopicSession,
+    item: import("./split.js").SplitItem,
+    allItems: import("./split.js").SplitItem[],
+  ): Promise<number | null> {
+    const sessionId = crypto.randomUUID()
+    const slug = generateSlug(sessionId)
+    const repo = parent.repo
+    const topicName = `⚡ ${repo} · ${slug}`
+
+    let topic: { message_thread_id: number }
+    try {
+      topic = await this.telegram.createForumTopic(topicName)
+    } catch (err) {
+      process.stderr.write(`dispatcher: failed to create child topic for split: ${err}\n`)
+      captureException(err, { operation: "createForumTopic", parentSlug: parent.slug })
+      return null
+    }
+
+    const threadId = topic.message_thread_id
+
+    const cwd = await this.prepareWorkspace(slug, parent.repoUrl)
+    if (!cwd) {
+      await this.telegram.sendMessage(`❌ Failed to prepare workspace.`, threadId)
+      await this.telegram.deleteForumTopic(threadId)
+      return null
+    }
+
+    const task = buildSplitChildPrompt(parent.conversation, item, allItems)
+
+    const childSession: TopicSession = {
+      threadId,
+      repo,
+      repoUrl: parent.repoUrl,
+      cwd,
+      slug,
+      conversation: [{ role: "user", text: task }],
+      pendingFeedback: [],
+      mode: "task",
+      lastActivityAt: Date.now(),
+      profileId: parent.profileId,
+      parentThreadId: parent.threadId,
+      splitLabel: item.title,
+    }
+
+    this.topicSessions.set(threadId, childSession)
+
+    await this.spawnTopicAgent(childSession, task)
+    return threadId
+  }
+
   private async handleCloseCommand(topicSession: TopicSession): Promise<void> {
     const threadId = topicSession.threadId
 
@@ -1244,6 +1430,23 @@ export class Dispatcher {
         await activeSession.handle.kill()
       }
       this.sessions.delete(threadId)
+    }
+
+    if (topicSession.childThreadIds) {
+      for (const childId of topicSession.childThreadIds) {
+        const child = this.topicSessions.get(childId)
+        if (child) {
+          if (child.activeSessionId) {
+            const childActive = this.sessions.get(childId)
+            if (childActive) await childActive.handle.kill()
+            this.sessions.delete(childId)
+          }
+          this.removeWorkspace(child)
+          this.topicSessions.delete(childId)
+          await this.telegram.deleteForumTopic(childId).catch(() => {})
+          process.stderr.write(`dispatcher: closed child topic ${child.slug} (thread ${childId})\n`)
+        }
+      }
     }
 
     this.removeWorkspace(topicSession)

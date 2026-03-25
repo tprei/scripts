@@ -17,6 +17,7 @@ export interface ClaudeConfig {
 export interface WorkspaceConfig {
   root: string
   maxConcurrentSessions: number
+  maxSplitItems: number
   sessionTokenBudget: number
   sessionBudgetUsd: number
   sessionTimeoutMs: number

@@ -79,6 +79,18 @@ npm run build            # compile to dist/
 1. Creates a planning thread with a read-only agent that explores code and proposes a plan
 2. Reply in the thread with feedback — the agent refines the plan
 3. Send `/execute` to close the planning thread and spawn an execution task with the final plan
+4. Or send `/split` to extract parallelizable items and spawn independent sub-minions
+
+### Split (parallel sub-tasks from plan/think)
+```
+/split
+/split Focus on the first two items only
+```
+1. Extracts discrete, parallelizable work items from the conversation using a Haiku classifier
+2. Spawns N independent child sessions — each with its own forum topic, worktree, and branch
+3. Each child runs as a `/task` in parallel and opens its own PR
+4. The parent topic tracks children and reports aggregate status
+5. Send `/close` in the parent to terminate all children
 
 ## Goose stream-json event schema
 
