@@ -261,6 +261,7 @@ export function formatHelp(): string {
     `<code>/stats</code> — show aggregate usage statistics`,
     `<code>/config</code> — manage provider profiles`,
     `<code>/clean</code> — remove all idle sessions and their topics`,
+    `<code>/cleanup</code> — deep clean: idle sessions, orphaned workspaces, cached repos`,
     `<code>/help</code> — show this message`,
     ``,
     `<b>Inside a thread</b>`,
