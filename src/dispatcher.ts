@@ -1250,6 +1250,7 @@ export class Dispatcher {
         }
       },
       this.config.workspace.sessionTimeoutMs,
+      this.config.workspace.sessionInactivityTimeoutMs,
       sessionConfig,
     )
 
@@ -1552,6 +1553,7 @@ export class Dispatcher {
         })
       },
       this.config.workspace.sessionTimeoutMs,
+      this.config.workspace.sessionInactivityTimeoutMs,
       sessionConfig,
     )
 
