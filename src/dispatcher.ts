@@ -53,6 +53,7 @@ const REPLY_SHORT = "/r"
 const CLOSE_CMD = "/close"
 const HELP_CMD = "/help"
 const CLEAN_CMD = "/clean"
+const CLEANUP_CMD = "/cleanup"
 const CONFIG_CMD = "/config"
 
 interface ActiveSession {
@@ -232,6 +233,10 @@ export class Dispatcher {
       }
       if (text === CLEAN_CMD) {
         await this.handleCleanCommand()
+        return
+      }
+      if (text === CLEANUP_CMD) {
+        await this.handleCleanupCommand()
         return
       }
       if (text === HELP_CMD) {
@@ -470,6 +475,96 @@ export class Dispatcher {
 
     this.persistTopicSessions()
     await this.telegram.sendMessage(`🧹 Cleaned ${idle.length} idle session(s).`)
+  }
+
+  private async handleCleanupCommand(): Promise<void> {
+    const root = this.config.workspace.root
+    let freedBytes = 0
+    let removedSessions = 0
+    let removedOrphans = 0
+    let removedRepos = 0
+
+    const idle: [number, TopicSession][] = []
+    for (const [threadId, session] of this.topicSessions) {
+      if (!session.activeSessionId) {
+        idle.push([threadId, session])
+      }
+    }
+
+    for (const [threadId, session] of idle) {
+      if (session.cwd && fs.existsSync(session.cwd)) {
+        freedBytes += dirSizeBytes(session.cwd)
+      }
+      await this.telegram.deleteForumTopic(threadId)
+      this.removeWorkspace(session)
+      this.topicSessions.delete(threadId)
+      removedSessions++
+    }
+
+    const activeCwds = new Set<string>()
+    for (const session of this.topicSessions.values()) {
+      if (session.cwd) activeCwds.add(session.cwd)
+    }
+
+    const entries = fs.readdirSync(root, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      if (entry.name.startsWith(".")) continue
+      const entryPath = path.join(root, entry.name)
+      if (activeCwds.has(entryPath)) continue
+      if (this.sessions.has(Number(entry.name))) continue
+
+      freedBytes += dirSizeBytes(entryPath)
+      try {
+        fs.rmSync(entryPath, { recursive: true, force: true })
+        removedOrphans++
+        process.stderr.write(`dispatcher: removed orphan workspace ${entryPath}\n`)
+      } catch (err) {
+        process.stderr.write(`dispatcher: failed to remove orphan ${entryPath}: ${err}\n`)
+      }
+    }
+
+    const activeRepos = new Set<string>()
+    for (const session of this.topicSessions.values()) {
+      if (session.repoUrl) {
+        activeRepos.add(extractRepoName(session.repoUrl))
+      }
+    }
+
+    const reposDir = path.join(root, ".repos")
+    if (fs.existsSync(reposDir)) {
+      const repos = fs.readdirSync(reposDir, { withFileTypes: true })
+      for (const repo of repos) {
+        if (!repo.isDirectory()) continue
+        const repoName = repo.name.replace(/\.git$/, "")
+        if (activeRepos.has(repoName)) continue
+        const repoPath = path.join(reposDir, repo.name)
+        freedBytes += dirSizeBytes(repoPath)
+        try {
+          fs.rmSync(repoPath, { recursive: true, force: true })
+          removedRepos++
+          process.stderr.write(`dispatcher: removed bare repo ${repoPath}\n`)
+        } catch (err) {
+          process.stderr.write(`dispatcher: failed to remove bare repo ${repoPath}: ${err}\n`)
+        }
+      }
+    }
+
+    this.persistTopicSessions()
+
+    const totalItems = removedSessions + removedOrphans + removedRepos
+    if (totalItems === 0) {
+      await this.telegram.sendMessage("🧹 Nothing to clean up — disk is tidy.")
+      return
+    }
+
+    const parts: string[] = []
+    if (removedSessions > 0) parts.push(`${removedSessions} idle session(s)`)
+    if (removedOrphans > 0) parts.push(`${removedOrphans} orphaned workspace(s)`)
+    if (removedRepos > 0) parts.push(`${removedRepos} cached repo(s)`)
+
+    const freedMB = (freedBytes / (1024 * 1024)).toFixed(1)
+    await this.telegram.sendMessage(`🧹 Cleaned ${parts.join(", ")} — freed ~${freedMB} MB.`)
   }
 
   private async handleTaskCommand(args: string, replyThreadId?: number, photos?: TelegramPhotoSize[]): Promise<void> {
@@ -1285,6 +1380,18 @@ export function appendImageContext(task: string, imagePaths: string[]): string {
 
   const imageRefs = imagePaths.map((p) => `- \`${p}\``).join("\n")
   return `${task}\n\n## Attached images\n\nThe user attached the following image(s). Read them with your file-reading tool to view their contents:\n${imageRefs}`
+}
+
+function dirSizeBytes(dirPath: string): number {
+  try {
+    const output = execSync(`du -sb ${JSON.stringify(dirPath)}`, {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 30_000,
+    }).toString()
+    return parseInt(output.split("\t")[0] ?? "0", 10) || 0
+  } catch {
+    return 0
+  }
 }
 
 export function buildContextPrompt(topicSession: TopicSession): string {
