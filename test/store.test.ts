@@ -30,56 +30,56 @@ describe("SessionStore", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it("saves and loads sessions", () => {
+  it("saves and loads sessions", async () => {
     const store = new SessionStore(tmpDir)
     const sessions = new Map<number, TopicSession>()
     sessions.set(100, makeSession())
 
-    store.save(sessions)
+    await store.save(sessions)
 
-    const { active } = store.load()
+    const { active } = await store.load()
     expect(active.size).toBe(1)
     expect(active.get(100)?.slug).toBe("bold-arc")
     expect(active.get(100)?.repo).toBe("test-repo")
   })
 
-  it("clears activeSessionId on load", () => {
+  it("clears activeSessionId on load", async () => {
     const store = new SessionStore(tmpDir)
     const sessions = new Map<number, TopicSession>()
     sessions.set(100, makeSession({ activeSessionId: "some-uuid" }))
 
-    store.save(sessions)
-    const { active } = store.load()
+    await store.save(sessions)
+    const { active } = await store.load()
     expect(active.get(100)?.activeSessionId).toBeUndefined()
   })
 
-  it("filters out sessions older than TTL", () => {
+  it("filters out sessions older than TTL", async () => {
     const store = new SessionStore(tmpDir, 1000)
     const sessions = new Map<number, TopicSession>()
     sessions.set(100, makeSession({ lastActivityAt: Date.now() - 2000 }))
     sessions.set(200, makeSession({ threadId: 200, lastActivityAt: Date.now() }))
 
-    store.save(sessions)
-    const { active, expired } = store.load()
+    await store.save(sessions)
+    const { active, expired } = await store.load()
     expect(active.size).toBe(1)
     expect(active.has(200)).toBe(true)
     expect(expired.has(100)).toBe(true)
   })
 
-  it("returns empty result when no file exists", () => {
+  it("returns empty result when no file exists", async () => {
     const store = new SessionStore(tmpDir)
-    const { active } = store.load()
+    const { active } = await store.load()
     expect(active.size).toBe(0)
   })
 
-  it("returns empty result on corrupted file", () => {
+  it("returns empty result on corrupted file", async () => {
     const store = new SessionStore(tmpDir)
     fs.writeFileSync(path.join(tmpDir, ".sessions.json"), "not json", "utf-8")
-    const { active } = store.load()
+    const { active } = await store.load()
     expect(active.size).toBe(0)
   })
 
-  it("preserves conversation history through save/load", () => {
+  it("preserves conversation history through save/load", async () => {
     const store = new SessionStore(tmpDir)
     const session = makeSession({
       conversation: [
@@ -91,32 +91,32 @@ describe("SessionStore", () => {
     const sessions = new Map<number, TopicSession>()
     sessions.set(100, session)
 
-    store.save(sessions)
-    const { active } = store.load()
+    await store.save(sessions)
+    const { active } = await store.load()
     expect(active.get(100)?.conversation).toHaveLength(3)
     expect(active.get(100)?.conversation[1].text).toBe("done!")
   })
 
-  it("preserves pending feedback through save/load", () => {
+  it("preserves pending feedback through save/load", async () => {
     const store = new SessionStore(tmpDir)
     const session = makeSession({ pendingFeedback: ["feedback 1", "feedback 2"] })
     const sessions = new Map<number, TopicSession>()
     sessions.set(100, session)
 
-    store.save(sessions)
-    const { active } = store.load()
+    await store.save(sessions)
+    const { active } = await store.load()
     expect(active.get(100)?.pendingFeedback).toEqual(["feedback 1", "feedback 2"])
   })
 
-  it("handles multiple sessions", () => {
+  it("handles multiple sessions", async () => {
     const store = new SessionStore(tmpDir)
     const sessions = new Map<number, TopicSession>()
     sessions.set(100, makeSession({ threadId: 100, slug: "bold-arc" }))
     sessions.set(200, makeSession({ threadId: 200, slug: "calm-bay" }))
     sessions.set(300, makeSession({ threadId: 300, slug: "deep-fjord" }))
 
-    store.save(sessions)
-    const { active } = store.load()
+    await store.save(sessions)
+    const { active } = await store.load()
     expect(active.size).toBe(3)
   })
 })

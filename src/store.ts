@@ -1,4 +1,4 @@
-import fs from "node:fs"
+import fs from "node:fs/promises"
 import path from "node:path"
 import type { TopicSession } from "./types.js"
 import { captureException } from "./sentry.js"
@@ -20,24 +20,23 @@ export class SessionStore {
     this.ttlMs = ttlMs
   }
 
-  save(sessions: Map<number, TopicSession>, offset: number = 0): void {
+  async save(sessions: Map<number, TopicSession>, offset: number = 0): Promise<void> {
     const entries = Array.from(sessions.entries())
     const data: StoreData = { sessions: entries, offset }
     try {
-      fs.writeFileSync(this.filePath, JSON.stringify(data), "utf-8")
+      await fs.writeFile(this.filePath, JSON.stringify(data), "utf-8")
     } catch (err) {
       process.stderr.write(`store: failed to save sessions: ${err}\n`)
       captureException(err, { operation: "store.save" })
     }
   }
 
-  load(): { active: Map<number, TopicSession>; expired: Map<number, TopicSession>; offset: number } {
+  async load(): Promise<{ active: Map<number, TopicSession>; expired: Map<number, TopicSession>; offset: number }> {
     const active = new Map<number, TopicSession>()
     const expired = new Map<number, TopicSession>()
     let offset = 0
     try {
-      if (!fs.existsSync(this.filePath)) return { active, expired, offset }
-      const raw = fs.readFileSync(this.filePath, "utf-8")
+      const raw = await fs.readFile(this.filePath, "utf-8")
       const parsed = JSON.parse(raw)
 
       // Handle both old format (array) and new format (object with sessions + offset)
@@ -64,8 +63,10 @@ export class SessionStore {
         }
       }
     } catch (err) {
-      process.stderr.write(`store: failed to load sessions: ${err}\n`)
-      captureException(err, { operation: "store.load" })
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        process.stderr.write(`store: failed to load sessions: ${err}\n`)
+        captureException(err, { operation: "store.load" })
+      }
     }
     return { active, expired, offset }
   }
