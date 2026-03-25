@@ -260,7 +260,7 @@ export function formatHelp(): string {
     `<code>/status</code> — show active sessions`,
     `<code>/stats</code> — show aggregate usage statistics`,
     `<code>/config</code> — manage provider profiles`,
-    `<code>/clean</code> — remove all idle sessions and their topics`,
+    `<code>/clean</code> — remove idle sessions, orphaned workspaces, and cached repos`,
     `<code>/help</code> — show this message`,
     ``,
     `<b>Inside a thread</b>`,
