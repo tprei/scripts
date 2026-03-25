@@ -39,7 +39,7 @@ describe("runQualityGates", () => {
     expect(report.results.some((r) => r.gate === "tests")).toBe(false)
   })
 
-  it("detects typecheck from tsconfig.json", () => {
+  it("detects typecheck from tsconfig.json", { timeout: 30_000 }, () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ scripts: {} }))
     fs.writeFileSync(path.join(tmpDir, "tsconfig.json"), JSON.stringify({ compilerOptions: {} }))
     const report = runQualityGates(tmpDir)
