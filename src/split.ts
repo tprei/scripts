@@ -39,6 +39,27 @@ const INITIAL_DELAY_MS = 2000
 const MAX_ASSISTANT_CHARS = 4000
 
 /**
+ * Resolve the Claude config directory for CLI authentication.
+ * Priority:
+ * 1. CLAUDE_CONFIG_DIR env var if already set
+ * 2. /workspace/home/.claude if it exists (Fly.io deployment)
+ * 3. $HOME/.claude as fallback
+ */
+export function getClaudeConfigDir(
+  env: Record<string, string | undefined> = process.env,
+  fsExists: (path: string) => boolean = (p) => fs.existsSync(p),
+): string {
+  if (env["CLAUDE_CONFIG_DIR"]) {
+    return env["CLAUDE_CONFIG_DIR"]
+  }
+  if (fsExists("/workspace/home/.claude")) {
+    return "/workspace/home/.claude"
+  }
+  const home = env["HOME"] ?? "/root"
+  return path.join(home, ".claude")
+}
+
+/**
  * Log current resource usage for debugging
  */
 function logResourceUsage(label: string): void {
@@ -66,11 +87,7 @@ function runClaudeExtraction(task: string, timeoutMs: number): Promise<string> {
 
     logResourceUsage("spawning claude CLI")
 
-    // Ensure claude CLI can find credentials - use /workspace/home/.claude if available
-    const parentHome = process.env["HOME"] ?? "/root"
-    const claudeConfigDir = process.env["CLAUDE_CONFIG_DIR"]
-      ?? (fs.existsSync("/workspace/home/.claude") ? "/workspace/home/.claude" : path.join(parentHome, ".claude"))
-
+    const claudeConfigDir = getClaudeConfigDir()
     process.stderr.write(`split: using CLAUDE_CONFIG_DIR=${claudeConfigDir}\n`)
 
     const child = spawn("claude", args, {
