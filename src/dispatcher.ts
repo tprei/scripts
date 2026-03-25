@@ -53,7 +53,6 @@ const REPLY_SHORT = "/r"
 const CLOSE_CMD = "/close"
 const HELP_CMD = "/help"
 const CLEAN_CMD = "/clean"
-const CLEANUP_CMD = "/cleanup"
 const CONFIG_CMD = "/config"
 
 interface ActiveSession {
@@ -233,10 +232,6 @@ export class Dispatcher {
       }
       if (text === CLEAN_CMD) {
         await this.handleCleanCommand()
-        return
-      }
-      if (text === CLEANUP_CMD) {
-        await this.handleCleanupCommand()
         return
       }
       if (text === HELP_CMD) {
@@ -454,30 +449,6 @@ export class Dispatcher {
   }
 
   private async handleCleanCommand(): Promise<void> {
-    const idle: [number, TopicSession][] = []
-    for (const [threadId, session] of this.topicSessions) {
-      if (!session.activeSessionId) {
-        idle.push([threadId, session])
-      }
-    }
-
-    if (idle.length === 0) {
-      await this.telegram.sendMessage("🧹 No idle sessions to clean.")
-      return
-    }
-
-    for (const [threadId, session] of idle) {
-      await this.telegram.deleteForumTopic(threadId)
-      this.removeWorkspace(session)
-      this.topicSessions.delete(threadId)
-      process.stderr.write(`dispatcher: cleaned idle session ${session.slug} (topic ${threadId})\n`)
-    }
-
-    this.persistTopicSessions()
-    await this.telegram.sendMessage(`🧹 Cleaned ${idle.length} idle session(s).`)
-  }
-
-  private async handleCleanupCommand(): Promise<void> {
     const root = this.config.workspace.root
     let freedBytes = 0
     let removedSessions = 0
