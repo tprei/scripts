@@ -2341,38 +2341,35 @@ export class Dispatcher {
    * Handles both tracked children (in childThreadIds) and orphaned children (pointing via parentThreadId).
    */
   private async closeChildSessions(parent: TopicSession): Promise<void> {
-    const closedThreadIds = new Set<number>()
+    const childrenToClose = new Map<number, TopicSession>()
 
-    // Close tracked children
+    // Collect tracked children
     if (parent.childThreadIds) {
       for (const childId of parent.childThreadIds) {
         const child = this.topicSessions.get(childId)
-        if (child) {
-          await this.closeSingleChild(child, closedThreadIds)
-        }
+        if (child) childrenToClose.set(childId, child)
       }
     }
 
-    // Also close orphaned children that still point to this parent
+    // Also collect orphaned children that still point to this parent
     for (const [candidateId, candidate] of this.topicSessions) {
-      if (candidate.parentThreadId === parent.threadId && !closedThreadIds.has(candidateId)) {
-        await this.closeSingleChild(candidate, closedThreadIds)
+      if (candidate.parentThreadId === parent.threadId && !childrenToClose.has(candidateId)) {
+        childrenToClose.set(candidateId, candidate)
       }
     }
+
+    await Promise.all([...childrenToClose.values()].map((child) => this.closeSingleChild(child)))
 
     parent.childThreadIds = []
   }
 
-  private async closeSingleChild(child: TopicSession, closedThreadIds: Set<number>): Promise<void> {
+  private async closeSingleChild(child: TopicSession): Promise<void> {
     const childId = child.threadId
-    if (closedThreadIds.has(childId)) return
-
-    closedThreadIds.add(childId)
 
     if (child.activeSessionId) {
       const childActive = this.sessions.get(childId)
       this.sessions.delete(childId)
-      if (childActive) childActive.handle.kill().catch(() => {})
+      if (childActive) await childActive.handle.kill().catch(() => {})
     }
     this.topicSessions.delete(childId)
     await this.telegram.deleteForumTopic(childId).catch(() => {})
