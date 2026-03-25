@@ -88,6 +88,7 @@ export class Dispatcher {
   private cleanupTimer: ReturnType<typeof setInterval> | null = null
 
   private readonly stats: StatsTracker
+  private pinnedSummaryMessageId: number | null = null
 
   constructor(
     private readonly telegram: TelegramClient,
@@ -97,6 +98,7 @@ export class Dispatcher {
     this.store = new SessionStore(this.config.workspace.root)
     this.profileStore = new ProfileStore(this.config.workspace.root)
     this.stats = new StatsTracker(this.config.workspace.root)
+    this.loadPinnedMessageId()
   }
 
   async loadPersistedSessions(): Promise<void> {
@@ -115,6 +117,7 @@ export class Dispatcher {
         process.stderr.write(`dispatcher: cleaned expired session ${session.slug} (topic ${threadId})\n`)
       }
     }
+    this.updatePinnedSummary()
   }
 
   async start(): Promise<void> {
@@ -180,6 +183,7 @@ export class Dispatcher {
     }
 
     this.persistTopicSessions()
+    this.updatePinnedSummary()
   }
 
   private persistTopicSessions(): void {
@@ -191,6 +195,56 @@ export class Dispatcher {
       }
     }
     this.store.save(toSave)
+  }
+
+  private get pinnedSummaryPath(): string {
+    return path.join(this.config.workspace.root, ".pinned-summary.json")
+  }
+
+  private loadPinnedMessageId(): void {
+    try {
+      const raw = fs.readFileSync(this.pinnedSummaryPath, "utf-8")
+      const data = JSON.parse(raw) as { messageId?: number | null }
+      this.pinnedSummaryMessageId = data.messageId ?? null
+    } catch { /* file doesn't exist yet */ }
+  }
+
+  private savePinnedMessageId(id: number | null): void {
+    try {
+      fs.writeFileSync(this.pinnedSummaryPath, JSON.stringify({ messageId: id }))
+    } catch { /* ignore */ }
+  }
+
+  private formatPinnedSummary(): string {
+    const sessions = [...this.topicSessions.values()]
+    if (sessions.length === 0) return "No active minion sessions."
+    const lines = sessions.map((s) => {
+      const taskText = s.conversation[0]?.text ?? ""
+      const desc = taskText.length > 60 ? taskText.slice(0, 60).trimEnd() + "…" : taskText
+      const icon = s.activeSessionId ? "⚡" : "💬"
+      return `${icon} <b>${escapeHtml(s.slug)}</b>: ${escapeHtml(desc)} (${s.mode})`
+    })
+    return lines.join("\n")
+  }
+
+  private updatePinnedSummary(): void {
+    const html = this.formatPinnedSummary()
+    ;(async () => {
+      if (this.pinnedSummaryMessageId !== null) {
+        const ok = await this.telegram.editMessage(this.pinnedSummaryMessageId, html)
+        if (ok) return
+        this.pinnedSummaryMessageId = null
+        this.savePinnedMessageId(null)
+      }
+      const { ok, messageId } = await this.telegram.sendMessage(html)
+      if (ok && messageId !== null) {
+        await this.telegram.pinChatMessage(messageId)
+        this.pinnedSummaryMessageId = messageId
+        this.savePinnedMessageId(messageId)
+      }
+    })().catch((err) => {
+      process.stderr.write(`dispatcher: updatePinnedSummary error: ${err}\n`)
+    })
   }
 
   private async poll(): Promise<void> {
@@ -571,6 +625,7 @@ export class Dispatcher {
     }
 
     this.persistTopicSessions()
+    this.updatePinnedSummary()
 
     const totalItems = removedSessions + removedOrphans + removedRepos
     if (totalItems === 0) {
@@ -892,6 +947,7 @@ export class Dispatcher {
     }
 
     this.topicSessions.set(threadId, topicSession)
+    this.updatePinnedSummary()
 
     await this.spawnTopicAgent(topicSession, fullTask)
   }
@@ -971,6 +1027,7 @@ export class Dispatcher {
         this.sessions.delete(topicSession.threadId)
         topicSession.activeSessionId = undefined
         topicSession.lastActivityAt = Date.now()
+        this.updatePinnedSummary()
 
         this.stats.record({
           slug: topicSession.slug,
@@ -1080,6 +1137,7 @@ export class Dispatcher {
     this.sessions.set(topicSession.threadId, { handle, meta, task })
 
     await this.updateTopicTitle(topicSession, "⚡")
+    this.updatePinnedSummary()
     await this.observer.onSessionStart(meta, task, onTextCapture)
     handle.start(task, topicSession.mode === "task" ? prompts.task : undefined)
   }
@@ -1361,6 +1419,7 @@ export class Dispatcher {
     // Remove from tracking and delete the topic first for instant user feedback
     this.topicSessions.delete(threadId)
     this.persistTopicSessions()
+    this.updatePinnedSummary()
     await this.telegram.deleteForumTopic(threadId)
     process.stderr.write(`dispatcher: closed and deleted topic ${topicSession.slug} (thread ${threadId})\n`)
 
