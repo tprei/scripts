@@ -147,9 +147,6 @@ describe("SessionHandle MCP building", () => {
       })
     })
 
-  })
-})
-
     it("skips HTTP MCPs in Goose extension args", () => {
       process.env["ZAI_API_KEY"] = "test-key"
       const handle = makeHandle({
