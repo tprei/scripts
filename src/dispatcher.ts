@@ -191,6 +191,61 @@ export class Dispatcher {
     process.stderr.write("dispatcher: stopped\n")
   }
 
+  getSessions(): Map<number, ActiveSession> {
+    return this.sessions
+  }
+
+  getTopicSessions(): Map<number, TopicSession> {
+    return this.topicSessions
+  }
+
+  getDags(): Map<string, DagGraph> {
+    return this.dags
+  }
+
+  async handleReplyCommand(threadId: number, text: string, photos?: string[]): Promise<void> {
+    const topicSession = this.topicSessions.get(threadId)
+    if (!topicSession) {
+      await this.telegram.sendMessage(
+        `❌ Thread ${threadId} not found or no active session`,
+        threadId,
+      )
+      return
+    }
+    if (!topicSession.activeSessionId) {
+      await this.telegram.sendMessage(
+        `❌ No active session in thread ${threadId}`,
+        threadId
+      )
+      return
+    }
+    await this.handleTopicFeedback(topicSession, text)
+  }
+
+  async handleStopCommand(threadId: number): Promise<void> {
+    const topicSession = this.topicSessions.get(threadId)
+    if (!topicSession) {
+      await this.telegram.sendMessage(
+        `❌ Thread ${threadId} not found or no active session`,
+        threadId
+      )
+      return
+    }
+    await this.handleStopCommandInternal(topicSession)
+  }
+
+  async handleCloseCommand(threadId: number): Promise<void> {
+    const topicSession = this.topicSessions.get(threadId)
+    if (!topicSession) {
+      await this.telegram.sendMessage(
+        `❌ Thread ${threadId} not found or no active session`,
+        threadId
+      )
+      return
+    }
+    await this.handleCloseCommandInternal(topicSession)
+  }
+
   startCleanupTimer(): void {
     this.cleanupStaleSessions().catch((err) => {
       process.stderr.write(`dispatcher: startup cleanup error: ${err}\n`)
@@ -403,9 +458,9 @@ export class Dispatcher {
       const topicSession = this.topicSessions.get(message.message_thread_id)
       if (topicSession) {
         if (text === CLOSE_CMD) {
-          await this.handleCloseCommand(topicSession)
+          await this.handleCloseCommandInternal(topicSession)
         } else if (text === STOP_CMD) {
-          await this.handleStopCommand(topicSession)
+          await this.handleStopCommandInternal(topicSession)
         } else if ((topicSession.mode === "plan" || topicSession.mode === "think" || topicSession.mode === "review") && (text === EXECUTE_CMD || text?.startsWith(EXECUTE_CMD + " "))) {
           const directive = text!.slice(EXECUTE_CMD.length).trim() || undefined
           await this.handleExecuteCommand(topicSession, directive)
@@ -2380,7 +2435,7 @@ export class Dispatcher {
     process.stderr.write(`dispatcher: closed child topic ${child.slug} (thread ${childId})\n`)
   }
 
-  private async handleCloseCommand(topicSession: TopicSession): Promise<void> {
+  private async handleCloseCommandInternal(topicSession: TopicSession): Promise<void> {
     const threadId = topicSession.threadId
 
     // Cascade close to children first (handles both tracked and orphaned)
@@ -2413,7 +2468,7 @@ export class Dispatcher {
     })
   }
 
-  private async handleStopCommand(topicSession: TopicSession): Promise<void> {
+  private async handleStopCommandInternal(topicSession: TopicSession): Promise<void> {
     const threadId = topicSession.threadId
 
     // Only act if there's an active session

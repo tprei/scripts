@@ -71,6 +71,14 @@ export interface MinionConfig {
   agentDefs?: AgentDefinitions
   /** List of environment variable names to pass through to minion sessions */
   sessionEnvPassthrough?: string[]
+  /** HTTP API server configuration */
+  api?: ApiServerConfig
+}
+
+export interface ApiServerConfig {
+  port?: number
+  apiToken?: string
+  host?: string
 }
 
 export interface SystemPrompts {
