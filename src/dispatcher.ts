@@ -115,7 +115,7 @@ export class Dispatcher {
   }
 
   async loadPersistedSessions(): Promise<void> {
-    const { active, expired, offset } = this.store.load()
+    const { active, expired, offset } = await this.store.load()
     this.offset = offset
 
     for (const [threadId, session] of active) {
@@ -165,7 +165,7 @@ export class Dispatcher {
       handle.interrupt()
     }
     // Mark active sessions as interrupted before persisting for restart
-    this.persistTopicSessions(true)
+    this.persistTopicSessions(true).catch(() => {}) // best effort on shutdown
     process.stderr.write("dispatcher: stopped\n")
   }
 
@@ -218,11 +218,11 @@ export class Dispatcher {
       process.stderr.write(`dispatcher: cleaned up stale session ${session.slug} (topic ${threadId})\n`)
     }
 
-    this.persistTopicSessions()
+    await this.persistTopicSessions()
     this.updatePinnedSummary()
   }
 
-  private persistTopicSessions(markInterrupted = false): void {
+  private async persistTopicSessions(markInterrupted = false): Promise<void> {
     const toSave = new Map<number, TopicSession>()
     const now = Date.now()
     for (const [threadId, session] of this.topicSessions) {
@@ -237,7 +237,7 @@ export class Dispatcher {
         toSave.set(threadId, session)
       }
     }
-    this.store.save(toSave, this.offset)
+    await this.store.save(toSave, this.offset)
   }
 
   private get pinnedSummaryPath(): string {
@@ -305,7 +305,7 @@ export class Dispatcher {
     if (updates.length > 0) {
       this.offset = Math.max(...updates.map((u) => u.update_id)) + 1
       // Persist offset after each batch so we don't lose messages on crash/deploy
-      this.persistTopicSessions()
+      await this.persistTopicSessions()
     }
   }
 
@@ -515,16 +515,16 @@ export class Dispatcher {
   }
 
   private async handleStatsCommand(): Promise<void> {
-    const agg = this.stats.aggregate(7)
+    const agg = await this.stats.aggregate(7)
     await this.telegram.sendMessage(formatStats(agg))
   }
 
   private async handleUsageCommand(): Promise<void> {
     const [acpUsage, agg, breakdown, recent] = await Promise.all([
       fetchClaudeUsage(),
-      Promise.resolve(this.stats.aggregate(7)),
-      Promise.resolve(this.stats.breakdownByMode(7)),
-      Promise.resolve(this.stats.recentSessions(5)),
+      this.stats.aggregate(7),
+      this.stats.breakdownByMode(7),
+      this.stats.recentSessions(5),
     ])
     await this.telegram.sendMessage(formatUsage(acpUsage, agg, breakdown, recent))
   }
@@ -692,7 +692,7 @@ export class Dispatcher {
       }
     }
 
-    this.persistTopicSessions()
+    await this.persistTopicSessions()
     this.updatePinnedSummary()
 
     const totalItems = removedSessions + removedOrphans + removedRepos
@@ -1105,7 +1105,7 @@ export class Dispatcher {
           durationMs,
           totalTokens: m.totalTokens ?? 0,
           timestamp: Date.now(),
-        })
+        }).catch(() => {}) // best effort
 
         if (topicSession.mode === "think") {
           this.updateTopicTitle(topicSession, "💬").catch(() => {})
@@ -1190,7 +1190,7 @@ export class Dispatcher {
           })
         }
 
-        this.persistTopicSessions()
+        this.persistTopicSessions().catch(() => {}) // best effort
         this.cleanBuildArtifacts(topicSession.cwd)
 
         this.notifyParentOfChildComplete(topicSession, state).catch((err) => {
@@ -1485,7 +1485,7 @@ export class Dispatcher {
           durationMs,
           totalTokens: m.totalTokens ?? 0,
           timestamp: Date.now(),
-        })
+        }).catch(() => {}) // best effort
 
         this.observer.flushAndComplete(m, state, durationMs).then(() => {
           writeSessionLog(topicSession, m, state, durationMs)
@@ -1697,7 +1697,7 @@ export class Dispatcher {
     )
 
     await this.updateTopicTitle(topicSession, "🔀")
-    this.persistTopicSessions()
+    await this.persistTopicSessions()
   }
 
   private async spawnSplitChild(
@@ -1803,7 +1803,7 @@ export class Dispatcher {
 
     // Remove from tracking and delete the topic first for instant user feedback
     this.topicSessions.delete(threadId)
-    this.persistTopicSessions()
+    await this.persistTopicSessions()
     this.updatePinnedSummary()
     await this.telegram.deleteForumTopic(threadId)
     process.stderr.write(`dispatcher: closed and deleted topic ${topicSession.slug} (thread ${threadId})\n`)
