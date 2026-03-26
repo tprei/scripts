@@ -164,6 +164,63 @@ export function formatThinkComplete(slug: string): string {
   return `🧠 <b>Research complete</b>  ·  🏷 <code>${esc(slug)}</code>\n\nUse <code>/reply</code> (or <code>/r</code>) to ask follow-up questions, or send <code>/execute</code> to act on the findings.`
 }
 
+export type InlineKeyboardButton = { text: string; callback_data: string }
+export type InlineKeyboard = InlineKeyboardButton[][]
+
+export function buildPlanCompleteKeyboard(threadId: number): InlineKeyboard {
+  return [
+    [{ text: "📖 Read session", callback_data: `plan-read:${threadId}` }],
+    [
+      { text: "🚀 Execute", callback_data: `plan-action:execute:${threadId}` },
+      { text: "🔀 Split", callback_data: `plan-action:split:${threadId}` },
+      { text: "📚 Stack", callback_data: `plan-action:stack:${threadId}` },
+      { text: "🔗 DAG", callback_data: `plan-action:dag:${threadId}` },
+    ],
+  ]
+}
+
+export function buildSessionReadoutKeyboard(threadId: number): InlineKeyboard {
+  return [
+    [
+      { text: "🚀 Execute", callback_data: `plan-action:execute:${threadId}` },
+      { text: "🔀 Split", callback_data: `plan-action:split:${threadId}` },
+      { text: "📚 Stack", callback_data: `plan-action:stack:${threadId}` },
+      { text: "🔗 DAG", callback_data: `plan-action:dag:${threadId}` },
+    ],
+  ]
+}
+
+export function formatSessionReadout(
+  slug: string,
+  conversation: { role: string; text: string }[],
+): string {
+  const MAX_READOUT = 3800
+  const header = `📖 <b>Session readout</b>  ·  🏷 <code>${esc(slug)}</code>`
+
+  if (conversation.length === 0) {
+    return `${header}\n\n<i>No messages yet.</i>`
+  }
+
+  const lines: string[] = []
+  for (const msg of conversation) {
+    const icon = msg.role === "user" ? "👤" : "🤖"
+    lines.push(`${icon} <b>${esc(msg.role)}</b>`)
+    lines.push(esc(msg.text))
+    lines.push("")
+  }
+
+  let body = lines.join("\n")
+  if (body.length > MAX_READOUT) {
+    const omitted = conversation.length
+    body = body.slice(-MAX_READOUT)
+    const firstNewline = body.indexOf("\n")
+    if (firstNewline > 0) body = body.slice(firstNewline + 1)
+    body = `<i>… (earlier messages omitted)</i>\n\n${body}`
+  }
+
+  return `${header}\n\n${body}`
+}
+
 export function formatPlanStart(
   repo: string,
   slug: string,

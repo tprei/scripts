@@ -59,6 +59,7 @@ import {
   formatLandProgress,
   formatLandComplete,
   formatLandError,
+  buildPlanCompleteKeyboard,
 } from "./format.js"
 import { extractSplitItems, buildSplitChildPrompt } from "./split.js"
 import { extractStackItems, extractDagItems, buildDagChildPrompt } from "./dag-extract.js"
@@ -1224,8 +1225,9 @@ export class Dispatcher {
           this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
             process.stderr.write(`observer: onSessionComplete error: ${err}\n`)
           })
-          this.telegram.sendMessage(
+          this.telegram.sendMessageWithKeyboard(
             formatThinkComplete(topicSession.slug),
+            buildPlanCompleteKeyboard(topicSession.threadId),
             topicSession.threadId,
           ).catch(() => {})
           writeSessionLog(topicSession, m, state, durationMs)
@@ -1244,8 +1246,9 @@ export class Dispatcher {
           this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
             process.stderr.write(`observer: onSessionComplete error: ${err}\n`)
           })
-          this.telegram.sendMessage(
+          this.telegram.sendMessageWithKeyboard(
             formatPlanComplete(topicSession.slug),
+            buildPlanCompleteKeyboard(topicSession.threadId),
             topicSession.threadId,
           ).catch(() => {})
           writeSessionLog(topicSession, m, state, durationMs)
