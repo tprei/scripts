@@ -1,5 +1,6 @@
 import type { MinionConfig } from "./config-types.js"
 import { ConfigError, ConfigFormatError } from "./errors.js"
+import { validateMinionConfig, ConfigValidationError } from "./config-validator.js"
 
 function required(name: string): string {
   const val = process.env[name]
@@ -28,7 +29,8 @@ export function configFromEnv(overrides?: Partial<MinionConfig>): MinionConfig {
         .split(",")
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
-        .map(Number),
+        .map(Number)
+        .filter((n) => !isNaN(n) && n > 0),
     },
     goose: {
       provider: optional("GOOSE_PROVIDER", "claude-acp"),
@@ -50,6 +52,7 @@ export function configFromEnv(overrides?: Partial<MinionConfig>): MinionConfig {
       sessionInactivityTimeoutMs: optionalNumber("SESSION_INACTIVITY_TIMEOUT_MS", 900_000),
       staleTtlMs: optionalNumber("SESSION_STALE_TTL_MS", 2 * 24 * 60 * 60 * 1000),
       cleanupIntervalMs: optionalNumber("CLEANUP_INTERVAL_MS", 60 * 60 * 1000),
+      maxConversationLength: optionalNumber("MAX_CONVERSATION_LENGTH", 100),
     },
     ci: {
       babysitEnabled: optional("CI_BABYSIT_ENABLED", "true") === "true",
@@ -77,6 +80,12 @@ export function configFromEnv(overrides?: Partial<MinionConfig>): MinionConfig {
       ? process.env["SESSION_ENV_PASSTHROUGH"].split(",").map((s) => s.trim()).filter((s) => s.length > 0)
       : undefined,
     ...overrides,
+  }
+
+  const validation = validateMinionConfig(base)
+  if (!validation.valid) {
+    const messages = validation.errors.map((e) => e.message).join("\n  ")
+    throw new ConfigValidationError(`Invalid config:\n  ${messages}`, "configFromEnv")
   }
 
   return base
