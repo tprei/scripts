@@ -131,7 +131,7 @@ function DagNodeComponent({ data }: DagNodeProps) {
     if (data.onNodeClick) {
       data.onNodeClick(data)
     } else if (data.session?.threadId && data.session?.chatId) {
-      const threadUrl = `https://t.me/c/${Math.abs(data.session.chatId)}/${data.session.threadId}`
+      const threadUrl = `https://t.me/c/${String(data.session.chatId).replace(/^-100/, '')}/${data.session.threadId}`
       tg.navigation.openTgLink(threadUrl)
     }
   }, [data, tg.navigation])

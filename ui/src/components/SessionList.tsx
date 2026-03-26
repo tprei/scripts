@@ -196,7 +196,7 @@ export function SessionCard({
     if (onThreadClick) {
       onThreadClick(session)
     } else if (session.threadId && session.chatId) {
-      const threadUrl = `https://t.me/c/${Math.abs(session.chatId)}/${session.threadId}`
+      const threadUrl = `https://t.me/c/${String(session.chatId).replace(/^-100/, '')}/${session.threadId}`
       tg.navigation.openTgLink(threadUrl)
     }
   }, [session, onThreadClick, tg.navigation])
