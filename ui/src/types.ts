@@ -1,3 +1,18 @@
+export type AttentionReason =
+  | 'failed'
+  | 'waiting_for_feedback'
+  | 'interrupted'
+  | 'ci_fix'
+  | 'idle_long'
+
+export type QuickActionType = 'make_pr' | 'retry' | 'resume'
+
+export interface QuickAction {
+  type: QuickActionType
+  label: string
+  message: string
+}
+
 export interface MinionSession {
   id: string
   slug: string
@@ -12,6 +27,9 @@ export interface MinionSession {
   updatedAt: string
   parentId?: string
   childIds: string[]
+  needsAttention: boolean
+  attentionReasons: AttentionReason[]
+  quickActions: QuickAction[]
 }
 
 export interface DagNode {
