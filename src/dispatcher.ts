@@ -10,7 +10,7 @@ import type { TelegramClient } from "./telegram.js"
 import { captureException } from "./sentry.js"
 import { SessionHandle, type SessionConfig } from "./session.js"
 import { Observer } from "./observer.js"
-import type { TelegramUpdate, TelegramCallbackQuery, TelegramPhotoSize, SessionMeta, TopicSession, SessionState } from "./types.js"
+import type { TelegramUpdate, TelegramCallbackQuery, TelegramPhotoSize, SessionMeta, TopicSession, SessionState, TopicMessage } from "./types.js"
 import { generateSlug } from "./slugs.js"
 import type { MinionConfig, McpConfig } from "./config-types.js"
 import { DEFAULT_PROMPTS } from "./prompts.js"
@@ -74,6 +74,7 @@ import { fetchClaudeUsage } from "./claude-usage.js"
 import { writeSessionLog } from "./session-log.js"
 import { extractPRUrl, findPRByBranch, waitForCI, getFailedCheckLogs, buildCIFixPrompt, buildQualityGateFixPrompt, buildMergeConflictPrompt, checkPRMergeability } from "./ci-babysit.js"
 import { buildConversationDigest } from "./conversation-digest.js"
+import { truncateConversation } from "./conversation-limits.js"
 import { DEFAULT_CI_FIX_PROMPT, DEFAULT_RECOVERY_PROMPT } from "./prompts.js"
 import { StateBroadcaster, topicSessionToApi, dagToApi } from "./api-server.js"
 
@@ -142,6 +143,19 @@ export class Dispatcher {
     this.profileStore = new ProfileStore(this.config.workspace.root)
     this.stats = new StatsTracker(this.config.workspace.root)
     this.loadPinnedMessageId()
+  }
+
+  private pushToConversation(session: TopicSession, message: TopicMessage): void {
+    session.conversation.push(message)
+    const { truncated, truncatedCount } = truncateConversation(
+      session.conversation,
+      this.config.workspace.maxConversationLength,
+    )
+    if (truncated) {
+      process.stderr.write(
+        `dispatcher: truncated conversation for ${session.slug}, removed ${truncatedCount} old messages\n`,
+      )
+    }
   }
 
   private broadcastSession(session: TopicSession, eventType: "session_created" | "session_updated", sessionState?: "completed" | "errored"): void {
@@ -1168,7 +1182,7 @@ export class Dispatcher {
     }
 
     const onTextCapture = (_sid: string, text: string) => {
-      topicSession.conversation.push({ role: "assistant", text })
+      this.pushToConversation(topicSession, { role: "assistant", text })
     }
 
     const prompts = { ...DEFAULT_PROMPTS, ...this.config.prompts }
@@ -1273,7 +1287,7 @@ export class Dispatcher {
                 )
               }
               if (qualityReport && !qualityReport.allPassed) {
-                topicSession.conversation.push({
+                this.pushToConversation(topicSession, {
                   role: "user",
                   text: formatQualityReportForContext(qualityReport.results),
                 })
@@ -1417,7 +1431,7 @@ export class Dispatcher {
 
       const conflictPrompt = buildMergeConflictPrompt(prUrl, conflictAttempt, maxRetries)
       topicSession.mode = "ci-fix"
-      topicSession.conversation.push({ role: "user", text: conflictPrompt })
+      this.pushToConversation(topicSession, { role: "user", text: conflictPrompt })
 
       await new Promise<void>((resolve) => {
         this.spawnCIFixAgent(topicSession, conflictPrompt, () => resolve())
@@ -1508,7 +1522,7 @@ export class Dispatcher {
       process.stderr.write(`dispatcher: spawning CI fix session (attempt ${attempt}/${maxRetries}) for PR ${prUrl}\n`)
 
       topicSession.mode = "ci-fix"
-      topicSession.conversation.push({ role: "user", text: fixPrompt })
+      this.pushToConversation(topicSession, { role: "user", text: fixPrompt })
 
       await new Promise<void>((resolve) => {
         this.spawnCIFixAgent(topicSession, fixPrompt, () => resolve())
@@ -1657,7 +1671,7 @@ export class Dispatcher {
     const imagePaths = await this.downloadPhotos(photos, topicSession.cwd)
     const fullFeedback = appendImageContext(feedback, imagePaths)
 
-    topicSession.conversation.push({
+    this.pushToConversation(topicSession, {
       role: "user",
       text: fullFeedback,
       images: imagePaths.length > 0 ? imagePaths : undefined,
