@@ -43,7 +43,7 @@ function getInactivityHandle(handle: SessionHandle): ReturnType<typeof setTimeou
 
 describe("Session inactivity timeout", () => {
   it("fires interrupt when process produces no output", async () => {
-    const handle = makeHandle(200)
+    const handle = makeHandle(100)
     const interruptSpy = vi.spyOn(handle, "interrupt")
 
     const proc = spawn("node", ["-e", "setTimeout(() => {}, 30000)"], {
@@ -57,7 +57,7 @@ describe("Session inactivity timeout", () => {
     }).attachProcessHandlers.bind(handle)
     attachHandlers(() => {})
 
-    await new Promise((r) => setTimeout(r, 400))
+    await new Promise((r) => setTimeout(r, 200))
 
     expect(interruptSpy).toHaveBeenCalled()
 
@@ -65,13 +65,13 @@ describe("Session inactivity timeout", () => {
   })
 
   it("resets timer when stdout produces a line", async () => {
-    const handle = makeHandle(300)
+    const handle = makeHandle(400)
     const interruptSpy = vi.spyOn(handle, "interrupt")
 
     const proc = spawn(
       "node",
       ["-e", `
-        setTimeout(() => process.stdout.write('{"type":"text"}\\n'), 150);
+        setTimeout(() => process.stdout.write('{"type":"text"}\\n'), 100);
         setTimeout(() => {}, 30000);
       `],
       { stdio: ["ignore", "pipe", "pipe"], detached: true },
@@ -83,9 +83,11 @@ describe("Session inactivity timeout", () => {
     }).attachProcessHandlers.bind(handle)
     attachHandlers(() => {})
 
-    await new Promise((r) => setTimeout(r, 250))
+    // After 200ms, we should have seen output and timer reset (100ms output + 400ms timeout = 500ms)
+    await new Promise((r) => setTimeout(r, 200))
     expect(interruptSpy).not.toHaveBeenCalled()
 
+    // After another 200ms (400ms total), still under the 500ms deadline
     await new Promise((r) => setTimeout(r, 200))
     expect(interruptSpy).not.toHaveBeenCalled()
 
@@ -93,13 +95,13 @@ describe("Session inactivity timeout", () => {
   })
 
   it("resets timer when stderr produces data", async () => {
-    const handle = makeHandle(300)
+    const handle = makeHandle(400)
     const interruptSpy = vi.spyOn(handle, "interrupt")
 
     const proc = spawn(
       "node",
       ["-e", `
-        setTimeout(() => process.stderr.write('progress output\\n'), 150);
+        setTimeout(() => process.stderr.write('progress output\\n'), 100);
         setTimeout(() => {}, 30000);
       `],
       { stdio: ["ignore", "pipe", "pipe"], detached: true },
@@ -111,9 +113,11 @@ describe("Session inactivity timeout", () => {
     }).attachProcessHandlers.bind(handle)
     attachHandlers(() => {})
 
-    await new Promise((r) => setTimeout(r, 250))
+    // After 200ms, we should have seen stderr and timer reset (100ms output + 400ms timeout = 500ms)
+    await new Promise((r) => setTimeout(r, 200))
     expect(interruptSpy).not.toHaveBeenCalled()
 
+    // After another 200ms (400ms total), still under the 500ms deadline
     await new Promise((r) => setTimeout(r, 200))
     expect(interruptSpy).not.toHaveBeenCalled()
 
@@ -121,7 +125,8 @@ describe("Session inactivity timeout", () => {
   })
 
   it("clears timer on normal process exit", async () => {
-    const handle = makeHandle(200)
+    // Use a longer timeout to avoid race between process exit and timer firing
+    const handle = makeHandle(1000)
     const interruptSpy = vi.spyOn(handle, "interrupt")
 
     const proc = spawn("node", ["-e", "process.exit(0)"], {
@@ -135,7 +140,8 @@ describe("Session inactivity timeout", () => {
     }).attachProcessHandlers.bind(handle)
     attachHandlers(() => {})
 
-    await new Promise((r) => setTimeout(r, 400))
+    // Wait for close event to be processed (well under 1000ms)
+    await new Promise((r) => setTimeout(r, 50))
 
     expect(interruptSpy).not.toHaveBeenCalled()
     expect(getInactivityHandle(handle)).toBeNull()

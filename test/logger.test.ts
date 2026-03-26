@@ -1,18 +1,19 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { createLogger, createSessionLogger, loggers } from "../src/logger.js"
 
 describe("Logger", () => {
-  let consoleSpy: ReturnType<typeof console.log>
-  let originalLogLevel: string
+  let originalLogLevel: string | undefined
 
   beforeEach(() => {
-    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {})
-    originalLogLevel = process.env.LOG_LEVEL || "info"
+    originalLogLevel = process.env.LOG_LEVEL
   })
 
   afterEach(() => {
-    consoleSpy.mockRestore()
-    process.env.LOG_LEVEL = originalLogLevel
+    if (originalLogLevel === undefined) {
+      delete process.env.LOG_LEVEL
+    } else {
+      process.env.LOG_LEVEL = originalLogLevel
+    }
   })
 
   describe("createLogger", () => {
@@ -50,3 +51,4 @@ describe("Logger", () => {
       expect(loggers.minion).toBeDefined()
     })
   })
+})
