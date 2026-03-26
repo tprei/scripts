@@ -13,6 +13,7 @@ import {
   sseConnected,
   actionState,
   clearActionError,
+  initVisibilityHandler,
 } from './store'
 import { SessionList } from './components/SessionList'
 import { DagList } from './components/DagView'
@@ -133,6 +134,7 @@ export default function App() {
   useSignalEffect(() => {
     refresh()
     startSse()
+    initVisibilityHandler()
   })
 
   // Cleanup SSE on unmount

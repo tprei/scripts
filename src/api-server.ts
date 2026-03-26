@@ -96,7 +96,7 @@ function getMimeType(filePath: string): string {
   return MIME_TYPES[ext] ?? "application/octet-stream"
 }
 
-function topicSessionToApi(
+export function topicSessionToApi(
   session: TopicSession,
   activeSessionId?: string,
   sessionState?: SessionState,
@@ -126,7 +126,7 @@ function topicSessionToApi(
   }
 }
 
-function dagToApi(
+export function dagToApi(
   graph: DagGraph,
   topicSessions: Map<number, TopicSession>,
   sessions: Map<number, { meta: { sessionId: string; threadId: number } }>,

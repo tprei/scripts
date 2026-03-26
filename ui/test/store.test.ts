@@ -13,6 +13,7 @@ import {
   stopMinion,
   closeSession,
   clearActionError,
+  initVisibilityHandler,
 } from '../src/store'
 import {
   fetchSessions,
@@ -183,6 +184,25 @@ describe('Store', () => {
       actionState.value = { isLoading: false, error: 'Some error', lastAction: 'sendReply' }
       clearActionError()
       expect(actionState.value.error).toBe(null)
+    })
+  })
+
+  describe('initVisibilityHandler', () => {
+    it('should refresh on visibility change to visible', async () => {
+      ;(fetchSessions as ReturnType<typeof vi.fn>).mockResolvedValue([])
+      ;(fetchDags as ReturnType<typeof vi.fn>).mockResolvedValue([])
+
+      initVisibilityHandler()
+
+      // Simulate tab becoming visible
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', writable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+
+      // Wait for async refresh
+      await new Promise((r) => setTimeout(r, 50))
+
+      expect(fetchSessions).toHaveBeenCalled()
+      expect(fetchDags).toHaveBeenCalled()
     })
   })
 })

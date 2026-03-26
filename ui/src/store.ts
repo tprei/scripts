@@ -22,8 +22,9 @@ export const sseConnected = signal(false)
 
 let sseConnection: EventSource | null = null
 let reconnectAttempts = 0
-const MAX_RECONNECT_ATTEMPTS = 5
-const RECONNECT_DELAY_MS = 3000
+const MAX_RECONNECT_ATTEMPTS = 10
+const RECONNECT_DELAY_MS = 2000
+const MAX_RECONNECT_DELAY_MS = 30000
 
 export async function loadSessions() {
   try {
@@ -137,8 +138,13 @@ function connectSse() {
 
   if (sseConnection) {
     sseConnection.onopen = () => {
+      const wasDisconnected = !sseConnected.value && reconnectAttempts > 0
       sseConnected.value = true
       reconnectAttempts = 0
+
+      if (wasDisconnected) {
+        refresh()
+      }
     }
 
     sseConnection.onerror = () => {
@@ -146,7 +152,8 @@ function connectSse() {
 
       if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
         reconnectAttempts++
-        setTimeout(connectSse, RECONNECT_DELAY_MS * reconnectAttempts)
+        const delay = Math.min(RECONNECT_DELAY_MS * reconnectAttempts, MAX_RECONNECT_DELAY_MS)
+        setTimeout(connectSse, delay)
       }
     }
   }
@@ -164,6 +171,20 @@ export function stopSse() {
     sseConnection = null
     sseConnected.value = false
   }
+}
+
+export function initVisibilityHandler() {
+  if (typeof document === 'undefined') return
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      if (!sseConnected.value) {
+        reconnectAttempts = 0
+        connectSse()
+      }
+      refresh()
+    }
+  })
 }
 
 export function clearActionError() {

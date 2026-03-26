@@ -48,6 +48,7 @@ export function createMinion(config: MinionConfig, options?: MinionOptions): Min
   const observer = new Observer(telegram, config.observer.activityThrottleMs)
   const dispatcher = new Dispatcher(telegram, observer, config)
   const broadcaster = new StateBroadcaster()
+  dispatcher.setBroadcaster(broadcaster)
 
   let apiServer: http.Server | undefined
 
