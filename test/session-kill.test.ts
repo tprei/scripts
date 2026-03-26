@@ -5,7 +5,7 @@ import type { SessionMeta } from "../src/types.js"
 
 const stubConfig: SessionConfig = {
   goose: { provider: "test", model: "test" },
-  claude: { planModel: "test", thinkModel: "test" },
+  claude: { planModel: "test", thinkModel: "test", reviewModel: "test" },
   mcp: {
     browserEnabled: false,
     githubEnabled: false,
@@ -28,7 +28,7 @@ const stubMeta: SessionMeta = {
 }
 
 function makeHandle(): SessionHandle {
-  return new SessionHandle(stubMeta, () => {}, () => {}, 60_000, stubConfig)
+  return new SessionHandle(stubMeta, () => {}, () => {}, 60_000, 300_000, stubConfig)
 }
 
 function injectProcess(handle: SessionHandle, proc: ReturnType<typeof spawn>): void {

@@ -4,7 +4,7 @@ import type { SessionMeta } from "../src/types.js"
 
 const baseConfig: SessionConfig = {
   goose: { provider: "test", model: "test" },
-  claude: { planModel: "test", thinkModel: "test" },
+  claude: { planModel: "test", thinkModel: "test", reviewModel: "test" },
   mcp: {
     browserEnabled: false,
     githubEnabled: false,
