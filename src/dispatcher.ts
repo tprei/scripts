@@ -2773,7 +2773,7 @@ export class Dispatcher {
   async apiSendReply(threadId: number, message: string): Promise<void> {
     const topicSession = this.topicSessions.get(threadId)
     if (!topicSession) {
-      throw new SessionNotFoundError(threadId)
+      throw new SessionNotFoundError(threadId, Array.from(this.topicSessions.keys()))
     }
 
     // Queue the message for the session to pick up
@@ -2794,7 +2794,7 @@ export class Dispatcher {
   async apiCloseSession(threadId: number): Promise<void> {
     const topicSession = this.topicSessions.get(threadId)
     if (!topicSession) {
-      throw new SessionNotFoundError(threadId)
+      throw new SessionNotFoundError(threadId, Array.from(this.topicSessions.keys()))
     }
 
     // Stop any active session

@@ -38,12 +38,19 @@ describe("MinionError", () => {
 
 describe("DAG errors", () => {
   describe("DagCycleError", () => {
-    it("has correct message and name", () => {
+    it("has correct message and name without cycle nodes", () => {
       const err = new DagCycleError()
       expect(err).toBeInstanceOf(MinionError)
       expect(err).toBeInstanceOf(DagCycleError)
       expect(err.name).toBe("DagCycleError")
       expect(err.message).toBe("DAG contains a cycle")
+      expect(err.cycleNodes).toBeUndefined()
+    })
+
+    it("includes cycle nodes in message when provided", () => {
+      const err = new DagCycleError(["node-a", "node-b", "node-a"])
+      expect(err.message).toBe("DAG contains a cycle: node-a → node-b → node-a")
+      expect(err.cycleNodes).toEqual(["node-a", "node-b", "node-a"])
     })
   })
 
@@ -67,6 +74,13 @@ describe("DAG errors", () => {
       expect(err.message).toBe('Node "node-a" depends on unknown node "missing-node"')
       expect(err.nodeId).toBe("node-a")
       expect(err.unknownDependency).toBe("missing-node")
+      expect(err.availableNodes).toEqual([])
+    })
+
+    it("includes available nodes in suggestion when provided", () => {
+      const err = new UnknownNodeError("node-a", "missing-node", ["node-b", "node-c"])
+      expect(err.message).toBe('Node "node-a" depends on unknown node "missing-node". Available: "node-b", "node-c"')
+      expect(err.availableNodes).toEqual(["node-b", "node-c"])
     })
   })
 })
@@ -78,32 +92,39 @@ describe("Session errors", () => {
       expect(err).toBeInstanceOf(MinionError)
       expect(err).toBeInstanceOf(SessionNotFoundError)
       expect(err.name).toBe("SessionNotFoundError")
-      expect(err.message).toBe("Session not found: 12345")
+      expect(err.message).toBe("Session not found: thread 12345. No active sessions")
       expect(err.threadId).toBe(12345)
+      expect(err.activeThreadIds).toBeUndefined()
+    })
+
+    it("includes active sessions in suggestion when provided", () => {
+      const err = new SessionNotFoundError(12345, [111, 222, 333])
+      expect(err.message).toBe("Session not found: thread 12345. Active sessions: 111, 222, 333")
+      expect(err.activeThreadIds).toEqual([111, 222, 333])
     })
   })
 })
 
 describe("Config errors", () => {
   describe("ConfigError", () => {
-    it("includes varName in property", () => {
+    it("includes varName in property and suggestion in message", () => {
       const err = new ConfigError("Missing required env var: API_KEY", "API_KEY")
       expect(err).toBeInstanceOf(MinionError)
       expect(err).toBeInstanceOf(ConfigError)
       expect(err.name).toBe("ConfigError")
-      expect(err.message).toBe("Missing required env var: API_KEY")
+      expect(err.message).toBe("Missing required env var: API_KEY. Check .env.example for required configuration")
       expect(err.varName).toBe("API_KEY")
     })
   })
 
   describe("ConfigFormatError", () => {
-    it("includes all properties", () => {
+    it("includes all properties and suggestion", () => {
       const err = new ConfigFormatError("PORT", "a number", "abc")
       expect(err).toBeInstanceOf(MinionError)
       expect(err).toBeInstanceOf(ConfigError)
       expect(err).toBeInstanceOf(ConfigFormatError)
       expect(err.name).toBe("ConfigFormatError")
-      expect(err.message).toBe("Env var PORT must be a number, got: abc")
+      expect(err.message).toBe("Env var PORT must be a number, got: abc. Check .env.example for required configuration")
       expect(err.varName).toBe("PORT")
       expect(err.actualValue).toBe("abc")
     })
@@ -195,13 +216,20 @@ describe("Git errors", () => {
   })
 
   describe("DefaultBranchError", () => {
-    it("has correct message", () => {
+    it("has correct message without repo URL", () => {
       const err = new DefaultBranchError()
       expect(err).toBeInstanceOf(MinionError)
       expect(err).toBeInstanceOf(GitError)
       expect(err).toBeInstanceOf(DefaultBranchError)
       expect(err.name).toBe("DefaultBranchError")
-      expect(err.message).toBe("cannot determine default branch")
+      expect(err.message).toBe("Cannot determine default branch. Ensure the repository exists and you have access. Tried: main, master")
+      expect(err.repoUrl).toBeUndefined()
+    })
+
+    it("includes repo URL in message when provided", () => {
+      const err = new DefaultBranchError("https://github.com/org/repo")
+      expect(err.message).toBe("Cannot determine default branch for https://github.com/org/repo. Ensure the repository exists and you have access. Tried: main, master")
+      expect(err.repoUrl).toBe("https://github.com/org/repo")
     })
   })
 })
@@ -210,7 +238,7 @@ describe("Type guards", () => {
   describe("isMinionError", () => {
     it("returns true for MinionError instances", () => {
       expect(isMinionError(new DagCycleError())).toBe(true)
-      expect(isMinionError(new SessionNotFoundError(1))).toBe(true)
+      expect(isMinionError(new SessionNotFoundError(1, []))).toBe(true)
       expect(isMinionError(new ConfigError("test", "VAR"))).toBe(true)
     })
 
@@ -229,18 +257,18 @@ describe("Type guards", () => {
     it("returns true for DAG errors", () => {
       expect(isDagError(new DagCycleError())).toBe(true)
       expect(isDagError(new DagSelfDependencyError("a"))).toBe(true)
-      expect(isDagError(new UnknownNodeError("a", "b"))).toBe(true)
+      expect(isDagError(new UnknownNodeError("a", "b", ["c"]))).toBe(true)
     })
 
     it("returns false for other MinionErrors", () => {
-      expect(isDagError(new SessionNotFoundError(1))).toBe(false)
+      expect(isDagError(new SessionNotFoundError(1, []))).toBe(false)
       expect(isDagError(new ConfigError("test", "VAR"))).toBe(false)
     })
   })
 
   describe("isSessionError", () => {
     it("returns true for SessionNotFoundError", () => {
-      expect(isSessionError(new SessionNotFoundError(1))).toBe(true)
+      expect(isSessionError(new SessionNotFoundError(1, []))).toBe(true)
     })
 
     it("returns false for other MinionErrors", () => {
@@ -257,7 +285,7 @@ describe("Type guards", () => {
 
     it("returns false for other MinionErrors", () => {
       expect(isConfigError(new DagCycleError())).toBe(false)
-      expect(isConfigError(new SessionNotFoundError(1))).toBe(false)
+      expect(isConfigError(new SessionNotFoundError(1, []))).toBe(false)
     })
   })
 

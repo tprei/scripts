@@ -17,8 +17,15 @@ export abstract class MinionError extends Error {
 
 /** Thrown when a DAG contains a cycle. */
 export class DagCycleError extends MinionError {
-  constructor() {
-    super("DAG contains a cycle")
+  readonly cycleNodes?: string[]
+
+  constructor(cycleNodes?: string[]) {
+    let message = "DAG contains a cycle"
+    if (cycleNodes && cycleNodes.length > 0) {
+      message += `: ${cycleNodes.join(" → ")}`
+    }
+    super(message)
+    this.cycleNodes = cycleNodes
   }
 }
 
@@ -36,11 +43,17 @@ export class DagSelfDependencyError extends MinionError {
 export class UnknownNodeError extends MinionError {
   readonly nodeId: string
   readonly unknownDependency: string
+  readonly availableNodes: string[]
 
-  constructor(nodeId: string, unknownDependency: string) {
-    super(`Node "${nodeId}" depends on unknown node "${unknownDependency}"`)
+  constructor(nodeId: string, unknownDependency: string, availableNodes: string[] = []) {
+    let message = `Node "${nodeId}" depends on unknown node "${unknownDependency}"`
+    if (availableNodes.length > 0) {
+      message += `. Available: ${availableNodes.map((n) => `"${n}"`).join(", ")}`
+    }
+    super(message)
     this.nodeId = nodeId
     this.unknownDependency = unknownDependency
+    this.availableNodes = availableNodes
   }
 }
 
@@ -51,10 +64,18 @@ export class UnknownNodeError extends MinionError {
 /** Thrown when a session lookup fails. */
 export class SessionNotFoundError extends MinionError {
   readonly threadId: number
+  readonly activeThreadIds?: number[]
 
-  constructor(threadId: number) {
-    super(`Session not found: ${threadId}`)
+  constructor(threadId: number, activeThreadIds?: number[]) {
+    let message = `Session not found: thread ${threadId}`
+    if (activeThreadIds && activeThreadIds.length > 0) {
+      message += `. Active sessions: ${activeThreadIds.join(", ")}`
+    } else {
+      message += ". No active sessions"
+    }
+    super(message)
     this.threadId = threadId
+    this.activeThreadIds = activeThreadIds
   }
 }
 
@@ -67,7 +88,7 @@ export class ConfigError extends MinionError {
   readonly varName: string
 
   constructor(message: string, varName: string) {
-    super(message)
+    super(`${message}. Check .env.example for required configuration`)
     this.varName = varName
   }
 }
@@ -151,8 +172,16 @@ export class GitError extends MinionError {
 
 /** Thrown when the default branch cannot be determined. */
 export class DefaultBranchError extends GitError {
-  constructor() {
-    super("cannot determine default branch")
+  readonly repoUrl?: string
+
+  constructor(repoUrl?: string) {
+    let message = "Cannot determine default branch"
+    if (repoUrl) {
+      message += ` for ${repoUrl}`
+    }
+    message += ". Ensure the repository exists and you have access. Tried: main, master"
+    super(message)
+    this.repoUrl = repoUrl
   }
 }
 
