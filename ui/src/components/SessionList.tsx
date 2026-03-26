@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'preact/hooks'
 import type { MinionSession } from '../types'
 import { ConfirmDialog, ReplyDialog } from './ConfirmDialog'
+import { PrLink } from './PrLink'
 import { useTelegram, usePopup as useTelegramPopup } from '../hooks'
 
 type StatusType = MinionSession['status']
@@ -199,15 +200,9 @@ export function SessionCard({
         </div>
 
         {session.prUrl && (
-          <a
-            href={session.prUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            class={`text-xs underline mt-2 block hover:opacity-80 ${tg.darkMode ? 'text-blue-400' : 'text-blue-600'}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            View PR
-          </a>
+          <div class="mt-2">
+            <PrLink prUrl={session.prUrl} />
+          </div>
         )}
 
         {session.childIds.length > 0 && (

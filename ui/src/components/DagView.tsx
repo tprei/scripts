@@ -13,6 +13,7 @@ import { MiniMap } from '@reactflow/minimap'
 import dagre from 'dagre'
 import type { DagGraph, DagNode } from '../types'
 import { StatusBadge } from './SessionList'
+import { PrLink } from './PrLink'
 import { useTelegram } from '../hooks'
 
 const NODE_WIDTH = 200
@@ -169,9 +170,13 @@ function DagNodeComponent({ data }: DagNodeProps) {
         <div class="mt-1">
           <StatusBadge status={data.status === 'skipped' ? 'pending' : data.status} />
         </div>
-        {data.session?.branch && (
+        {data.session?.prUrl ? (
+          <div class="mt-1" onClick={(e: Event) => e.stopPropagation()}>
+            <PrLink prUrl={data.session.prUrl} compact />
+          </div>
+        ) : data.session?.branch ? (
           <div class="text-xs mt-1 truncate opacity-75">{data.session.branch}</div>
-        )}
+        ) : null}
       </div>
 
       {showTooltip && (
