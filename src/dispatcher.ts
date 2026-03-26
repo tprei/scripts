@@ -147,11 +147,12 @@ export class Dispatcher {
 
   private pushToConversation(session: TopicSession, message: TopicMessage): void {
     session.conversation.push(message)
-    const { truncated, truncatedCount } = truncateConversation(
+    const { conversation, truncated, truncatedCount } = truncateConversation(
       session.conversation,
       this.config.workspace.maxConversationLength,
     )
     if (truncated) {
+      session.conversation = conversation
       process.stderr.write(
         `dispatcher: truncated conversation for ${session.slug}, removed ${truncatedCount} old messages\n`,
       )

@@ -146,4 +146,27 @@ describe("truncateConversation", () => {
 
     expect(result.conversation).toHaveLength(3)
   })
+
+  it("returned conversation is a new array distinct from the input when truncated", () => {
+    const conversation = makeMessages(20)
+    const result = truncateConversation(conversation, 10)
+
+    expect(result.truncated).toBe(true)
+    expect(result.conversation).not.toBe(conversation)
+    expect(result.conversation).toHaveLength(10)
+    expect(conversation).toHaveLength(20)
+  })
+
+  it("caller must assign returned conversation to cap array length", () => {
+    const session = { conversation: makeMessages(10) }
+    const maxLength = 5
+
+    session.conversation.push({ role: "user", text: "Message 11" })
+    const { conversation, truncated } = truncateConversation(session.conversation, maxLength)
+    if (truncated) {
+      session.conversation = conversation
+    }
+
+    expect(session.conversation).toHaveLength(maxLength)
+  })
 })
