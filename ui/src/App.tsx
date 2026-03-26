@@ -8,6 +8,7 @@ import {
   sendReply,
   stopMinion,
   closeSession,
+  planAction,
   startSse,
   stopSse,
   sseConnected,
@@ -158,6 +159,7 @@ export default function App() {
           onSendReply={sendReply}
           onStopMinion={stopMinion}
           onCloseSession={closeSession}
+          onPlanAction={planAction}
           isActionLoading={actionState.value.isLoading}
         />
       </section>
