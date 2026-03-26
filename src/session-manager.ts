@@ -12,6 +12,7 @@ import crypto from "node:crypto"
 import type { SessionHandle } from "./session.js"
 import type { SessionMeta, TopicSession } from "./types.js"
 import { extractRepoName } from "./command-parser.js"
+import { DefaultBranchError } from "./errors.js"
 
 const execFileAsync = promisify(execFile)
 
@@ -283,7 +284,7 @@ export function resolveDefaultBranch(bareDir: string, gitOpts: object): string {
     }
   }
 
-  throw new Error("cannot determine default branch")
+  throw new DefaultBranchError()
 }
 
 function bootstrapOnePackage(

@@ -72,6 +72,7 @@ import { extractPRUrl, findPRByBranch, waitForCI, getFailedCheckLogs, buildCIFix
 import { buildConversationDigest } from "./conversation-digest.js"
 import { DEFAULT_CI_FIX_PROMPT, DEFAULT_RECOVERY_PROMPT } from "./prompts.js"
 import { StateBroadcaster, topicSessionToApi, dagToApi } from "./api-server.js"
+import { SessionNotFoundError } from "./errors.js"
 // Extracted modules
 import {
   TASK_PREFIX, TASK_SHORT, PLAN_PREFIX, THINK_PREFIX, REVIEW_PREFIX,
@@ -2757,7 +2758,7 @@ export class Dispatcher {
   async apiSendReply(threadId: number, message: string): Promise<void> {
     const topicSession = this.topicSessions.get(threadId)
     if (!topicSession) {
-      throw new Error(`Session not found: ${threadId}`)
+      throw new SessionNotFoundError(threadId)
     }
 
     // Queue the message for the session to pick up
@@ -2778,7 +2779,7 @@ export class Dispatcher {
   async apiCloseSession(threadId: number): Promise<void> {
     const topicSession = this.topicSessions.get(threadId)
     if (!topicSession) {
-      throw new Error(`Session not found: ${threadId}`)
+      throw new SessionNotFoundError(threadId)
     }
 
     // Stop any active session
