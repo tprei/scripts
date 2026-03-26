@@ -134,4 +134,88 @@ describe("SessionStore", () => {
     const { active } = await store.load()
     expect(active.size).toBe(3)
   })
+
+  it("saves and restores the update offset", async () => {
+    const store = new SessionStore(tmpDir)
+    const sessions = new Map<number, TopicSession>()
+    sessions.set(100, makeSession())
+
+    await store.save(sessions, 42)
+    const { offset } = await store.load()
+    expect(offset).toBe(42)
+  })
+
+  it("defaults offset to 0 when not present", async () => {
+    const store = new SessionStore(tmpDir)
+    const sessions = new Map<number, TopicSession>()
+    sessions.set(100, makeSession())
+
+    await store.save(sessions)
+    const { offset } = await store.load()
+    expect(offset).toBe(0)
+  })
+
+  it("uses atomic write (no .tmp file left after save)", async () => {
+    const store = new SessionStore(tmpDir)
+    const sessions = new Map<number, TopicSession>()
+    sessions.set(100, makeSession())
+
+    await store.save(sessions)
+
+    // The final file should exist
+    expect(fs.existsSync(path.join(tmpDir, ".sessions.json"))).toBe(true)
+    // The temp file should not remain
+    expect(fs.existsSync(path.join(tmpDir, ".sessions.json.tmp"))).toBe(false)
+  })
+
+  it("handles old array format gracefully", async () => {
+    // Old format was just an array of entries, not an object with sessions + offset
+    const session = makeSession()
+    const oldData: [number, TopicSession][] = [[100, session]]
+    fs.writeFileSync(
+      path.join(tmpDir, ".sessions.json"),
+      JSON.stringify(oldData),
+      "utf-8",
+    )
+
+    const store = new SessionStore(tmpDir)
+    const { active, offset } = await store.load()
+    expect(active.size).toBe(1)
+    expect(active.get(100)?.slug).toBe("bold-arc")
+    expect(offset).toBe(0)
+  })
+
+  it("uses interruptedAt for TTL when session was interrupted", async () => {
+    const store = new SessionStore(tmpDir, 1000)
+    const sessions = new Map<number, TopicSession>()
+    // Session has recent lastActivityAt but was interrupted long ago
+    sessions.set(100, makeSession({
+      lastActivityAt: Date.now(),
+      interruptedAt: Date.now() - 2000,
+    }))
+    // Session was interrupted recently
+    sessions.set(200, makeSession({
+      threadId: 200,
+      lastActivityAt: Date.now() - 2000,
+      interruptedAt: Date.now(),
+    }))
+
+    await store.save(sessions)
+    const { active, expired } = await store.load()
+    expect(expired.has(100)).toBe(true)
+    expect(active.has(200)).toBe(true)
+  })
+
+  it("clears interruptedAt on expired sessions", async () => {
+    const store = new SessionStore(tmpDir, 1000)
+    const sessions = new Map<number, TopicSession>()
+    sessions.set(100, makeSession({
+      lastActivityAt: Date.now() - 2000,
+      interruptedAt: Date.now() - 2000,
+    }))
+
+    await store.save(sessions)
+    const { expired } = await store.load()
+    expect(expired.get(100)?.interruptedAt).toBeUndefined()
+  })
 })
