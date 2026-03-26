@@ -2769,7 +2769,7 @@ export class Dispatcher {
         }
 
         const branch = `minion/${slug}`
-        const startRef = startBranch ?? resolveDefaultBranch(bareDir, gitOpts)
+        const startRef = startBranch ?? resolveDefaultBranch(bareDir, gitOpts, repoUrl)
         process.stderr.write(`dispatcher: adding worktree ${workDir} (branch ${branch}) from ${startRef}\n`)
         execSync(
           `git worktree add ${JSON.stringify(workDir)} -b ${JSON.stringify(branch)} ${startRef}`,
@@ -2917,7 +2917,7 @@ export class Dispatcher {
   async apiSendReply(threadId: number, message: string): Promise<void> {
     const topicSession = this.topicSessions.get(threadId)
     if (!topicSession) {
-      throw new SessionNotFoundError(threadId)
+      throw new SessionNotFoundError(threadId, Array.from(this.topicSessions.keys()))
     }
 
     // Queue the message for the session to pick up
@@ -2938,7 +2938,7 @@ export class Dispatcher {
   async apiCloseSession(threadId: number): Promise<void> {
     const topicSession = this.topicSessions.get(threadId)
     if (!topicSession) {
-      throw new SessionNotFoundError(threadId)
+      throw new SessionNotFoundError(threadId, Array.from(this.topicSessions.keys()))
     }
 
     // Stop any active session
@@ -2968,7 +2968,7 @@ export function updateLocalHead(bareDir: string, gitOpts: object): void {
   } catch { /* remote ref may not exist yet */ }
 }
 
-export function resolveDefaultBranch(bareDir: string, gitOpts: object): string {
+export function resolveDefaultBranch(bareDir: string, gitOpts: object, repoUrl?: string): string {
   try {
     const ref = execSync("git symbolic-ref HEAD", { ...gitOpts, cwd: bareDir })
       .toString().trim()
@@ -2984,7 +2984,7 @@ export function resolveDefaultBranch(bareDir: string, gitOpts: object): string {
     } catch { /* doesn't exist */ }
   }
 
-  throw new DefaultBranchError()
+  throw new DefaultBranchError(repoUrl)
 }
 
 export function parseTaskArgs(repos: Record<string, string>, args: string): { repoUrl?: string; task: string } {
