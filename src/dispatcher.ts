@@ -55,6 +55,8 @@ import {
   formatLandProgress,
   formatLandComplete,
   formatLandError,
+  formatLandRebasing,
+  formatLandConflict,
   formatRestackStart,
   formatRestackProgress,
   formatRestackComplete,
@@ -2606,7 +2608,14 @@ export class Dispatcher {
   }
 
   /**
-   * Land a DAG by merging PRs in topological order.
+   * Land a DAG by merging PRs in topological order with conflict-aware rebasing.
+   *
+   * For each node (in topological order):
+   * 1. Check PR mergeability — if conflicting, rebase onto target branch
+   * 2. If rebase fails with unresolvable conflicts, stop landing
+   * 3. Squash-merge the PR
+   * 4. Wait for GitHub to retarget downstream PRs
+   * 5. Update merge bases for downstream nodes
    */
   private async landDag(topicSession: TopicSession, graph: DagGraph): Promise<void> {
     const sorted = topologicalSort(graph)
@@ -2632,7 +2641,52 @@ export class Dispatcher {
 
     for (const node of prNodes) {
       try {
-        // Merge the PR with squash
+        // Check if the PR has merge conflicts before attempting to merge
+        const mergeability = checkPRMergeability(node.prUrl!, topicSession.cwd)
+
+        if (mergeability === "CONFLICTING") {
+          await this.telegram.sendMessage(
+            formatLandRebasing(node.title, succeeded, prNodes.length),
+            topicSession.threadId,
+          )
+
+          // Determine the upstream branch (what this PR targets after retargeting)
+          const upstreamBranches = getUpstreamBranches(graph, node.id)
+          const upstreamBranch = upstreamBranches[0] ?? "main"
+
+          // Determine the target: if the upstream was already merged, target is main
+          const upstreamNode = node.dependsOn.length > 0
+            ? graph.nodes.find((n) => n.id === node.dependsOn[0])
+            : undefined
+          const targetBranch = (upstreamNode && !prNodes.includes(upstreamNode))
+            ? upstreamBranch
+            : "main"
+
+          const result = await restackBranch(
+            this.config.workspace.root,
+            topicSession.repoUrl!,
+            node.branch!,
+            node.mergeBase ?? "",
+            targetBranch,
+          )
+
+          if (!result.success) {
+            await this.telegram.sendMessage(
+              formatLandConflict(node.title, result.conflictFiles ?? []),
+              topicSession.threadId,
+            )
+            break
+          }
+
+          if (result.newMergeBase) {
+            node.mergeBase = result.newMergeBase
+          }
+
+          // Wait for GitHub to detect the force-push and re-evaluate mergeability
+          await this.waitForPRMergeability(node.prUrl!, topicSession.cwd)
+        }
+
+        // Squash-merge the PR
         execSync(
           `gh pr merge ${JSON.stringify(node.prUrl!)} --squash`,
           { ...gitOpts, cwd: topicSession.cwd, env: { ...process.env } },
@@ -2644,8 +2698,9 @@ export class Dispatcher {
           topicSession.threadId,
         )
 
-        // Brief pause for GitHub to process the merge and retarget downstream PRs
-        await new Promise((resolve) => setTimeout(resolve, 3000))
+        // Wait for GitHub to retarget downstream PRs, then update merge bases
+        await this.waitForDownstreamRetarget(graph, node, topicSession.cwd)
+
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err)
         await this.telegram.sendMessage(
@@ -2660,6 +2715,64 @@ export class Dispatcher {
       formatLandComplete(succeeded, prNodes.length),
       topicSession.threadId,
     )
+
+    this.broadcastDag(graph, "dag_updated")
+    await this.persistTopicSessions()
+  }
+
+  /**
+   * Poll GitHub until a PR is mergeable or timeout (max 30s).
+   */
+  private async waitForPRMergeability(prUrl: string, cwd: string): Promise<void> {
+    for (let i = 0; i < 10; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+      const state = checkPRMergeability(prUrl, cwd)
+      if (state === "MERGEABLE") return
+    }
+  }
+
+  /**
+   * After squash-merging a node, wait for GitHub to retarget downstream PRs
+   * and update the merge base for direct children.
+   */
+  private async waitForDownstreamRetarget(
+    graph: DagGraph,
+    mergedNode: DagNode,
+    cwd: string,
+  ): Promise<void> {
+    const children = graph.nodes.filter((n) =>
+      n.dependsOn.includes(mergedNode.id) && n.prUrl,
+    )
+    if (children.length === 0) return
+
+    // Poll until GitHub retargets the first child PR (or timeout after 15s)
+    const gitOpts = { stdio: ["pipe" as const, "pipe" as const, "pipe" as const], timeout: 30_000 }
+    for (let i = 0; i < 5; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+      try {
+        const baseRef = execSync(
+          `gh pr view ${JSON.stringify(children[0].prUrl!)} --json baseRefName --jq .baseRefName`,
+          { ...gitOpts, cwd, env: { ...process.env } },
+        ).toString().trim()
+
+        // Once GitHub retargets away from the merged branch, we're done
+        if (baseRef !== mergedNode.branch) break
+      } catch {
+        // gh command failed — continue waiting
+      }
+    }
+
+    // Capture the new merge base (tip of main after the squash merge) for downstream nodes
+    const newMergeBase = captureMergeBase(
+      this.config.workspace.root,
+      graph.repoUrl ?? "",
+      "main",
+    )
+    if (newMergeBase) {
+      for (const child of children) {
+        child.mergeBase = newMergeBase
+      }
+    }
   }
 
   /**
