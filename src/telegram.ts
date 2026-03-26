@@ -4,6 +4,7 @@ import { pipeline } from "node:stream/promises"
 import { Readable } from "node:stream"
 import type { TelegramUpdate, TelegramForumTopic } from "./types.js"
 import { captureException } from "./sentry.js"
+import { loggers } from "./logger.js"
 import {
   TelegramRateLimitError,
   TelegramHttpError,
@@ -12,6 +13,7 @@ import {
 } from "./errors.js"
 
 const MAX_LENGTH = 4096
+const log = loggers.telegram
 const BASE = "https://api.telegram.org"
 const MAX_RETRIES = 3
 const TRANSIENT_RETRY_MS = 2000
@@ -156,7 +158,7 @@ export class TelegramClient {
       } catch (err) {
         // Transient network error (DNS, TCP, TLS)
         if (attempt < MAX_RETRIES - 1) {
-          process.stderr.write(`telegram: ${method} fetch error (attempt ${attempt + 1}), retrying: ${err}\n`)
+          log.warn({ method, attempt: attempt + 1, err }, "fetch error, retrying")
           await sleep(TRANSIENT_RETRY_MS * (attempt + 1))
           continue
         }
@@ -167,7 +169,7 @@ export class TelegramClient {
         const text = await res.text()
         const retryAfter = parseRetryAfter(text)
         if (attempt < MAX_RETRIES - 1) {
-          process.stderr.write(`telegram: ${method} rate limited, retrying after ${retryAfter}s\n`)
+          log.warn({ method, retryAfter }, "rate limited, retrying")
           await sleep(retryAfter * 1000)
           continue
         }
@@ -199,7 +201,7 @@ export class TelegramClient {
       })
       return result
     } catch (err) {
-      process.stderr.write(`telegram: getUpdates failed: ${err}\n`)
+      log.error({ err, method: "getUpdates" }, "getUpdates failed")
       captureException(err, { method: "getUpdates" })
       return []
     }
@@ -223,7 +225,7 @@ export class TelegramClient {
       const result = await this.call<{ message_id: number }>("sendMessage", body)
       return result.message_id
     } catch (err) {
-      process.stderr.write(`telegram: sendMessage failed: ${err}\n`)
+      log.error({ err, method: "sendMessage" }, "sendMessage failed")
       captureException(err, { method: "sendMessage" })
       return null
     }
@@ -267,7 +269,7 @@ export class TelegramClient {
       return true
     } catch (err) {
       if (String(err).includes("message is not modified")) return true
-      process.stderr.write(`telegram: editMessage failed: ${err}\n`)
+      log.error({ err, method: "editMessage" }, "editMessage failed")
       captureException(err, { method: "editMessage" })
       return false
     }
@@ -296,7 +298,7 @@ export class TelegramClient {
         disable_notification: true,
       })
     } catch (err) {
-      process.stderr.write(`telegram: pinChatMessage failed: ${err}\n`)
+      log.warn({ err, method: "pinChatMessage" }, "pinChatMessage failed")
     }
   }
 
@@ -307,7 +309,7 @@ export class TelegramClient {
         message_thread_id: threadId,
       })
     } catch (err) {
-      process.stderr.write(`telegram: closeForumTopic failed: ${err}\n`)
+      log.warn({ err, method: "closeForumTopic" }, "closeForumTopic failed")
     }
   }
 
@@ -327,7 +329,7 @@ export class TelegramClient {
       const result = await this.call<{ message_id: number }>("sendMessage", body)
       return result.message_id
     } catch (err) {
-      process.stderr.write(`telegram: sendMessageWithKeyboard failed: ${err}\n`)
+      log.error({ err, method: "sendMessageWithKeyboard" }, "sendMessageWithKeyboard failed")
       return null
     }
   }
@@ -338,7 +340,7 @@ export class TelegramClient {
       if (text) body.text = text
       await this.call("answerCallbackQuery", body)
     } catch (err) {
-      process.stderr.write(`telegram: answerCallbackQuery failed: ${err}\n`)
+      log.warn({ err, method: "answerCallbackQuery" }, "answerCallbackQuery failed")
     }
   }
 
@@ -349,7 +351,7 @@ export class TelegramClient {
         message_id: messageId,
       })
     } catch (err) {
-      process.stderr.write(`telegram: deleteMessage failed: ${err}\n`)
+      log.warn({ err, method: "deleteMessage" }, "deleteMessage failed")
     }
   }
 
@@ -360,7 +362,7 @@ export class TelegramClient {
         message_thread_id: threadId,
       })
     } catch (err) {
-      process.stderr.write(`telegram: deleteForumTopic failed: ${err}\n`)
+      log.warn({ err, method: "deleteForumTopic" }, "deleteForumTopic failed")
     }
   }
 
@@ -373,7 +375,7 @@ export class TelegramClient {
       const data = fs.readFileSync(photoPath)
       return await this.sendPhotoBlob(new Blob([data]), path.basename(photoPath), threadId, caption)
     } catch (err) {
-      process.stderr.write(`telegram: sendPhoto failed: ${err}\n`)
+      log.error({ err, method: "sendPhoto", photoPath }, "sendPhoto failed")
       captureException(err, { method: "sendPhoto" })
       return null
     }
@@ -388,7 +390,7 @@ export class TelegramClient {
     try {
       return await this.sendPhotoBlob(new Blob([buffer]), filename, threadId, caption)
     } catch (err) {
-      process.stderr.write(`telegram: sendPhotoBuffer failed: ${err}\n`)
+      log.error({ err, method: "sendPhotoBuffer", filename }, "sendPhotoBuffer failed")
       captureException(err, { method: "sendPhotoBuffer" })
       return null
     }
@@ -421,7 +423,7 @@ export class TelegramClient {
         res = await fetch(`${this.baseUrl}/sendPhoto`, { method: "POST", body: form })
       } catch (err) {
         if (attempt < MAX_RETRIES - 1) {
-          process.stderr.write(`telegram: sendPhoto fetch error (attempt ${attempt + 1}), retrying: ${err}\n`)
+          log.warn({ attempt: attempt + 1, err }, "sendPhoto fetch error, retrying")
           await sleep(TRANSIENT_RETRY_MS * (attempt + 1))
           continue
         }
@@ -432,7 +434,7 @@ export class TelegramClient {
         const text = await res.text()
         const retryAfter = parseRetryAfter(text)
         if (attempt < MAX_RETRIES - 1) {
-          process.stderr.write(`telegram: sendPhoto rate limited, retrying after ${retryAfter}s\n`)
+          log.warn({ retryAfter }, "sendPhoto rate limited, retrying")
           await sleep(retryAfter * 1000)
           continue
         }
@@ -463,7 +465,7 @@ export class TelegramClient {
       await pipeline(Readable.fromWeb(res.body as import("stream/web").ReadableStream), fs.createWriteStream(destPath))
       return true
     } catch (err) {
-      process.stderr.write(`telegram: downloadFile failed: ${err}\n`)
+      log.error({ err, method: "downloadFile", fileId, destPath }, "downloadFile failed")
       captureException(err, { method: "downloadFile" })
       return false
     }

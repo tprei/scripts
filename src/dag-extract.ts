@@ -2,6 +2,9 @@ import { spawn } from "node:child_process"
 import type { TopicMessage } from "./types.js"
 import type { DagInput } from "./dag.js"
 import type { ProviderProfile } from "./config-types.js"
+import { loggers } from "./logger.js"
+
+const log = loggers.dagExtract
 
 export interface DagExtractResult {
   items: DagInput[]
@@ -150,18 +153,18 @@ export async function extractDagItems(
   profile?: ProviderProfile,
 ): Promise<DagExtractResult> {
   const task = buildConversationText(conversation, directive)
-  process.stderr.write(`dag-extract: analyzing conversation (${conversation.length} messages) for DAG items\n`)
+  log.debug({ messageCount: conversation.length }, "analyzing conversation for DAG items")
 
   let lastError: Error | undefined
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      process.stderr.write(`dag-extract: attempt ${attempt}/${MAX_RETRIES}\n`)
+      log.debug({ attempt, maxRetries: MAX_RETRIES }, "attempt")
       const output = await runClaudeExtraction(task, DAG_EXTRACTION_PROMPT, 60_000, profile)
-      process.stderr.write(`dag-extract: raw output (${output.length} chars)\n`)
+      log.debug({ outputLength: output.length }, "raw output")
 
       const items = parseDagItems(output)
-      process.stderr.write(`dag-extract: extracted ${items.length} valid items\n`)
+      log.debug({ itemCount: items.length }, "extracted valid items")
       return { items }
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err))
@@ -173,10 +176,10 @@ export async function extractDagItems(
 
       if (isSpawnError && attempt < MAX_RETRIES) {
         const delay = INITIAL_DELAY_MS * Math.pow(2, attempt - 1)
-        process.stderr.write(`dag-extract: spawn error on attempt ${attempt}: ${err}. Retrying in ${delay}ms...\n`)
+        log.warn({ attempt, delay, err }, "spawn error, retrying")
         await sleep(delay)
       } else {
-        process.stderr.write(`dag-extract: extraction failed: ${err}\n`)
+        log.error({ err }, "extraction failed")
         return { items: [], error: "system", errorMessage: lastError.message }
       }
     }
@@ -194,18 +197,18 @@ export async function extractStackItems(
   profile?: ProviderProfile,
 ): Promise<DagExtractResult> {
   const task = buildConversationText(conversation, directive)
-  process.stderr.write(`dag-extract: analyzing conversation (${conversation.length} messages) for stack items\n`)
+  log.debug({ messageCount: conversation.length }, "analyzing conversation for stack items")
 
   let lastError: Error | undefined
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      process.stderr.write(`dag-extract: stack attempt ${attempt}/${MAX_RETRIES}\n`)
+      log.debug({ attempt, maxRetries: MAX_RETRIES }, "stack attempt")
       const output = await runClaudeExtraction(task, STACK_EXTRACTION_PROMPT, 60_000, profile)
-      process.stderr.write(`dag-extract: stack raw output (${output.length} chars)\n`)
+      log.debug({ outputLength: output.length }, "stack raw output")
 
       const ordered = parseStackItems(output)
-      process.stderr.write(`dag-extract: extracted ${ordered.length} stack items\n`)
+      log.debug({ itemCount: ordered.length }, "extracted stack items")
 
       // Convert ordered items to DagInput with linear dependencies
       const items: DagInput[] = ordered.map((item, i) => ({
@@ -226,10 +229,10 @@ export async function extractStackItems(
 
       if (isSpawnError && attempt < MAX_RETRIES) {
         const delay = INITIAL_DELAY_MS * Math.pow(2, attempt - 1)
-        process.stderr.write(`dag-extract: spawn error on attempt ${attempt}: ${err}. Retrying in ${delay}ms...\n`)
+        log.warn({ attempt, delay, err }, "spawn error, retrying")
         await sleep(delay)
       } else {
-        process.stderr.write(`dag-extract: stack extraction failed: ${err}\n`)
+        log.error({ err }, "stack extraction failed")
         return { items: [], error: "system", errorMessage: lastError.message }
       }
     }
@@ -248,7 +251,7 @@ export function parseDagItems(output: string): DagInput[] {
 
   const arrayMatch = text.match(/\[[\s\S]*\]/)
   if (!arrayMatch) {
-    process.stderr.write(`dag-extract: no JSON array found in output\n`)
+    log.debug("no JSON array found in output")
     return []
   }
 
@@ -256,11 +259,11 @@ export function parseDagItems(output: string): DagInput[] {
   try {
     parsed = JSON.parse(arrayMatch[0])
   } catch (e) {
-    process.stderr.write(`dag-extract: JSON parse error: ${e}\n`)
+    log.debug({ err: String(e) }, "JSON parse error")
     return []
   }
   if (!Array.isArray(parsed)) {
-    process.stderr.write(`dag-extract: parsed value is not an array\n`)
+    log.debug("parsed value is not an array")
     return []
   }
 
@@ -292,7 +295,7 @@ export function parseStackItems(output: string): { title: string; description: s
 
   const arrayMatch = text.match(/\[[\s\S]*\]/)
   if (!arrayMatch) {
-    process.stderr.write(`dag-extract: no JSON array found in stack output\n`)
+    log.debug("no JSON array found in stack output")
     return []
   }
 
@@ -300,7 +303,7 @@ export function parseStackItems(output: string): { title: string; description: s
   try {
     parsed = JSON.parse(arrayMatch[0])
   } catch (e) {
-    process.stderr.write(`dag-extract: JSON parse error in stack output: ${e}\n`)
+    log.debug({ err: String(e) }, "JSON parse error in stack output")
     return []
   }
   if (!Array.isArray(parsed)) return []

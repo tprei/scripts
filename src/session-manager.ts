@@ -12,7 +12,10 @@ import crypto from "node:crypto"
 import type { SessionHandle } from "./session.js"
 import type { SessionMeta, TopicSession } from "./types.js"
 import { extractRepoName } from "./command-parser.js"
+import { loggers } from "./logger.js"
 import { DefaultBranchError } from "./errors.js"
+
+const log = loggers.session
 
 const execFileAsync = promisify(execFile)
 
@@ -158,13 +161,11 @@ export function prepareWorkspace(
       const gitOpts = { stdio, timeout: 120_000, env: gitEnv }
 
       if (fs.existsSync(bareDir)) {
-        process.stderr.write(`session-manager: fetching ${repoUrl} in ${bareDir}\n`)
+        log.debug({ repoUrl, bareDir }, "fetching repo")
         execSync(`git fetch --prune origin`, { ...gitOpts, cwd: bareDir })
         updateLocalHead(bareDir, gitOpts)
       } else {
-        process.stderr.write(
-          `session-manager: cloning bare ${repoUrl} into ${bareDir}\n`,
-        )
+        log.debug({ repoUrl, bareDir }, "cloning bare repo")
         execSync(
           `git clone --bare ${JSON.stringify(repoUrl)} ${JSON.stringify(bareDir)}`,
           gitOpts,
@@ -173,9 +174,7 @@ export function prepareWorkspace(
 
       const branch = `minion/${slug}`
       const startRef = startBranch ?? resolveDefaultBranch(bareDir, gitOpts, repoUrl)
-      process.stderr.write(
-        `session-manager: adding worktree ${workDir} (branch ${branch}) from ${startRef}\n`,
-      )
+      log.debug({ workDir, branch, startRef }, "adding worktree")
       execSync(
         `git worktree add ${JSON.stringify(workDir)} -b ${JSON.stringify(branch)} ${startRef}`,
         { ...gitOpts, cwd: bareDir },
@@ -193,7 +192,7 @@ export function prepareWorkspace(
 
     return workDir
   } catch (err) {
-    process.stderr.write(`session-manager: prepareWorkspace failed: ${err}\n`)
+    log.error({ err }, "prepareWorkspace failed")
     return null
   }
 }
@@ -217,19 +216,15 @@ export async function removeWorkspace(
           ["worktree", "remove", "--force", topicSession.cwd],
           { cwd: bareDir, timeout: 30_000 },
         )
-        process.stderr.write(
-          `session-manager: removed worktree ${topicSession.cwd}\n`,
-        )
+        log.debug({ cwd: topicSession.cwd }, "removed worktree")
         return
       }
     }
 
     fs.rmSync(topicSession.cwd, { recursive: true, force: true })
-    process.stderr.write(`session-manager: removed workspace ${topicSession.cwd}\n`)
+    log.debug({ cwd: topicSession.cwd }, "removed workspace")
   } catch (err) {
-    process.stderr.write(
-      `session-manager: failed to remove workspace ${topicSession.cwd}: ${err}\n`,
-    )
+    log.error({ err, cwd: topicSession.cwd }, "failed to remove workspace")
     try {
       fs.rmSync(topicSession.cwd, { recursive: true, force: true })
     } catch {
@@ -309,16 +304,16 @@ function bootstrapOnePackage(
       execSync(`cp -al ${JSON.stringify(cacheDir)} ${JSON.stringify(path.join(pkgDir, "node_modules"))}`, {
         stdio, timeout: 30_000,
       })
-      process.stderr.write(`session-manager: hardlinked node_modules into ${label}\n`)
+      log.debug({ label }, "hardlinked node_modules")
       return
     } catch (err) {
-      process.stderr.write(`session-manager: hardlink copy failed for ${label}, falling back to npm ci: ${err}\n`)
+      log.warn({ err, label }, "hardlink copy failed, falling back to npm ci")
     }
   }
 
   try {
     const installCmd = fs.existsSync(lockFile) ? "npm ci" : "npm install"
-    process.stderr.write(`session-manager: running ${installCmd} in ${label}\n`)
+    log.debug({ installCmd, label }, "running package install")
     execSync(installCmd, { cwd: pkgDir, stdio, timeout: 120_000 })
 
     if (fs.existsSync(cacheDir)) {
@@ -330,9 +325,9 @@ function bootstrapOnePackage(
     if (currentHash) {
       fs.writeFileSync(cacheLockHash, currentHash)
     }
-    process.stderr.write(`session-manager: cached node_modules for ${label}\n`)
+    log.debug({ label }, "cached node_modules")
   } catch (err) {
-    process.stderr.write(`session-manager: dependency bootstrap failed for ${label} (non-fatal): ${err}\n`)
+    log.warn({ err, label }, "dependency bootstrap failed (non-fatal)")
   }
 }
 
@@ -365,12 +360,10 @@ export function cleanBuildArtifacts(cwd: string): void {
     try {
       if (fs.existsSync(target)) {
         fs.rmSync(target, { recursive: true, force: true })
-        process.stderr.write(`session-manager: cleaned ${name} from ${cwd}\n`)
+        log.debug({ name, cwd }, "cleaned artifact")
       }
     } catch (err) {
-      process.stderr.write(
-        `session-manager: failed to clean ${name} from ${cwd}: ${err}\n`,
-      )
+      log.error({ err, name, cwd }, "failed to clean artifact")
     }
   }
   try {
@@ -380,7 +373,7 @@ export function cleanBuildArtifacts(cwd: string): void {
       const nested = path.join(cwd, entry.name, "node_modules")
       if (fs.existsSync(nested)) {
         fs.rmSync(nested, { recursive: true, force: true })
-        process.stderr.write(`session-manager: cleaned ${entry.name}/node_modules from ${cwd}\n`)
+        log.debug({ name: `${entry.name}/node_modules`, cwd }, "cleaned nested artifact")
       }
     }
   } catch { /* non-fatal */ }
@@ -388,7 +381,7 @@ export function cleanBuildArtifacts(cwd: string): void {
   try {
     if (fs.existsSync(homeCacheDir)) {
       fs.rmSync(homeCacheDir, { recursive: true, force: true })
-      process.stderr.write(`session-manager: cleaned .home/.npm from ${cwd}\n`)
+      log.debug({ cwd }, "cleaned .home/.npm")
     }
   } catch {
     /* best effort */
@@ -472,17 +465,13 @@ export function prepareFanInBranch(
         .trim()
 
       // If merge-tree reports conflicts, the exit code is non-zero (caught by try/catch)
-      process.stderr.write(
-        `session-manager: merge-tree check OK for ${baseBranch} + ${upstreamBranches[i]}: ${result.slice(0, 40)}\n`,
-      )
+      log.debug({ baseBranch, branch: upstreamBranches[i], result: result.slice(0, 40) }, "merge-tree check OK")
     }
 
     // No conflicts detected — return first branch, actual merge happens in prepareWorkspace + post-checkout merge
     return upstreamBranches[0]
   } catch (err) {
-    process.stderr.write(
-      `session-manager: fan-in merge conflict detected for ${slug}: ${err}\n`,
-    )
+    log.warn({ err, slug }, "fan-in merge conflict detected")
     return null
   }
 }
@@ -505,13 +494,9 @@ export function mergeUpstreamBranches(
         ...gitOpts,
         cwd: workDir,
       })
-      process.stderr.write(
-        `session-manager: merged ${branch} into worktree ${workDir}\n`,
-      )
+      log.debug({ branch, workDir }, "merged branch into worktree")
     } catch (err) {
-      process.stderr.write(
-        `session-manager: merge of ${branch} into ${workDir} failed: ${err}\n`,
-      )
+      log.error({ err, branch, workDir }, "merge of branch into worktree failed")
       // Abort the merge
       try {
         execSync(`git merge --abort`, { ...gitOpts, cwd: workDir })

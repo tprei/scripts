@@ -3,6 +3,7 @@ import path from "node:path"
 import type { TelegramClient } from "./telegram.js"
 import type { GooseStreamEvent, GooseMessage, GooseToolRequestContent, GooseToolResponseContent, SessionMeta } from "./types.js"
 import { captureException } from "./sentry.js"
+import { loggers } from "./logger.js"
 import {
   formatToolLine,
   formatActivityLog,
@@ -14,6 +15,8 @@ import {
   formatSessionError,
   formatAssistantText,
 } from "./format.js"
+
+const log = loggers.observer
 
 // Text flush delay: if no new text chunk arrives within this window, send what's buffered.
 const TEXT_FLUSH_DEBOUNCE_MS = 1500
@@ -176,7 +179,7 @@ export class Observer {
           const ext = imageItem.mimeType === "image/jpeg" ? "jpg" : "png"
           await this.telegram.sendPhotoBuffer(buffer, `screenshot.${ext}`, meta.threadId)
         } catch (err) {
-          process.stderr.write(`observer: failed to send base64 screenshot: ${err}\n`)
+          log.warn({ err, sessionId: meta.sessionId }, "failed to send base64 screenshot")
         }
       }
     }
@@ -189,12 +192,10 @@ export class Observer {
     state.textBuffer += chunk
     state.lastTextAt = Date.now()
 
-    // Start interval if not already running - single interval per session instead of per-chunk timer
     if (state.flushInterval === null) {
       state.flushInterval = setInterval(() => {
         const currentState = this.sessions.get(meta.sessionId)
         if (!currentState) {
-          // Session was cleaned up, clear the interval
           if (state.flushInterval !== null) {
             clearInterval(state.flushInterval)
             state.flushInterval = null
@@ -205,7 +206,7 @@ export class Observer {
         const now = Date.now()
         if (now - currentState.lastTextAt >= TEXT_FLUSH_DEBOUNCE_MS && currentState.textBuffer.length > 0) {
           this.flushTextBuffer(meta).catch((err) => {
-            process.stderr.write(`observer: flush error: ${err}\n`)
+            log.error({ err, sessionId: meta.sessionId }, "flush error")
             captureException(err, { operation: "observer.flush", sessionId: meta.sessionId })
           })
         }
@@ -253,7 +254,7 @@ export class Observer {
     // Delete the orphaned activity message now that tools are folded into the Reply
     if (state.activityMessageId !== null) {
       this.telegram.deleteMessage(state.activityMessageId).catch((err) => {
-        process.stderr.write(`observer: delete activity msg error: ${err}\n`)
+        log.warn({ err, sessionId: meta.sessionId }, "delete activity msg error")
       })
     }
     state.activityMessageId = null
@@ -296,7 +297,7 @@ export class Observer {
         state.activityEditTimer = null
         const latestHtml = formatActivityLog(state.activityLog, state.toolCount)
         this.telegram.editMessage(messageId, latestHtml, meta.threadId).catch((err) => {
-          process.stderr.write(`observer: edit error: ${err}\n`)
+          log.warn({ err, sessionId: meta.sessionId }, "edit error")
         })
       }, ACTIVITY_EDIT_DEBOUNCE_MS)
       return

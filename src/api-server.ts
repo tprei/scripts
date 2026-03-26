@@ -5,6 +5,9 @@ import crypto from "node:crypto"
 import { EventEmitter } from "node:events"
 import type { TopicSession, SessionState } from "./types.js"
 import type { DagGraph } from "./dag.js"
+import { loggers } from "./logger.js"
+
+const log = loggers.apiServer
 
 export type AttentionReason =
   | "failed"
@@ -524,7 +527,7 @@ async function handleApiRoute(
     res.writeHead(404, { "Content-Type": "application/json" })
     res.end(JSON.stringify({ data: null, error: "Not found" }))
   } catch (err) {
-    process.stderr.write(`api-server: error handling ${pathname}: ${err}\n`)
+    log.error({ err, pathname }, "error handling request")
     res.writeHead(500, { "Content-Type": "application/json" })
     res.end(JSON.stringify({ data: null, error: "Internal server error" }))
   }
