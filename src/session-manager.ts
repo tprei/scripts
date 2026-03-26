@@ -286,21 +286,12 @@ export function resolveDefaultBranch(bareDir: string, gitOpts: object): string {
   throw new Error("cannot determine default branch")
 }
 
-/**
- * Bootstrap npm dependencies for a workspace, using cached node_modules when possible.
- * This speeds up worktree creation by sharing node_modules via hardlinks.
- */
-export function bootstrapDependencies(
-  workDir: string,
-  reposDir: string,
-  repoName: string,
+function bootstrapOnePackage(
+  pkgDir: string, reposDir: string, cacheKey: string, label: string,
 ): void {
-  const pkgPath = path.join(workDir, "package.json")
-  if (!fs.existsSync(pkgPath)) return
-
-  const cacheDir = path.join(reposDir, `${repoName}-node_modules`)
-  const lockFile = path.join(workDir, "package-lock.json")
-  const cacheLockHash = path.join(reposDir, `${repoName}-lock.hash`)
+  const lockFile = path.join(pkgDir, "package-lock.json")
+  const cacheDir = path.join(reposDir, `${cacheKey}-node_modules`)
+  const cacheLockHash = path.join(reposDir, `${cacheKey}-lock.hash`)
 
   const currentHash = fs.existsSync(lockFile)
     ? crypto.createHash("sha256").update(fs.readFileSync(lockFile)).digest("hex")
@@ -310,52 +301,56 @@ export function bootstrapDependencies(
     ? fs.readFileSync(cacheLockHash, "utf8").trim()
     : null
 
-  const stdio: import("node:child_process").StdioOptions = [
-    "ignore",
-    "pipe",
-    "pipe",
-  ]
+  const stdio: import("node:child_process").StdioOptions = ["ignore", "pipe", "pipe"]
 
   if (currentHash && cachedHash === currentHash && fs.existsSync(cacheDir)) {
     try {
-      execSync(
-        `cp -al ${JSON.stringify(cacheDir)} ${JSON.stringify(path.join(workDir, "node_modules"))}`,
-        { stdio, timeout: 30_000 },
-      )
-      process.stderr.write(
-        `session-manager: hardlinked node_modules into ${workDir}\n`,
-      )
+      execSync(`cp -al ${JSON.stringify(cacheDir)} ${JSON.stringify(path.join(pkgDir, "node_modules"))}`, {
+        stdio, timeout: 30_000,
+      })
+      process.stderr.write(`session-manager: hardlinked node_modules into ${label}\n`)
       return
     } catch (err) {
-      process.stderr.write(
-        `session-manager: hardlink copy failed, falling back to npm ci: ${err}\n`,
-      )
+      process.stderr.write(`session-manager: hardlink copy failed for ${label}, falling back to npm ci: ${err}\n`)
     }
   }
 
   try {
     const installCmd = fs.existsSync(lockFile) ? "npm ci" : "npm install"
-    process.stderr.write(`session-manager: running ${installCmd} in ${workDir}\n`)
-    execSync(installCmd, { cwd: workDir, stdio, timeout: 120_000 })
+    process.stderr.write(`session-manager: running ${installCmd} in ${label}\n`)
+    execSync(installCmd, { cwd: pkgDir, stdio, timeout: 120_000 })
 
-    // Update cache for future worktrees
     if (fs.existsSync(cacheDir)) {
       fs.rmSync(cacheDir, { recursive: true, force: true })
     }
-    execSync(
-      `cp -al ${JSON.stringify(path.join(workDir, "node_modules"))} ${JSON.stringify(cacheDir)}`,
-      { stdio, timeout: 60_000 },
-    )
+    execSync(`cp -al ${JSON.stringify(path.join(pkgDir, "node_modules"))} ${JSON.stringify(cacheDir)}`, {
+      stdio, timeout: 60_000,
+    })
     if (currentHash) {
       fs.writeFileSync(cacheLockHash, currentHash)
     }
-    process.stderr.write(
-      `session-manager: cached node_modules for ${repoName}\n`,
-    )
+    process.stderr.write(`session-manager: cached node_modules for ${label}\n`)
   } catch (err) {
-    process.stderr.write(
-      `session-manager: dependency bootstrap failed (non-fatal): ${err}\n`,
-    )
+    process.stderr.write(`session-manager: dependency bootstrap failed for ${label} (non-fatal): ${err}\n`)
+  }
+}
+
+export function bootstrapDependencies(workDir: string, reposDir: string, repoName: string): void {
+  if (fs.existsSync(path.join(workDir, "package.json"))) {
+    bootstrapOnePackage(workDir, reposDir, repoName, workDir)
+  }
+
+  try {
+    const entries = fs.readdirSync(workDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === "node_modules" || entry.name.startsWith(".")) continue
+      const nested = path.join(workDir, entry.name)
+      if (fs.existsSync(path.join(nested, "package.json"))) {
+        bootstrapOnePackage(nested, reposDir, `${repoName}-${entry.name}`, `${workDir}/${entry.name}`)
+      }
+    }
+  } catch {
+    // non-fatal
   }
 }
 
@@ -377,6 +372,17 @@ export function cleanBuildArtifacts(cwd: string): void {
       )
     }
   }
+  try {
+    const entries = fs.readdirSync(cwd, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === "node_modules" || entry.name.startsWith(".")) continue
+      const nested = path.join(cwd, entry.name, "node_modules")
+      if (fs.existsSync(nested)) {
+        fs.rmSync(nested, { recursive: true, force: true })
+        process.stderr.write(`session-manager: cleaned ${entry.name}/node_modules from ${cwd}\n`)
+      }
+    }
+  } catch { /* non-fatal */ }
   const homeCacheDir = path.join(cwd, ".home", ".npm")
   try {
     if (fs.existsSync(homeCacheDir)) {
