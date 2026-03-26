@@ -110,7 +110,7 @@ describe('SessionCard', () => {
 
   it('displays PR link when available', () => {
     render(<SessionCard session={mockCompletedSession} />)
-    expect(screen.getByText('View PR')).toBeTruthy()
+    expect(screen.getByText('org/repo#42')).toBeTruthy()
   })
 
   it('displays child count for sessions with children', () => {
