@@ -1,3 +1,10 @@
+export type AttentionReason =
+  | 'failed'
+  | 'waiting_for_feedback'
+  | 'interrupted'
+  | 'ci_fix'
+  | 'idle_long'
+
 export interface MinionSession {
   id: string
   slug: string
@@ -12,6 +19,8 @@ export interface MinionSession {
   updatedAt: string
   parentId?: string
   childIds: string[]
+  needsAttention: boolean
+  attentionReasons: AttentionReason[]
 }
 
 export interface DagNode {

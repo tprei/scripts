@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'preact/hooks'
-import type { MinionSession } from '../types'
+import type { AttentionReason, MinionSession } from '../types'
 import { ConfirmDialog, ReplyDialog } from './ConfirmDialog'
 import { PrLink } from './PrLink'
 import { useTelegram, usePopup as useTelegramPopup } from '../hooks'
@@ -44,6 +44,56 @@ export function StatusBadge({ status }: StatusBadgeProps) {
 
   return (
     <span class={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${className}`}>
+      <span>{config.emoji}</span>
+      <span>{config.label}</span>
+    </span>
+  )
+}
+
+const ATTENTION_CONFIG: Record<AttentionReason, { emoji: string; label: string; className: string; darkClassName: string }> = {
+  failed: {
+    emoji: '🔴',
+    label: 'Failed',
+    className: 'bg-red-100 text-red-700',
+    darkClassName: 'bg-red-900/50 text-red-300',
+  },
+  waiting_for_feedback: {
+    emoji: '💬',
+    label: 'Waiting for reply',
+    className: 'bg-yellow-100 text-yellow-700',
+    darkClassName: 'bg-yellow-900/50 text-yellow-300',
+  },
+  interrupted: {
+    emoji: '⚠️',
+    label: 'Interrupted',
+    className: 'bg-orange-100 text-orange-700',
+    darkClassName: 'bg-orange-900/50 text-orange-300',
+  },
+  ci_fix: {
+    emoji: '🔧',
+    label: 'CI fix in progress',
+    className: 'bg-purple-100 text-purple-700',
+    darkClassName: 'bg-purple-900/50 text-purple-300',
+  },
+  idle_long: {
+    emoji: '⏳',
+    label: 'Idle for a while',
+    className: 'bg-gray-100 text-gray-600',
+    darkClassName: 'bg-gray-700 text-gray-400',
+  },
+}
+
+interface AttentionBadgeProps {
+  reason: AttentionReason
+  darkMode: boolean
+}
+
+export function AttentionBadge({ reason, darkMode }: AttentionBadgeProps) {
+  const config = ATTENTION_CONFIG[reason]
+  const className = darkMode ? config.darkClassName : config.className
+
+  return (
+    <span class={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${className}`}>
       <span>{config.emoji}</span>
       <span>{config.label}</span>
     </span>
@@ -165,10 +215,20 @@ export function SessionCard({
   const isActive = session.status === 'running' || session.status === 'pending'
   const isClickable = Boolean(session.threadId && session.chatId)
 
+  const attentionBorder = session.needsAttention
+    ? session.attentionReasons.includes('failed')
+      ? tg.darkMode ? 'ring-2 ring-red-500/60' : 'ring-2 ring-red-400/60'
+      : session.attentionReasons.includes('waiting_for_feedback')
+        ? tg.darkMode ? 'ring-2 ring-yellow-500/60' : 'ring-2 ring-yellow-400/60'
+        : session.attentionReasons.includes('interrupted')
+          ? tg.darkMode ? 'ring-2 ring-orange-500/60' : 'ring-2 ring-orange-400/60'
+          : ''
+    : ''
+
   return (
     <>
       <div
-        class={`rounded-lg p-4 mb-3 ${cardBg} ${isClickable ? 'cursor-pointer hover:opacity-90 transition-opacity active:scale-[0.98]' : ''}`}
+        class={`rounded-lg p-4 mb-3 ${cardBg} ${attentionBorder} ${isClickable ? 'cursor-pointer hover:opacity-90 transition-opacity active:scale-[0.98]' : ''}`}
         onClick={isClickable ? handleCardClick : undefined}
         role={isClickable ? 'button' : undefined}
         tabIndex={isClickable ? 0 : undefined}
@@ -184,6 +244,14 @@ export function SessionCard({
         </div>
 
         <p class={`text-sm mb-2 line-clamp-2 ${hintColor}`}>{session.command}</p>
+
+        {session.needsAttention && session.attentionReasons.length > 0 && (
+          <div class="flex flex-wrap gap-1 mb-2">
+            {session.attentionReasons.map((reason) => (
+              <AttentionBadge key={reason} reason={reason} darkMode={tg.darkMode} />
+            ))}
+          </div>
+        )}
 
         <div class={`flex items-center justify-between text-xs ${hintColor}`}>
           <div class="flex items-center gap-2">
@@ -322,13 +390,34 @@ export function SessionList({
     )
   }
 
-  const activeSessions = sessions.filter((s) => s.status === 'running' || s.status === 'pending')
-  const completedSessions = sessions.filter((s) => s.status === 'completed' || s.status === 'failed')
+  const attentionSessions = sessions.filter((s) => s.needsAttention)
+  const activeSessions = sessions.filter((s) => (s.status === 'running' || s.status === 'pending') && !s.needsAttention)
+  const completedSessions = sessions.filter((s) => (s.status === 'completed' || s.status === 'failed') && !s.needsAttention)
 
   const sectionLabelColor = tg.darkMode ? 'text-gray-400' : 'text-gray-500'
+  const attentionLabelColor = tg.darkMode ? 'text-yellow-400' : 'text-yellow-600'
 
   return (
     <div>
+      {attentionSessions.length > 0 && (
+        <section class="mb-6">
+          <h3 class={`text-sm font-medium mb-3 uppercase tracking-wide ${attentionLabelColor}`}>
+            Needs attention ({attentionSessions.length})
+          </h3>
+          {attentionSessions.map((session) => (
+            <SessionCard
+              key={session.id}
+              session={session}
+              onThreadClick={onThreadClick}
+              onSendReply={onSendReply}
+              onStopMinion={onStopMinion}
+              onCloseSession={onCloseSession}
+              isActionLoading={isActionLoading}
+            />
+          ))}
+        </section>
+      )}
+
       {activeSessions.length > 0 && (
         <section class="mb-6">
           <h3 class={`text-sm font-medium mb-3 uppercase tracking-wide ${sectionLabelColor}`}>

@@ -5,6 +5,13 @@ import { EventEmitter } from "node:events"
 import type { TopicSession, SessionState } from "./types.js"
 import type { DagGraph } from "./dag.js"
 
+export type AttentionReason =
+  | "failed"
+  | "waiting_for_feedback"
+  | "interrupted"
+  | "ci_fix"
+  | "idle_long"
+
 export interface ApiSession {
   id: string
   slug: string
@@ -19,6 +26,8 @@ export interface ApiSession {
   updatedAt: string
   parentId?: string
   childIds: string[]
+  needsAttention: boolean
+  attentionReasons: AttentionReason[]
 }
 
 export interface ApiDagNode {
@@ -96,6 +105,41 @@ function getMimeType(filePath: string): string {
   return MIME_TYPES[ext] ?? "application/octet-stream"
 }
 
+const IDLE_LONG_THRESHOLD_MS = 30 * 60 * 1000 // 30 minutes
+
+export function computeAttentionReasons(
+  session: TopicSession,
+  status: ApiSession["status"],
+): AttentionReason[] {
+  const reasons: AttentionReason[] = []
+
+  if (status === "failed") {
+    reasons.push("failed")
+  }
+
+  if (session.pendingFeedback && session.pendingFeedback.length > 0) {
+    reasons.push("waiting_for_feedback")
+  }
+
+  if (session.interruptedAt && !session.activeSessionId) {
+    reasons.push("interrupted")
+  }
+
+  if (session.mode === "ci-fix") {
+    reasons.push("ci_fix")
+  }
+
+  if (
+    status === "pending" &&
+    !session.activeSessionId &&
+    Date.now() - session.lastActivityAt > IDLE_LONG_THRESHOLD_MS
+  ) {
+    reasons.push("idle_long")
+  }
+
+  return reasons
+}
+
 export function topicSessionToApi(
   session: TopicSession,
   chatId: string,
@@ -109,6 +153,8 @@ export function topicSessionToApi(
       : session.activeSessionId || activeSessionId
         ? "running"
         : "pending"
+
+  const attentionReasons = computeAttentionReasons(session, status)
 
   return {
     id: session.slug,
@@ -124,6 +170,8 @@ export function topicSessionToApi(
     updatedAt: new Date(session.lastActivityAt).toISOString(),
     parentId: session.parentThreadId?.toString(),
     childIds: session.childThreadIds?.map(String) ?? [],
+    needsAttention: attentionReasons.length > 0,
+    attentionReasons,
   }
 }
 
