@@ -146,6 +146,85 @@ describe("bootstrapDependencies", () => {
     // Should NOT have hardlinked the stale cache
     expect(fs.existsSync(path.join(workDir, "node_modules", "some-pkg", "index.js"))).toBe(false)
   })
+
+  it("multiple worktrees share the same cache (DAG/stack scenario)", () => {
+    const reposDir = path.join(tmpDir, ".repos")
+    fs.mkdirSync(reposDir, { recursive: true })
+
+    const lockContent = '{"lockfileVersion":3,"packages":{}}'
+    const hash = crypto.createHash("sha256").update(lockContent).digest("hex")
+
+    // Simulate first worktree populating the cache via hardlink
+    const cacheDir = path.join(reposDir, "test-repo-node_modules")
+    fs.mkdirSync(path.join(cacheDir, "dep-a"), { recursive: true })
+    fs.writeFileSync(path.join(cacheDir, "dep-a", "index.js"), "module.exports = 'a'")
+    fs.mkdirSync(path.join(cacheDir, "dep-b"), { recursive: true })
+    fs.writeFileSync(path.join(cacheDir, "dep-b", "index.js"), "module.exports = 'b'")
+    fs.writeFileSync(path.join(reposDir, "test-repo-lock.hash"), hash)
+
+    // Create 3 sibling worktrees (simulating DAG children)
+    const worktrees = ["child-1", "child-2", "child-3"].map((name) => {
+      const dir = path.join(tmpDir, name)
+      fs.mkdirSync(dir)
+      fs.writeFileSync(path.join(dir, "package.json"), '{"name":"test"}')
+      fs.writeFileSync(path.join(dir, "package-lock.json"), lockContent)
+      return dir
+    })
+
+    // Bootstrap all three
+    for (const dir of worktrees) {
+      bootstrapDependencies(dir, reposDir, "test-repo")
+    }
+
+    // All three should have node_modules with both deps
+    for (const dir of worktrees) {
+      expect(fs.readFileSync(path.join(dir, "node_modules", "dep-a", "index.js"), "utf8")).toBe("module.exports = 'a'")
+      expect(fs.readFileSync(path.join(dir, "node_modules", "dep-b", "index.js"), "utf8")).toBe("module.exports = 'b'")
+    }
+
+    // Verify hardlinks: all files share the same inode as the cache
+    const cacheInode = fs.statSync(path.join(cacheDir, "dep-a", "index.js")).ino
+    for (const dir of worktrees) {
+      expect(fs.statSync(path.join(dir, "node_modules", "dep-a", "index.js")).ino).toBe(cacheInode)
+    }
+  })
+
+  it("child worktree can add new packages without affecting siblings", () => {
+    const reposDir = path.join(tmpDir, ".repos")
+    fs.mkdirSync(reposDir, { recursive: true })
+
+    const lockContent = '{"lockfileVersion":3,"packages":{}}'
+    const hash = crypto.createHash("sha256").update(lockContent).digest("hex")
+
+    // Set up cache
+    const cacheDir = path.join(reposDir, "test-repo-node_modules")
+    fs.mkdirSync(path.join(cacheDir, "shared-pkg"), { recursive: true })
+    fs.writeFileSync(path.join(cacheDir, "shared-pkg", "index.js"), "original")
+    fs.writeFileSync(path.join(reposDir, "test-repo-lock.hash"), hash)
+
+    // Two sibling worktrees
+    const child1 = path.join(tmpDir, "child-1")
+    const child2 = path.join(tmpDir, "child-2")
+    for (const dir of [child1, child2]) {
+      fs.mkdirSync(dir)
+      fs.writeFileSync(path.join(dir, "package.json"), '{"name":"test"}')
+      fs.writeFileSync(path.join(dir, "package-lock.json"), lockContent)
+    }
+
+    bootstrapDependencies(child1, reposDir, "test-repo")
+    bootstrapDependencies(child2, reposDir, "test-repo")
+
+    // Child 1 adds a new package (new file creation doesn't affect siblings)
+    fs.mkdirSync(path.join(child1, "node_modules", "new-pkg"), { recursive: true })
+    fs.writeFileSync(path.join(child1, "node_modules", "new-pkg", "index.js"), "new")
+
+    // Child 2 should not see the new package
+    expect(fs.existsSync(path.join(child2, "node_modules", "new-pkg"))).toBe(false)
+
+    // Both still have the shared package
+    expect(fs.readFileSync(path.join(child1, "node_modules", "shared-pkg", "index.js"), "utf8")).toBe("original")
+    expect(fs.readFileSync(path.join(child2, "node_modules", "shared-pkg", "index.js"), "utf8")).toBe("original")
+  })
 })
 
 describe("dirSizeBytes", () => {
