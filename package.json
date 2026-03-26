@@ -24,7 +24,7 @@
     "start": "node dist/cli.js",
     "dev": "npx tsx src/cli.ts",
     "build": "tsc && npm run build:ui",
-    "build:ui": "cd ui && npm install && npm run build",
+    "build:ui": "cd ui && npm install && npm run build && cp -r dist ../assets/ui",
     "lint": "eslint src/",
     "lint:ui": "cd ui && npm run lint",
     "typecheck": "tsc --noEmit",
