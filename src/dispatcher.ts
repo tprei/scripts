@@ -1407,6 +1407,9 @@ export class Dispatcher {
       mergeState = checkPRMergeability(prUrl, topicSession.cwd)
     }
 
+    // Track whether a fix agent modified the branch (merge conflict or CI fix)
+    let branchModifiedByFix = false
+
     // Auto-resolve merge conflicts if detected
     for (let conflictAttempt = 1; conflictAttempt <= maxRetries && mergeState === "CONFLICTING"; conflictAttempt++) {
       await this.telegram.sendMessage(
@@ -1445,6 +1448,8 @@ export class Dispatcher {
           topicSession.mode = "task"
           return
         }
+      } else {
+        branchModifiedByFix = true
       }
     }
 
@@ -1461,6 +1466,15 @@ export class Dispatcher {
         topicSession.threadId,
       )
       log.info({ prUrl }, "CI passed")
+
+      // Auto-restack downstream if a fix agent modified this branch
+      if (branchModifiedByFix && topicSession.dagId && topicSession.dagNodeId) {
+        const graph = this.dags.get(topicSession.dagId)
+        if (graph) {
+          await this.restackDownstream(topicSession, graph, topicSession.dagNodeId)
+        }
+      }
+
       return
     }
 
@@ -1553,6 +1567,15 @@ export class Dispatcher {
           topicSession.threadId,
         )
         log.info({ prUrl, attempt }, "CI passed after fix attempt")
+
+        // Auto-restack downstream branches if this node is part of a DAG
+        if (topicSession.dagId && topicSession.dagNodeId) {
+          const graph = this.dags.get(topicSession.dagId)
+          if (graph) {
+            await this.restackDownstream(topicSession, graph, topicSession.dagNodeId)
+          }
+        }
+
         topicSession.mode = "task"
         return
       }
@@ -2576,6 +2599,77 @@ export class Dispatcher {
     await this.telegram.sendMessage(
       formatRestackComplete(succeeded, toRestack.length),
       topicSession.threadId,
+    )
+
+    this.broadcastDag(graph, "dag_updated")
+    await this.updateDagPRDescriptions(graph, topicSession.cwd)
+    await this.persistTopicSessions()
+  }
+
+  /**
+   * Auto-restack downstream branches after a CI fix changes a DAG node's branch.
+   * Called after babysitPR succeeds for a node that is part of a DAG.
+   */
+  private async restackDownstream(
+    topicSession: TopicSession,
+    graph: DagGraph,
+    changedNodeId: string,
+  ): Promise<void> {
+    const toRestack = needsRestack(graph, changedNodeId)
+
+    if (toRestack.length === 0) return
+
+    // Skip restacking if any downstream nodes are currently running
+    const runningNodes = toRestack.filter((n) => n.status === "running")
+    if (runningNodes.length > 0) {
+      const names = runningNodes.map((n) => n.title).join(", ")
+      log.info({ changedNodeId, runningNodes: names }, "skipping auto-restack: downstream nodes are running")
+      return
+    }
+
+    const parentSession = topicSession.parentThreadId
+      ? this.topicSessions.get(topicSession.parentThreadId)
+      : null
+    const notifyThreadId = parentSession?.threadId ?? topicSession.threadId
+
+    await this.telegram.sendMessage(
+      formatRestackStart(toRestack.length),
+      notifyThreadId,
+    )
+
+    let succeeded = 0
+    for (const node of toRestack) {
+      const upstreamBranches = getUpstreamBranches(graph, node.id)
+      const upstreamBranch = upstreamBranches[0] ?? "main"
+
+      const result = await restackBranch(
+        this.config.workspace.root,
+        topicSession.repoUrl!,
+        node.branch!,
+        node.mergeBase!,
+        upstreamBranch,
+      )
+
+      if (result.success) {
+        if (result.newMergeBase) {
+          node.mergeBase = result.newMergeBase
+        }
+        succeeded++
+        await this.telegram.sendMessage(
+          formatRestackProgress(node.title, node.id),
+          notifyThreadId,
+        )
+      } else {
+        await this.telegram.sendMessage(
+          formatRestackConflict(node.title, node.id, result.conflictFiles ?? []),
+          notifyThreadId,
+        )
+      }
+    }
+
+    await this.telegram.sendMessage(
+      formatRestackComplete(succeeded, toRestack.length),
+      notifyThreadId,
     )
 
     this.broadcastDag(graph, "dag_updated")
