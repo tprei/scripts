@@ -3,7 +3,8 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { cleanBuildArtifacts, dirSizeBytes } from "../src/dispatcher.js"
+import crypto from "node:crypto"
+import { cleanBuildArtifacts, dirSizeBytes, bootstrapDependencies } from "../src/dispatcher.js"
 
 let tmpDir: string
 
@@ -81,6 +82,69 @@ describe("cleanBuildArtifacts", () => {
 
     expect(fs.existsSync(path.join(tmpDir, "node_modules"))).toBe(false)
     expect(fs.existsSync(path.join(tmpDir, ".next"))).toBe(false)
+  })
+})
+
+describe("bootstrapDependencies", () => {
+  it("skips when no package.json exists", () => {
+    const reposDir = path.join(tmpDir, ".repos")
+    fs.mkdirSync(reposDir, { recursive: true })
+    const workDir = path.join(tmpDir, "work")
+    fs.mkdirSync(workDir)
+
+    bootstrapDependencies(workDir, reposDir, "test-repo")
+
+    expect(fs.existsSync(path.join(workDir, "node_modules"))).toBe(false)
+  })
+
+  it("hardlinks cached node_modules when lockfile hash matches", () => {
+    const reposDir = path.join(tmpDir, ".repos")
+    fs.mkdirSync(reposDir, { recursive: true })
+    const workDir = path.join(tmpDir, "work")
+    fs.mkdirSync(workDir)
+
+    // Create package.json and lockfile in workDir
+    fs.writeFileSync(path.join(workDir, "package.json"), '{"name":"test"}')
+    const lockContent = '{"lockfileVersion":3}'
+    fs.writeFileSync(path.join(workDir, "package-lock.json"), lockContent)
+
+    // Create cached node_modules with matching hash
+    const cacheDir = path.join(reposDir, "test-repo-node_modules")
+    fs.mkdirSync(path.join(cacheDir, "some-pkg"), { recursive: true })
+    fs.writeFileSync(path.join(cacheDir, "some-pkg", "index.js"), "module.exports = 1")
+
+    // Write matching hash
+    const hash = crypto.createHash("sha256").update(lockContent).digest("hex")
+    fs.writeFileSync(path.join(reposDir, "test-repo-lock.hash"), hash)
+
+    bootstrapDependencies(workDir, reposDir, "test-repo")
+
+    // node_modules should exist in workDir via hardlink copy
+    expect(fs.existsSync(path.join(workDir, "node_modules", "some-pkg", "index.js"))).toBe(true)
+    expect(fs.readFileSync(path.join(workDir, "node_modules", "some-pkg", "index.js"), "utf8")).toBe("module.exports = 1")
+  })
+
+  it("does not hardlink when lockfile hash differs", () => {
+    const reposDir = path.join(tmpDir, ".repos")
+    fs.mkdirSync(reposDir, { recursive: true })
+    const workDir = path.join(tmpDir, "work")
+    fs.mkdirSync(workDir)
+
+    // Create package.json (no lockfile → npm install path, which will fail, but that's fine)
+    fs.writeFileSync(path.join(workDir, "package.json"), '{"name":"test"}')
+    fs.writeFileSync(path.join(workDir, "package-lock.json"), '{"lockfileVersion":3}')
+
+    // Create cached node_modules with WRONG hash
+    const cacheDir = path.join(reposDir, "test-repo-node_modules")
+    fs.mkdirSync(path.join(cacheDir, "some-pkg"), { recursive: true })
+    fs.writeFileSync(path.join(cacheDir, "some-pkg", "index.js"), "old")
+    fs.writeFileSync(path.join(reposDir, "test-repo-lock.hash"), "wrong-hash")
+
+    // This will attempt npm ci which will fail (no real npm project), but should be non-fatal
+    bootstrapDependencies(workDir, reposDir, "test-repo")
+
+    // Should NOT have hardlinked the stale cache
+    expect(fs.existsSync(path.join(workDir, "node_modules", "some-pkg", "index.js"))).toBe(false)
   })
 })
 
