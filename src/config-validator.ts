@@ -186,7 +186,10 @@ export function validateClaudeConfig(config: unknown, path = "claude"): Validati
       if (strErr) {
         errors.push(strErr)
       } else if (!validModels.includes(val) && !val.includes("/")) {
-        // Allow custom model identifiers with "/" (e.g., "claude-3-opus-20240229")
+        errors.push(new ConfigValidationError(
+          `Invalid model "${val}". Valid models: ${validModels.join(", ")} (or a custom model ID containing "/")`,
+          `${path}.${field}`,
+        ))
       }
     } else {
       errors.push(error(`${path}.${field}`, "required"))

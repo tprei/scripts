@@ -159,6 +159,25 @@ describe("validateClaudeConfig", () => {
     })
     expect(result.valid).toBe(false)
   })
+
+  it("rejects invalid model names that are not in validModels and contain no slash", () => {
+    const result = validateClaudeConfig({
+      planModel: "badmodel",
+      thinkModel: "opus",
+      reviewModel: "opus",
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.path.includes("planModel"))).toBe(true)
+  })
+
+  it("accepts custom model identifiers containing a slash", () => {
+    const result = validateClaudeConfig({
+      planModel: "claude-3-opus-20240229/custom",
+      thinkModel: "opus",
+      reviewModel: "opus",
+    })
+    expect(result.valid).toBe(true)
+  })
 })
 
 describe("validateWorkspaceConfig", () => {
