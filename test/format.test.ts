@@ -32,6 +32,9 @@ import {
   formatCINoChecks,
   formatUsage,
   formatDagNodeComplete,
+  buildPlanCompleteKeyboard,
+  buildSessionReadoutKeyboard,
+  formatSessionReadout,
 } from "../src/format.js"
 import type { ClaudeUsageResponse } from "../src/claude-usage.js"
 import type { AggregateStats, SessionRecord, ModeBreakdown } from "../src/stats.js"
@@ -725,5 +728,84 @@ describe("formatDagNodeComplete", () => {
     const result = formatDagNodeComplete("my-slug", "completed", "My Task", undefined, { done: 3, total: 5, running: 1 })
     expect(result).toContain("3/5 complete")
     expect(result).toContain("1 running")
+  })
+})
+
+describe("buildPlanCompleteKeyboard", () => {
+  it("returns two rows: read button and action buttons", () => {
+    const keyboard = buildPlanCompleteKeyboard(12345)
+    expect(keyboard).toHaveLength(2)
+    expect(keyboard[0]).toHaveLength(1)
+    expect(keyboard[0][0].text).toContain("Read session")
+    expect(keyboard[0][0].callback_data).toBe("plan-read:12345")
+    expect(keyboard[1]).toHaveLength(4)
+    expect(keyboard[1].map((b) => b.text)).toEqual(["🚀 Execute", "🔀 Split", "📚 Stack", "🔗 DAG"])
+  })
+
+  it("encodes threadId in callback_data", () => {
+    const keyboard = buildPlanCompleteKeyboard(99999)
+    expect(keyboard[1][0].callback_data).toBe("plan-action:execute:99999")
+    expect(keyboard[1][1].callback_data).toBe("plan-action:split:99999")
+    expect(keyboard[1][2].callback_data).toBe("plan-action:stack:99999")
+    expect(keyboard[1][3].callback_data).toBe("plan-action:dag:99999")
+  })
+
+  it("keeps callback_data within 64-byte limit", () => {
+    const keyboard = buildPlanCompleteKeyboard(999999999)
+    for (const row of keyboard) {
+      for (const btn of row) {
+        expect(btn.callback_data.length).toBeLessThanOrEqual(64)
+      }
+    }
+  })
+})
+
+describe("buildSessionReadoutKeyboard", () => {
+  it("returns one row with 4 action buttons", () => {
+    const keyboard = buildSessionReadoutKeyboard(12345)
+    expect(keyboard).toHaveLength(1)
+    expect(keyboard[0]).toHaveLength(4)
+  })
+
+  it("does not include a read button", () => {
+    const keyboard = buildSessionReadoutKeyboard(12345)
+    const allData = keyboard.flat().map((b) => b.callback_data)
+    expect(allData.every((d) => d.startsWith("plan-action:"))).toBe(true)
+  })
+})
+
+describe("formatSessionReadout", () => {
+  it("includes slug and conversation messages", () => {
+    const conversation = [
+      { role: "user", text: "Plan a feature" },
+      { role: "assistant", text: "Here is the plan" },
+    ]
+    const msg = formatSessionReadout("calm-bay", conversation)
+    expect(msg).toContain("Session readout")
+    expect(msg).toContain("calm-bay")
+    expect(msg).toContain("Plan a feature")
+    expect(msg).toContain("Here is the plan")
+  })
+
+  it("shows placeholder for empty conversation", () => {
+    const msg = formatSessionReadout("calm-bay", [])
+    expect(msg).toContain("No messages yet")
+  })
+
+  it("truncates long conversations and adds omitted notice", () => {
+    const longConversation = Array.from({ length: 100 }, (_, i) => ({
+      role: i % 2 === 0 ? "user" : "assistant",
+      text: "x".repeat(200),
+    }))
+    const msg = formatSessionReadout("calm-bay", longConversation)
+    expect(msg).toContain("earlier messages omitted")
+    expect(msg.length).toBeLessThan(5000)
+  })
+
+  it("escapes HTML in conversation text", () => {
+    const conversation = [{ role: "user", text: "use <script> tag" }]
+    const msg = formatSessionReadout("calm-bay", conversation)
+    expect(msg).toContain("&lt;script&gt;")
+    expect(msg).not.toContain("<script>")
   })
 })
