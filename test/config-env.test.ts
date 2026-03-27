@@ -127,7 +127,7 @@ describe("configFromEnv", () => {
   describe("codex config", () => {
     it("defaults to o4-mini, codex, full-auto", () => {
       const config = configFromEnv()
-      expect(config.codex.defaultModel).toBe("o4-mini")
+      expect(config.codex.defaultModel).toBe("gpt-5.4")
       expect(config.codex.execPath).toBe("codex")
       expect(config.codex.approvalMode).toBe("full-auto")
     })
