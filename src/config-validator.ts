@@ -13,7 +13,6 @@ import type {
   ApiServerConfig,
   ProviderProfile,
   TelegramQueueConfig,
-  BackendType,
 } from "./config-types.js"
 
 const VALID_BACKENDS: readonly string[] = ["goose", "codex"]
