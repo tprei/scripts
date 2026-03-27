@@ -93,6 +93,19 @@ import {
   prepareWorkspace, removeWorkspace, cleanBuildArtifacts, dirSizeBytes,
   downloadPhotos, prepareFanInBranch, mergeUpstreamBranches,
 } from "./session-manager.js"
+import {
+  type CommandHandlerDeps,
+  handleStatusCommand,
+  handleStatsCommand,
+  handleUsageCommand,
+  handleHelpCommand,
+  handleConfigCommand,
+  handleTaskCommand,
+  handlePlanCommand,
+  handleThinkCommand,
+  handleReviewCommand,
+  handleCallbackQuery,
+} from "./command-handlers.js"
 
 const log = loggers.dispatcher
 
@@ -571,208 +584,32 @@ export class Dispatcher {
   }
 
   private async handleCallbackQuery(query: TelegramCallbackQuery): Promise<void> {
-    if (!this.config.telegram.allowedUserIds.includes(query.from.id)) {
-      await this.telegram.answerCallbackQuery(query.id, "Not authorized")
-      return
-    }
-
-    const data = query.data
-    if (!data) {
-      await this.telegram.answerCallbackQuery(query.id)
-      return
-    }
-
-    if (data.startsWith("profile:")) {
-      await this.handleProfileCallback(query, data.slice("profile:".length))
-      return
-    }
-
-    if (!data.startsWith("repo:") && !data.startsWith("plan-repo:") && !data.startsWith("think-repo:") && !data.startsWith("review-repo:")) {
-      await this.telegram.answerCallbackQuery(query.id)
-      return
-    }
-
-    const isThink = data.startsWith("think-repo:")
-    const isPlan = data.startsWith("plan-repo:")
-    const isReview = data.startsWith("review-repo:")
-    const repoSlug = isThink
-      ? data.slice("think-repo:".length)
-      : isPlan
-      ? data.slice("plan-repo:".length)
-      : isReview
-      ? data.slice("review-repo:".length)
-      : data.slice("repo:".length)
-    const repoUrl = this.config.repos[repoSlug]
-    if (!repoUrl) {
-      await this.telegram.answerCallbackQuery(query.id, "Unknown repo")
-      return
-    }
-
-    const messageId = query.message?.message_id
-
-    if (messageId) {
-      const pending = this.pendingTasks.get(messageId)
-      if (pending) {
-        this.pendingTasks.delete(messageId)
-        await this.telegram.answerCallbackQuery(query.id, `Selected: ${repoSlug}`)
-        await this.telegram.deleteMessage(messageId)
-
-        pending.repoSlug = repoSlug
-        pending.repoUrl = repoUrl
-        if (pending.mode === "review" && !pending.task) {
-          pending.task = buildReviewAllTask(repoUrl)
-        }
-
-        const defaultProfileId = this.profileStore.getDefaultId()
-        if (defaultProfileId) {
-          await this.startTopicSessionWithProfile(repoUrl, pending.task, pending.mode, defaultProfileId)
-        } else {
-          const profiles = this.profileStore.list()
-          if (profiles.length > 1) {
-            const keyboard = buildProfileKeyboard(profiles)
-            const msgId = await this.telegram.sendMessageWithKeyboard(
-              `Pick a profile for: <i>${escapeHtml(pending.task)}</i>`,
-              keyboard,
-              pending.threadId,
-            )
-            if (msgId) {
-              this.pendingProfiles.set(msgId, pending)
-            }
-          } else {
-            await this.startTopicSessionWithProfile(repoUrl, pending.task, pending.mode, undefined)
-          }
-        }
-        return
-      }
-    }
-
-    await this.telegram.answerCallbackQuery(query.id)
+    await handleCallbackQuery(query, this.buildCommandHandlerDeps())
   }
 
   private async handleProfileCallback(query: TelegramCallbackQuery, profileId: string): Promise<void> {
-    const profile = this.profileStore.get(profileId)
-    if (!profile) {
-      await this.telegram.answerCallbackQuery(query.id, "Unknown profile")
-      return
-    }
-
-    const messageId = query.message?.message_id
-    if (messageId) {
-      const pending = this.pendingProfiles.get(messageId)
-      if (pending) {
-        this.pendingProfiles.delete(messageId)
-        await this.telegram.answerCallbackQuery(query.id, `Selected: ${profile.name}`)
-        await this.telegram.deleteMessage(messageId)
-        await this.startTopicSessionWithProfile(pending.repoUrl, pending.task, pending.mode, profileId)
-        return
-      }
-    }
-
-    await this.telegram.answerCallbackQuery(query.id)
+    const { handleProfileCallback: handleProfile } = await import("./command-handlers.js")
+    await handleProfile(query, profileId, this.buildCommandHandlerDeps())
   }
 
   private async handleStatusCommand(): Promise<void> {
-    const taskSessions = [...this.sessions.values()]
-    const topicSessionList = [...this.topicSessions.values()]
-    const msg = formatStatus(taskSessions, topicSessionList, this.config.workspace.maxConcurrentSessions)
-    await this.telegram.sendMessage(msg)
+    await handleStatusCommand(this.buildCommandHandlerDeps())
   }
 
   private async handleStatsCommand(): Promise<void> {
-    const agg = await this.stats.aggregate(7)
-    await this.telegram.sendMessage(formatStats(agg))
+    await handleStatsCommand(this.buildCommandHandlerDeps())
   }
 
   private async handleUsageCommand(): Promise<void> {
-    const [acpUsage, agg, breakdown, recent] = await Promise.all([
-      fetchClaudeUsage(),
-      this.stats.aggregate(7),
-      this.stats.breakdownByMode(7),
-      this.stats.recentSessions(5),
-    ])
-    await this.telegram.sendMessage(formatUsage(acpUsage, agg, breakdown, recent))
+    await handleUsageCommand(this.buildCommandHandlerDeps())
   }
 
   private async handleHelpCommand(): Promise<void> {
-    await this.telegram.sendMessage(formatHelp())
+    await handleHelpCommand(this.buildCommandHandlerDeps())
   }
 
   private async handleConfigCommand(args: string): Promise<void> {
-    if (!args) {
-      const profiles = this.profileStore.list()
-      const defaultId = this.profileStore.getDefaultId()
-      await this.telegram.sendMessage(formatProfileList(profiles, defaultId))
-      return
-    }
-
-    const parts = args.split(/\s+/)
-    const subcommand = parts[0]
-
-    if (subcommand === "add" && parts.length >= 3) {
-      const id = parts[1]
-      const name = parts.slice(2).join(" ")
-      const added = this.profileStore.add({ id, name })
-      if (added) {
-        await this.telegram.sendMessage(`✅ Added profile <code>${escapeHtml(id)}</code>`)
-      } else {
-        await this.telegram.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> already exists`)
-      }
-      return
-    }
-
-    if (subcommand === "set" && parts.length >= 4) {
-      const id = parts[1]
-      const field = parts[2]
-      const value = parts.slice(3).join(" ")
-      const validFields = ["name", "baseUrl", "authToken", "opusModel", "sonnetModel", "haikuModel"]
-      if (!validFields.includes(field)) {
-        await this.telegram.sendMessage(`❌ Invalid field. Valid: ${validFields.join(", ")}`)
-        return
-      }
-      const updated = this.profileStore.update(id, { [field]: value })
-      if (updated) {
-        await this.telegram.sendMessage(`✅ Updated <code>${escapeHtml(id)}.${escapeHtml(field)}</code>`)
-      } else {
-        await this.telegram.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> not found`)
-      }
-      return
-    }
-
-    if (subcommand === "remove" && parts.length >= 2) {
-      const id = parts[1]
-      const removed = this.profileStore.remove(id)
-      if (removed) {
-        await this.telegram.sendMessage(`✅ Removed profile <code>${escapeHtml(id)}</code>`)
-      } else {
-        await this.telegram.sendMessage(`❌ Cannot remove <code>${escapeHtml(id)}</code> (not found or is default)`)
-      }
-      return
-    }
-
-    if (subcommand === "default") {
-      if (parts.length === 1) {
-        // /config default - clear the default
-        this.profileStore.clearDefault()
-        await this.telegram.sendMessage(`✅ Cleared default profile`)
-        return
-      }
-      const id = parts[1]
-      if (id === "clear") {
-        this.profileStore.clearDefault()
-        await this.telegram.sendMessage(`✅ Cleared default profile`)
-        return
-      }
-      const set = this.profileStore.setDefaultId(id)
-      if (set) {
-        const profile = this.profileStore.get(id)
-        await this.telegram.sendMessage(`✅ Default profile set to <code>${escapeHtml(id)}</code> (${escapeHtml(profile?.name ?? id)})`)
-      } else {
-        await this.telegram.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> not found`)
-      }
-      return
-    }
-
-    await this.telegram.sendMessage(formatConfigHelp())
+    await handleConfigCommand(args, this.buildCommandHandlerDeps())
   }
 
   private async handleCleanCommand(): Promise<void> {
@@ -875,231 +712,19 @@ export class Dispatcher {
   }
 
   private async handleTaskCommand(args: string, replyThreadId?: number, photos?: TelegramPhotoSize[]): Promise<void> {
-    if (this.sessions.size >= this.config.workspace.maxConcurrentSessions) {
-      if (replyThreadId !== undefined) {
-        await this.telegram.sendMessage(
-          `⚠️ Max concurrent sessions (${this.config.workspace.maxConcurrentSessions}) reached. Wait for one to finish.`,
-          replyThreadId,
-        )
-      }
-      return
-    }
-
-    const { repoUrl, task } = parseTaskArgs(this.config.repos, args)
-
-    if (!task) {
-      if (replyThreadId !== undefined) {
-        await this.telegram.sendMessage(
-          `Usage: <code>/task [repo] description of the task</code> (alias: <code>/w</code>)\n` +
-          `Repos: ${Object.keys(this.config.repos).map((s) => `<code>${s}</code>`).join(", ")}\n` +
-          `Or use a full URL or omit repo entirely.`,
-          replyThreadId,
-        )
-      }
-      return
-    }
-
-    if (!repoUrl) {
-      const repoKeys = Object.keys(this.config.repos)
-      if (repoKeys.length > 0) {
-        const keyboard = buildRepoKeyboard(repoKeys)
-        const msgId = await this.telegram.sendMessageWithKeyboard(
-          `Pick a repo for: <i>${escapeHtml(task)}</i>`,
-          keyboard,
-          replyThreadId,
-        )
-        if (msgId) {
-          this.pendingTasks.set(msgId, { task, threadId: replyThreadId, mode: "task" })
-        }
-        return
-      }
-    }
-
-    const defaultProfileId = this.profileStore.getDefaultId()
-    if (defaultProfileId) {
-      await this.startTopicSession(repoUrl, task, "task", photos, defaultProfileId)
-      return
-    }
-
-    const profiles = this.profileStore.list()
-    if (profiles.length > 1) {
-      const keyboard = buildProfileKeyboard(profiles)
-      const msgId = await this.telegram.sendMessageWithKeyboard(
-        `Pick a profile for: <i>${escapeHtml(task)}</i>`,
-        keyboard,
-        replyThreadId,
-      )
-      if (msgId) {
-        this.pendingProfiles.set(msgId, { task, threadId: replyThreadId, repoUrl, mode: "task" })
-      }
-      return
-    }
-
-    await this.startTopicSession(repoUrl, task, "task", photos)
+    await handleTaskCommand(args, replyThreadId, photos, this.buildCommandHandlerDeps())
   }
 
   private async handlePlanCommand(args: string, replyThreadId?: number, photos?: TelegramPhotoSize[]): Promise<void> {
-    const { repoUrl, task } = parseTaskArgs(this.config.repos, args)
-
-    if (!task) {
-      if (replyThreadId !== undefined) {
-        await this.telegram.sendMessage(
-          `Usage: <code>/plan [repo] description of what to plan</code>`,
-          replyThreadId,
-        )
-      }
-      return
-    }
-
-    if (!repoUrl) {
-      const repoKeys = Object.keys(this.config.repos)
-      if (repoKeys.length > 0) {
-        const keyboard = buildRepoKeyboard(repoKeys, "plan")
-        const msgId = await this.telegram.sendMessageWithKeyboard(
-          `Pick a repo for plan: <i>${escapeHtml(task)}</i>`,
-          keyboard,
-          replyThreadId,
-        )
-        if (msgId) {
-          this.pendingTasks.set(msgId, { task, threadId: replyThreadId, mode: "plan" })
-        }
-        return
-      }
-    }
-
-    const defaultProfileId = this.profileStore.getDefaultId()
-    if (defaultProfileId) {
-      await this.startTopicSession(repoUrl, task, "plan", photos, defaultProfileId)
-      return
-    }
-
-    const profiles = this.profileStore.list()
-    if (profiles.length > 1) {
-      const keyboard = buildProfileKeyboard(profiles)
-      const msgId = await this.telegram.sendMessageWithKeyboard(
-        `Pick a profile for plan: <i>${escapeHtml(task)}</i>`,
-        keyboard,
-        replyThreadId,
-      )
-      if (msgId) {
-        this.pendingProfiles.set(msgId, { task, threadId: replyThreadId, repoUrl, mode: "plan" })
-      }
-      return
-    }
-
-    await this.startTopicSession(repoUrl, task, "plan", photos)
+    await handlePlanCommand(args, replyThreadId, photos, this.buildCommandHandlerDeps())
   }
 
   private async handleThinkCommand(args: string, replyThreadId?: number, photos?: TelegramPhotoSize[]): Promise<void> {
-    const { repoUrl, task } = parseTaskArgs(this.config.repos, args)
-
-    if (!task) {
-      if (replyThreadId !== undefined) {
-        await this.telegram.sendMessage(
-          `Usage: <code>/think [repo] question or topic to research</code>`,
-          replyThreadId,
-        )
-      }
-      return
-    }
-
-    if (!repoUrl) {
-      const repoKeys = Object.keys(this.config.repos)
-      if (repoKeys.length > 0) {
-        const keyboard = buildRepoKeyboard(repoKeys, "think")
-        const msgId = await this.telegram.sendMessageWithKeyboard(
-          `Pick a repo for research: <i>${escapeHtml(task)}</i>`,
-          keyboard,
-          replyThreadId,
-        )
-        if (msgId) {
-          this.pendingTasks.set(msgId, { task, threadId: replyThreadId, mode: "think" })
-        }
-        return
-      }
-    }
-
-    const defaultProfileId = this.profileStore.getDefaultId()
-    if (defaultProfileId) {
-      await this.startTopicSession(repoUrl, task, "think", photos, defaultProfileId)
-      return
-    }
-
-    const profiles = this.profileStore.list()
-    if (profiles.length > 1) {
-      const keyboard = buildProfileKeyboard(profiles)
-      const msgId = await this.telegram.sendMessageWithKeyboard(
-        `Pick a profile for research: <i>${escapeHtml(task)}</i>`,
-        keyboard,
-        replyThreadId,
-      )
-      if (msgId) {
-        this.pendingProfiles.set(msgId, { task, threadId: replyThreadId, repoUrl, mode: "think" })
-      }
-      return
-    }
-
-    await this.startTopicSession(repoUrl, task, "think", photos)
+    await handleThinkCommand(args, replyThreadId, photos, this.buildCommandHandlerDeps())
   }
 
   private async handleReviewCommand(args: string, replyThreadId?: number): Promise<void> {
-    const parsed = parseReviewArgs(this.config.repos, args)
-
-    if (!parsed.repoUrl && !parsed.task) {
-      const repoKeys = Object.keys(this.config.repos)
-      if (repoKeys.length === 0) {
-        if (replyThreadId !== undefined) {
-          await this.telegram.sendMessage(
-            `Usage: <code>/review [repo] [PR#]</code>\nNo repos configured.`,
-            replyThreadId,
-          )
-        }
-        return
-      }
-      if (repoKeys.length === 1) {
-        const repoUrl = this.config.repos[repoKeys[0]]
-        const task = buildReviewAllTask(repoUrl)
-        await this.startReviewSession(repoUrl, task, replyThreadId)
-        return
-      }
-      const keyboard = buildRepoKeyboard(repoKeys, "review")
-      const msgId = await this.telegram.sendMessageWithKeyboard(
-        `Pick a repo to review all unreviewed PRs:`,
-        keyboard,
-        replyThreadId,
-      )
-      if (msgId) {
-        this.pendingTasks.set(msgId, { task: "", threadId: replyThreadId, mode: "review" })
-      }
-      return
-    }
-
-    if (parsed.repoUrl && !parsed.task) {
-      const task = buildReviewAllTask(parsed.repoUrl)
-      await this.startReviewSession(parsed.repoUrl, task, replyThreadId)
-      return
-    }
-
-    if (!parsed.repoUrl && parsed.task) {
-      const repoKeys = Object.keys(this.config.repos)
-      if (repoKeys.length > 0) {
-        const keyboard = buildRepoKeyboard(repoKeys, "review")
-        const msgId = await this.telegram.sendMessageWithKeyboard(
-          `Pick a repo for review: <i>${escapeHtml(parsed.task)}</i>`,
-          keyboard,
-          replyThreadId,
-        )
-        if (msgId) {
-          this.pendingTasks.set(msgId, { task: parsed.task, threadId: replyThreadId, mode: "review" })
-        }
-        return
-      }
-    }
-
-    if (parsed.repoUrl && parsed.task) {
-      await this.startReviewSession(parsed.repoUrl, parsed.task, replyThreadId)
-      return
-    }
+    await handleReviewCommand(args, replyThreadId, this.buildCommandHandlerDeps())
   }
 
   private async startReviewSession(repoUrl: string, task: string, replyThreadId?: number): Promise<void> {
@@ -2843,6 +2468,29 @@ export class Dispatcher {
 
   activeSessions(): number {
     return this.sessions.size
+  }
+
+  /**
+   * Build command handler dependencies for extracted handlers.
+   */
+  private buildCommandHandlerDeps(): CommandHandlerDeps {
+    return {
+      telegram: this.telegram,
+      config: this.config,
+      profileStore: this.profileStore,
+      stats: this.stats,
+      getActiveSessionsCount: () => this.sessions.size,
+      getTopicSessions: () => this.topicSessions,
+      getSessions: () => this.sessions,
+      onStartTopicSession: (repoUrl, task, mode, photos, profileId) =>
+        this.startTopicSession(repoUrl, task, mode, photos, profileId),
+      onStartTopicSessionWithProfile: (repoUrl, task, mode, profileId) =>
+        this.startTopicSessionWithProfile(repoUrl, task, mode, profileId),
+      onStartReviewSession: (repoUrl, task, replyThreadId) =>
+        this.startReviewSession(repoUrl, task, replyThreadId),
+      pendingTasks: this.pendingTasks,
+      pendingProfiles: this.pendingProfiles,
+    }
   }
 
   // API server accessors
