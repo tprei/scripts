@@ -42,7 +42,7 @@ export function configFromEnv(overrides?: Partial<MinionConfig>): MinionConfig {
       reviewModel: optional("REVIEW_MODEL", "opus"),
     },
     codex: {
-      defaultModel: optional("CODEX_DEFAULT_MODEL", "o4-mini"),
+      defaultModel: optional("CODEX_DEFAULT_MODEL", "gpt-5.4"),
       execPath: optional("CODEX_EXEC_PATH", "codex"),
       approvalMode: optional("CODEX_APPROVAL_MODE", "full-auto"),
     },
