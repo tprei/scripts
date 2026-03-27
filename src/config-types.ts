@@ -15,6 +15,12 @@ export interface ClaudeConfig {
   reviewModel: string
 }
 
+export interface CodexConfig {
+  defaultModel: string
+  execPath: string
+  approvalMode: string
+}
+
 export interface WorkspaceConfig {
   root: string
   maxConcurrentSessions: number
@@ -71,6 +77,7 @@ export interface MinionConfig {
   telegramQueue: TelegramQueueConfig
   goose: GooseConfig
   claude: ClaudeConfig
+  codex: CodexConfig
   workspace: WorkspaceConfig
   ci: CiConfig
   mcp: McpConfig
