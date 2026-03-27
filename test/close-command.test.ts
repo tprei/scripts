@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 import { Dispatcher } from "../src/dispatcher.js"
 import type { TelegramClient } from "../src/telegram.js"
 import { Observer } from "../src/observer.js"
@@ -137,5 +137,101 @@ describe("handleCloseCommand ordering", () => {
     // kill happens in background, give it time to complete
     await new Promise((r) => setTimeout(r, 100))
     expect(callOrder).toContain("kill")
+  })
+})
+
+describe("closeChildSessions threadId validation", () => {
+  let telegram: TelegramClient
+  let config: MinionConfig
+  let observer: Observer
+  let dispatcher: Dispatcher
+  let topicSessions: Map<number, TopicSession>
+
+  beforeEach(() => {
+    telegram = makeMockTelegram()
+    config = makeConfig()
+    observer = new Observer(telegram, 1)
+    dispatcher = new Dispatcher(telegram, observer, config)
+    topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
+  })
+
+  it("returns early when parent.threadId is undefined", async () => {
+    // Create multiple unrelated sessions that should NOT be deleted
+    const session1: TopicSession = {
+      threadId: 101,
+      repo: "repo1",
+      cwd: "/tmp/ws1",
+      slug: "slug1",
+      conversation: [],
+      pendingFeedback: [],
+      mode: "task",
+      lastActivityAt: Date.now(),
+    }
+    const session2: TopicSession = {
+      threadId: 102,
+      repo: "repo2",
+      cwd: "/tmp/ws2",
+      slug: "slug2",
+      conversation: [],
+      pendingFeedback: [],
+      mode: "task",
+      lastActivityAt: Date.now(),
+    }
+    topicSessions.set(101, session1)
+    topicSessions.set(102, session2)
+
+    // Create a parent with undefined threadId (simulates corrupted state)
+    const invalidParent: TopicSession = {
+      threadId: undefined as unknown as number,
+      repo: "parent-repo",
+      cwd: "/tmp/parent-ws",
+      slug: "parent-slug",
+      conversation: [],
+      pendingFeedback: [],
+      mode: "task",
+      lastActivityAt: Date.now(),
+    }
+
+    // Call handleCloseCommand which internally calls closeChildSessions
+    await dispatcher.handleCloseCommand(invalidParent.threadId)
+
+    // Verify that no sessions were deleted (validation returned early)
+    expect(topicSessions.has(101)).toBe(true)
+    expect(topicSessions.has(102)).toBe(true)
+    expect(telegram.deleteForumTopic).not.toHaveBeenCalled()
+  })
+
+  it("returns early when parent.threadId is NaN", async () => {
+    // Create multiple unrelated sessions
+    const session1: TopicSession = {
+      threadId: 201,
+      repo: "repo1",
+      cwd: "/tmp/ws1",
+      slug: "slug1",
+      conversation: [],
+      pendingFeedback: [],
+      mode: "task",
+      lastActivityAt: Date.now(),
+    }
+    topicSessions.set(201, session1)
+
+    // Create a parent with NaN threadId
+    const invalidParent: TopicSession = {
+      threadId: NaN,
+      repo: "parent-repo",
+      cwd: "/tmp/parent-ws",
+      slug: "parent-slug",
+      conversation: [],
+      pendingFeedback: [],
+      mode: "task",
+      lastActivityAt: Date.now(),
+    }
+    topicSessions.set(NaN, invalidParent)
+
+    // Call handleCloseCommand
+    await dispatcher.handleCloseCommand(NaN)
+
+    // Verify that session1 was NOT deleted
+    expect(topicSessions.has(201)).toBe(true)
   })
 })
