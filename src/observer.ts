@@ -30,8 +30,14 @@ const SCREENSHOTS_DIR = ".screenshots"
 const MIN_TEXT_LENGTH = 20
 const PRE_TOOL_NARRATION_LIMIT = 60
 const ACTIVITY_EDIT_DEBOUNCE_MS = 2000
+// Delay between sending multi-chunk messages to avoid Telegram rate limits.
+const CHUNK_SEND_DELAY_MS = 100
 
 export type TextCaptureCallback = (sessionId: string, text: string) => void
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 interface SessionState {
   // Text buffering: Goose streams text token-by-token; we accumulate and flush.
@@ -246,9 +252,13 @@ export class Observer {
     // Get formatted chunks (may be single message or multiple with headers like "1/3")
     const chunks = formatAssistantTextChunks(meta.topicName, text, toolLines, toolCount)
 
-    // Send each chunk as a separate message
-    for (const chunk of chunks) {
-      await this.telegram.sendMessage(chunk, meta.threadId)
+    // Send each chunk as a separate message with a small delay to avoid rate limits
+    for (let i = 0; i < chunks.length; i++) {
+      await this.telegram.sendMessage(chunks[i], meta.threadId)
+      // Add delay between chunks (but not after the last one)
+      if (i < chunks.length - 1) {
+        await sleep(CHUNK_SEND_DELAY_MS)
+      }
     }
     if (state.activityEditTimer !== null) {
       clearTimeout(state.activityEditTimer)
