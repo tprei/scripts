@@ -13,7 +13,10 @@ import type {
   ApiServerConfig,
   ProviderProfile,
   TelegramQueueConfig,
+  BackendType,
 } from "./config-types.js"
+
+const VALID_BACKENDS: readonly string[] = ["goose", "codex"]
 
 export class ConfigValidationError extends Error {
   constructor(
@@ -446,6 +449,10 @@ export function validateProviderProfile(profile: unknown, path = "profile"): Val
     if (err) errors.push(err)
   }
 
+  if (p.backend !== undefined && !VALID_BACKENDS.includes(p.backend)) {
+    errors.push(error(`${path}.backend`, `must be one of: ${VALID_BACKENDS.join(", ")}`))
+  }
+
   return { valid: errors.length === 0, errors }
 }
 
@@ -473,6 +480,10 @@ export function validateMinionConfig(config: unknown): ValidationResult {
 
   const codexResult = validateCodexConfig(c.codex)
   errors.push(...codexResult.errors)
+
+  if (c.defaultBackend !== undefined && !VALID_BACKENDS.includes(c.defaultBackend)) {
+    errors.push(error("defaultBackend", `must be one of: ${VALID_BACKENDS.join(", ")}`))
+  }
 
   const workspaceResult = validateWorkspaceConfig(c.workspace)
   errors.push(...workspaceResult.errors)

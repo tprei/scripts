@@ -16,6 +16,7 @@ const baseConfig: SessionConfig = {
   goose: { provider: "test", model: "test" },
   claude: { planModel: "test", thinkModel: "test", reviewModel: "test" },
   codex: codexConfig,
+  backend: "goose",
   mcp: {
     browserEnabled: false,
     githubEnabled: false,

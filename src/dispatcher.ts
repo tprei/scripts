@@ -1229,12 +1229,14 @@ export class Dispatcher {
 
     const prompts = { ...DEFAULT_PROMPTS, ...this.config.prompts }
     const profile = topicSession.profileId ? this.profileStore.get(topicSession.profileId) : undefined
+    const backend = profile?.backend ?? this.config.defaultBackend
     const sessionConfig: SessionConfig = {
       goose: this.config.goose,
       claude: this.config.claude,
       codex: this.config.codex,
       mcp: mcpOverrides ? { ...this.config.mcp, ...mcpOverrides } : this.config.mcp,
       profile,
+      backend,
       sessionEnvPassthrough: this.config.sessionEnvPassthrough,
     }
 
@@ -1664,6 +1666,7 @@ export class Dispatcher {
       goose: this.config.goose,
       claude: this.config.claude,
       mcp: this.config.mcp,
+      backend: this.config.defaultBackend,
       sessionEnvPassthrough: this.config.sessionEnvPassthrough,
     }
 

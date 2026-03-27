@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process"
 import { createInterface } from "node:readline"
 import fs from "node:fs"
 import path from "node:path"
-import type { GooseConfig, ClaudeConfig, CodexConfig, McpConfig, ProviderProfile } from "./config-types.js"
+import type { GooseConfig, ClaudeConfig, CodexConfig, McpConfig, ProviderProfile, BackendType } from "./config-types.js"
 import type { GooseStreamEvent, SessionMeta, SessionState } from "./types.js"
 import { translateClaudeEvents } from "./claude-stream.js"
 import { translateCodexEvents } from "./codex-stream.js"
@@ -21,6 +21,7 @@ export interface SessionConfig {
   codex?: CodexConfig
   mcp: McpConfig
   profile?: ProviderProfile
+  backend: BackendType
   /** List of environment variable names to pass through to minion sessions */
   sessionEnvPassthrough?: string[]
 }
@@ -82,6 +83,8 @@ export class SessionHandle {
       this.startClaude(task)
     } else if (this.meta.mode === "review" && !systemPrompt) {
       this.startClaudeReview(task)
+    } else if (this.sessionConfig.backend === "codex") {
+      this.startCodex(task, systemPrompt)
     } else {
       this.startGoose(task, systemPrompt)
     }

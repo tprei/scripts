@@ -41,6 +41,7 @@ function createValidMinionConfig(): MinionConfig {
       execPath: "codex",
       approvalMode: "full-auto",
     },
+    defaultBackend: "goose",
     workspace: {
       root: "/workspace",
       maxConcurrentSessions: 5,

@@ -6,6 +6,7 @@ import type { SessionMeta } from "../src/types.js"
 const stubConfig: SessionConfig = {
   goose: { provider: "test", model: "test" },
   claude: { planModel: "test", thinkModel: "test", reviewModel: "test" },
+  backend: "goose",
   mcp: {
     browserEnabled: false,
     githubEnabled: false,

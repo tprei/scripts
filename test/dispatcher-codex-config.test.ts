@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { configFromEnv } from "../src/config-env.js"
-import type { SessionConfig, CodexConfig } from "../src/config-types.js"
+import type { SessionConfig } from "../src/session.js"
+import type { CodexConfig } from "../src/config-types.js"
 
 describe("dispatcher codex config wiring", () => {
   const originalEnv: Record<string, string | undefined> = {}
@@ -12,6 +13,7 @@ describe("dispatcher codex config wiring", () => {
       "CODEX_DEFAULT_MODEL",
       "CODEX_EXEC_PATH",
       "CODEX_APPROVAL_MODE",
+      "DEFAULT_BACKEND",
     ]) {
       originalEnv[key] = process.env[key]
     }
@@ -37,6 +39,7 @@ describe("dispatcher codex config wiring", () => {
       goose: config.goose,
       claude: config.claude,
       codex: config.codex,
+      backend: config.defaultBackend,
       mcp: config.mcp,
     }
 
@@ -57,6 +60,7 @@ describe("dispatcher codex config wiring", () => {
       goose: config.goose,
       claude: config.claude,
       codex: config.codex,
+      backend: config.defaultBackend,
       mcp: config.mcp,
     }
 
@@ -77,6 +81,7 @@ describe("dispatcher codex config wiring", () => {
       goose: config.goose,
       claude: config.claude,
       codex: customCodex,
+      backend: config.defaultBackend,
       mcp: config.mcp,
     }
 
@@ -90,6 +95,7 @@ describe("dispatcher codex config wiring", () => {
     const sessionConfig: SessionConfig = {
       goose: config.goose,
       claude: config.claude,
+      backend: config.defaultBackend,
       mcp: config.mcp,
     }
 
@@ -103,6 +109,7 @@ describe("dispatcher codex config wiring", () => {
       goose: config.goose,
       claude: config.claude,
       codex: config.codex,
+      backend: config.defaultBackend,
       mcp: config.mcp,
       sessionEnvPassthrough: ["MY_VAR"],
     }

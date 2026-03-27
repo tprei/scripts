@@ -1,4 +1,15 @@
-import type { MinionConfig } from "./config-types.js"
+import type { MinionConfig, BackendType } from "./config-types.js"
+
+const VALID_BACKENDS: BackendType[] = ["goose", "codex"]
+
+function optionalBackend(name: string, fallback: BackendType): BackendType {
+  const val = process.env[name]
+  if (!val) return fallback
+  if (!VALID_BACKENDS.includes(val as BackendType)) {
+    throw new ConfigFormatError(name, `one of: ${VALID_BACKENDS.join(", ")}`, val)
+  }
+  return val as BackendType
+}
 import { ConfigError, ConfigFormatError } from "./errors.js"
 import { validateMinionConfig, ConfigValidationError } from "./config-validator.js"
 
@@ -46,6 +57,7 @@ export function configFromEnv(overrides?: Partial<MinionConfig>): MinionConfig {
       execPath: optional("CODEX_EXEC_PATH", "codex"),
       approvalMode: optional("CODEX_APPROVAL_MODE", "full-auto"),
     },
+    defaultBackend: optionalBackend("DEFAULT_BACKEND", "goose"),
     workspace: {
       root: optional("WORKSPACE_ROOT", "/workspace"),
       maxConcurrentSessions: optionalNumber("MAX_CONCURRENT_SESSIONS", 5),

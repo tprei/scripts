@@ -1,3 +1,5 @@
+export type BackendType = "goose" | "codex"
+
 export interface TelegramConfig {
   botToken: string
   chatId: string
@@ -78,6 +80,7 @@ export interface MinionConfig {
   goose: GooseConfig
   claude: ClaudeConfig
   codex: CodexConfig
+  defaultBackend: BackendType
   workspace: WorkspaceConfig
   ci: CiConfig
   mcp: McpConfig
@@ -114,4 +117,5 @@ export interface ProviderProfile {
   opusModel?: string
   sonnetModel?: string
   haikuModel?: string
+  backend?: BackendType
 }
