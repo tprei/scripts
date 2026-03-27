@@ -116,12 +116,29 @@ npm install
 # Type check
 npm run typecheck
 
+# Run tests
+npm test
+
 # Run directly (requires .env file)
 npm run dev
 
 # Build for production
 npm run build
 ```
+
+## Testing
+
+The project has a comprehensive test suite with 712+ tests across 37 test files, covering:
+
+* **Dispatcher**: Command parsing, session lifecycle, Telegram message routing
+* **Session**: Subprocess management, environment isolation, worktree handling
+* **Observer**: Goose event stream parsing, Telegram message formatting
+* **DAG**: Dependency graph construction, topological sort, scheduling, fan-in merges
+* **CI Babysit**: CI failure detection, log parsing, fix prompt generation
+* **Config**: Environment variable validation, defaults, error messages
+* **Format**: HTML message formatting, escaping, truncation
+
+Tests use [Vitest](https://vitest.dev/) and run in under 5 seconds.
 
 ## Integrating as a Library
 
