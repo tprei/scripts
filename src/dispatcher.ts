@@ -2623,6 +2623,13 @@ export class Dispatcher {
    * Handles both tracked children (in childThreadIds) and orphaned children (pointing via parentThreadId).
    */
   private async closeChildSessions(parent: TopicSession): Promise<void> {
+    // Validate parent.threadId to prevent accidentally matching all sessions
+    if (typeof parent.threadId !== 'number' || isNaN(parent.threadId)) {
+      log.error({ parentThreadId: parent.threadId, slug: parent.slug },
+        "Invalid parent.threadId - aborting closeChildSessions to prevent mass deletion")
+      return
+    }
+
     const childrenToClose = new Map<number, TopicSession>()
 
     // Collect tracked children
