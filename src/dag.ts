@@ -13,6 +13,7 @@ export interface DagNode {
   prUrl?: string
   error?: string
   recoveryAttempted?: boolean
+  mergeBase?: string
 }
 
 export interface DagGraph {
@@ -308,6 +309,54 @@ export function getUpstreamBranches(graph: DagGraph, nodeId: string): string[] {
 }
 
 /**
+ * Get all transitive downstream nodes (direct and indirect dependents).
+ */
+export function getDownstreamNodes(graph: DagGraph, nodeId: string): DagNode[] {
+  const downstream = new Set<string>()
+  const queue = [nodeId]
+
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    for (const node of graph.nodes) {
+      if (node.dependsOn.includes(current) && !downstream.has(node.id)) {
+        downstream.add(node.id)
+        queue.push(node.id)
+      }
+    }
+  }
+
+  return graph.nodes.filter((n) => downstream.has(n.id))
+}
+
+/**
+ * Identify downstream nodes that need restacking after an upstream node changed.
+ *
+ * A node needs restacking when:
+ * 1. It has a branch (already started work)
+ * 2. It has a recorded mergeBase (the commit it was originally based on)
+ * 3. It is a transitive dependent of the changed node
+ * 4. It is not in a terminal state (done/failed/skipped)
+ *
+ * Returns nodes in topological order so they can be restacked parent-first.
+ */
+export function needsRestack(graph: DagGraph, changedNodeId: string): DagNode[] {
+  const sorted = topologicalSort(graph)
+  const downstream = getDownstreamNodes(graph, changedNodeId)
+  const downstreamIds = new Set(downstream.map((n) => n.id))
+
+  return sorted
+    .filter((id) => downstreamIds.has(id))
+    .map((id) => graph.nodes.find((n) => n.id === id)!)
+    .filter((node) =>
+      node.branch != null &&
+      node.mergeBase != null &&
+      node.status !== "done" &&
+      node.status !== "failed" &&
+      node.status !== "skipped",
+    )
+}
+
+/**
  * Compute the critical path length (longest path through the DAG).
  */
 export function criticalPathLength(graph: DagGraph): number {
@@ -388,7 +437,7 @@ export function transitiveReduction(graph: DagGraph): void {
 /**
  * Render the DAG as an ASCII status display for Telegram.
  */
-export function renderDagStatus(graph: DagGraph): string {
+export function renderDagStatus(graph: DagGraph, isStack?: boolean): string {
   const statusIcon: Record<DagNodeStatus, string> = {
     pending: "⏳",
     ready: "🔜",
@@ -401,7 +450,13 @@ export function renderDagStatus(graph: DagGraph): string {
   const progress = dagProgress(graph)
   const sorted = topologicalSort(graph)
 
-  const lines: string[] = [`📊 <b>DAG Status</b>\n`]
+  // Auto-detect stack if not specified (linear DAG where each node has at most one dep)
+  const isLinearStack = isStack ?? (
+    !graph.nodes.some((n) => n.dependsOn.length > 1) &&
+    graph.nodes.every((n, i) => i === 0 || n.dependsOn.length === 1)
+  )
+  const title = isLinearStack ? "📚 Stack Status" : "🔗 DAG Status"
+  const lines: string[] = [`📊 <b>${title}</b>\n`]
 
   // Group nodes by their depth level for visual hierarchy
   const depth = new Map<string, number>()

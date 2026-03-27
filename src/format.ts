@@ -123,8 +123,54 @@ export function formatSessionInterrupted(slug: string): string {
   return `⚠️ <b>Session interrupted</b>  ·  🏷 <code>${esc(slug)}</code>\nRestart not yet supported. Create a new task.`
 }
 
+const MAX_TEXT_PER_CHUNK = 3900
+
+/**
+ * Split text into chunks at paragraph boundaries, respecting max length.
+ * Each chunk will be at most MAX_TEXT_PER_CHUNK characters.
+ */
+function splitTextIntoChunks(text: string, maxLen: number): string[] {
+  if (text.length <= maxLen) return [text]
+
+  const chunks: string[] = []
+  let remaining = text
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLen) {
+      chunks.push(remaining)
+      break
+    }
+
+    // Try to split at paragraph boundary first (double newline)
+    let splitAt = remaining.lastIndexOf("\n\n", maxLen)
+    if (splitAt < maxLen / 2) {
+      // Fall back to single newline
+      splitAt = remaining.lastIndexOf("\n", maxLen)
+    }
+    if (splitAt < maxLen / 2) {
+      // Fall back to sentence boundary
+      const sentenceEnd = remaining.lastIndexOf(". ", maxLen)
+      const sentenceEnd2 = remaining.lastIndexOf("! ", maxLen)
+      const sentenceEnd3 = remaining.lastIndexOf("? ", maxLen)
+      splitAt = Math.max(sentenceEnd, sentenceEnd2, sentenceEnd3)
+    }
+    if (splitAt < maxLen / 2) {
+      // Last resort: split at word boundary
+      splitAt = remaining.lastIndexOf(" ", maxLen)
+    }
+    if (splitAt < 1) {
+      // Absolute last resort: hard split
+      splitAt = maxLen
+    }
+
+    chunks.push(remaining.slice(0, splitAt).trimEnd())
+    remaining = remaining.slice(splitAt).trimStart()
+  }
+
+  return chunks
+}
+
 export function formatAssistantText(slug: string, text: string, toolLines?: string[], toolCount?: number): string {
-  const MAX_TEXT = 3800
   const toolPart = toolCount && toolCount > 0 ? `  ·  🔧 ${toolCount} tool${toolCount === 1 ? "" : "s"}` : ""
   const lines: string[] = [
     `🤖 <b>Reply</b>  ·  🏷 <code>${esc(slug)}</code>${toolPart}`,
@@ -136,9 +182,71 @@ export function formatAssistantText(slug: string, text: string, toolLines?: stri
   }
 
   lines.push(``)
-  lines.push(`<blockquote>${esc(truncate(text, MAX_TEXT))}</blockquote>`)
+  lines.push(`<blockquote>${esc(text)}</blockquote>`)
 
   return lines.join("\n")
+}
+
+/**
+ * Format assistant text into multiple chunks with numbered headers.
+ * Returns array of formatted HTML messages, each ≤4000 chars for Telegram.
+ * Only first message includes tool activity.
+ */
+export function formatAssistantTextChunks(
+  slug: string,
+  text: string,
+  toolLines?: string[],
+  toolCount?: number,
+): string[] {
+  const toolPart = toolCount && toolCount > 0 ? `  ·  🔧 ${toolCount} tool${toolCount === 1 ? "" : "s"}` : ""
+
+  // Build header template (first message gets tools)
+  const headerWithTools = `🤖 <b>Reply</b>  ·  🏷 <code>${esc(slug)}</code>${toolPart}`
+  const headerPlain = `🤖 <b>Reply</b>  ·  🏷 <code>${esc(slug)}</code>`
+
+  // Build tool lines section (only for first message)
+  const toolSection: string[] = []
+  if (toolLines && toolLines.length > 0) {
+    toolSection.push(``)
+    toolSection.push(...toolLines)
+  }
+  const toolSectionStr = toolSection.join("\n")
+
+  // Calculate available space for text in first chunk
+  // Format: header + toolSection + "\n\n<blockquote>TEXT</blockquote>"
+  const firstChunkOverhead = headerWithTools.length + toolSectionStr.length + 2 + 25 // 25 for blockquote tags + newline
+  const firstChunkTextMax = MAX_TEXT_PER_CHUNK - firstChunkOverhead
+
+  // Calculate overhead for subsequent chunks
+  // Format: header + " (N/M)" + "\n\n<blockquote>TEXT</blockquote>"
+  const chunkOverhead = headerPlain.length + 7 + 25 // 7 for " (N/M)", 25 for blockquote tags
+  const chunkTextMax = MAX_TEXT_PER_CHUNK - chunkOverhead
+
+  // Split text into chunks
+  const textChunks = splitTextIntoChunks(text, Math.max(firstChunkTextMax, chunkTextMax))
+
+  // If single chunk, use simple format
+  if (textChunks.length === 1) {
+    return [formatAssistantText(slug, text, toolLines, toolCount)]
+  }
+
+  // Build multiple formatted chunks
+  const formattedChunks: string[] = []
+  const total = textChunks.length
+
+  for (let i = 0; i < total; i++) {
+    const isFirst = i === 0
+    const header = isFirst ? headerWithTools : headerPlain
+    const chunkHeader = `${header} (${i + 1}/${total})`
+    const tools = isFirst ? toolSectionStr : ""
+    const chunkText = textChunks[i]
+
+    formattedChunks.push(
+      `${chunkHeader}${tools}\n\n<blockquote>${esc(chunkText)}</blockquote>`,
+    )
+  }
+
+  return formattedChunks
 }
 
 export function formatThinkStart(

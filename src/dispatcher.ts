@@ -64,7 +64,7 @@ import { extractStackItems, extractDagItems, buildDagChildPrompt } from "./dag-e
 import {
   buildDag, advanceDag, failNode, resetFailedNode, isDagComplete,
   readyNodes, dagProgress, getUpstreamBranches, topologicalSort,
-  renderDagForGitHub, upsertDagSection,
+  renderDagForGitHub, renderDagStatus, upsertDagSection,
   type DagGraph, type DagNode, type DagInput,
 } from "./dag.js"
 import { runQualityGates, type QualityReport } from "./quality-gates.js"
@@ -2144,6 +2144,10 @@ export class Dispatcher {
 
     await this.telegram.sendMessage(
       formatDagStart(topicSession.slug, childSummaries, isStack),
+      topicSession.threadId,
+    )
+    await this.telegram.sendMessage(
+      renderDagStatus(graph, isStack),
       topicSession.threadId,
     )
     await this.updateTopicTitle(topicSession, isStack ? "📚" : "🔗")
