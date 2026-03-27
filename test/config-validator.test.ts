@@ -37,7 +37,7 @@ function createValidMinionConfig(): MinionConfig {
       reviewModel: "opus",
     },
     codex: {
-      defaultModel: "o4-mini",
+      defaultModel: "gpt-5.4",
       execPath: "codex",
       approvalMode: "full-auto",
     },
