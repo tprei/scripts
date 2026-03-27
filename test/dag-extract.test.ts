@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest"
-import { parseDagItems, parseStackItems, buildDagChildPrompt, extractDagItems, extractStackItems } from "../src/dag-extract.js"
-import type { TopicMessage } from "../src/types.js"
+import { parseDagItems, parseStackItems, buildDagChildPrompt, extractDagItems, extractStackItems, parseModificationOutput, parseDagModification } from "../src/dag-extract.js"
+import type { TopicMessage, PendingDagItem } from "../src/types.js"
 import type { DagInput } from "../src/dag.js"
 import type { ProviderProfile } from "../src/config-types.js"
 import type { ChildProcess } from "node:child_process"
@@ -358,5 +358,206 @@ describe("extractStackItems profile environment", () => {
     expect(env?.ANTHROPIC_BASE_URL).toBe("https://stack.api.endpoint")
     expect(env?.ANTHROPIC_AUTH_TOKEN).toBe("stack-token")
     expect(env?.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("stack-haiku-model")
+  })
+})
+
+describe("parseModificationOutput", () => {
+  it("parses a valid modified DAG JSON array", () => {
+    const input = '[{"id":"merged-task","title":"Merged Task","description":"Combined task","dependsOn":[]}]'
+    const items = parseModificationOutput(input)
+    expect(items).toEqual([{
+      id: "merged-task",
+      title: "Merged Task",
+      description: "Combined task",
+      dependsOn: [],
+    }])
+  })
+
+  it("parses items with dependencies", () => {
+    const input = JSON.stringify([
+      { id: "a", title: "A", description: "Do A", dependsOn: [] },
+      { id: "b", title: "B", description: "Do B", dependsOn: ["a"] },
+    ])
+    const items = parseModificationOutput(input)
+    expect(items).toHaveLength(2)
+    expect(items[1].dependsOn).toEqual(["a"])
+  })
+
+  it("parses JSON inside markdown fences", () => {
+    const input = '```json\n[{"id":"x","title":"X","description":"Do X","dependsOn":[]}]\n```'
+    const items = parseModificationOutput(input)
+    expect(items).toHaveLength(1)
+    expect(items[0].id).toBe("x")
+  })
+
+  it("extracts JSON array from surrounding text", () => {
+    const input = 'Here is the modified DAG:\n[{"id":"a","title":"A","description":"Do A","dependsOn":[]}]\nDone.'
+    const items = parseModificationOutput(input)
+    expect(items).toHaveLength(1)
+  })
+
+  it("returns empty array for no JSON", () => {
+    expect(parseModificationOutput("no json here")).toEqual([])
+  })
+
+  it("returns empty array for invalid JSON", () => {
+    expect(parseModificationOutput("[not valid json]")).toEqual([])
+  })
+
+  it("filters items with missing id", () => {
+    const input = '[{"title":"A","description":"Do A","dependsOn":[]},{"id":"b","title":"B","description":"Do B","dependsOn":[]}]'
+    const items = parseModificationOutput(input)
+    expect(items).toHaveLength(1)
+    expect(items[0].id).toBe("b")
+  })
+
+  it("defaults missing dependsOn to empty array", () => {
+    const input = '[{"id":"a","title":"A","description":"Do A"}]'
+    const items = parseModificationOutput(input)
+    expect(items).toHaveLength(1)
+    expect(items[0].dependsOn).toEqual([])
+  })
+
+  it("filters items with non-string dependsOn entries", () => {
+    const input = '[{"id":"a","title":"A","description":"Do A","dependsOn":[123]}]'
+    const items = parseModificationOutput(input)
+    expect(items).toHaveLength(0)
+  })
+
+  it("returns PendingDagItem type with all fields", () => {
+    const input = '[{"id":"test","title":"Test Task","description":"A test task","dependsOn":["dep1","dep2"]}]'
+    const items = parseModificationOutput(input)
+    expect(items).toHaveLength(1)
+    const item: PendingDagItem = items[0]
+    expect(item.id).toBe("test")
+    expect(item.title).toBe("Test Task")
+    expect(item.description).toBe("A test task")
+    expect(item.dependsOn).toEqual(["dep1", "dep2"])
+  })
+})
+
+describe("parseDagModification", () => {
+  const currentItems: PendingDagItem[] = [
+    { id: "db-schema", title: "DB Schema", description: "Create database schema", dependsOn: [] },
+    { id: "api-routes", title: "API Routes", description: "Implement REST endpoints", dependsOn: ["db-schema"] },
+    { id: "frontend", title: "Frontend", description: "Build UI components", dependsOn: ["api-routes"] },
+  ]
+
+  function createMockChildProcess(output: string = "[]"): ChildProcess {
+    const child = {
+      stdout: { on: vi.fn((event: string, cb: (data: Buffer) => void) => {
+        if (event === "data") cb(Buffer.from(output))
+      }) },
+      stderr: { on: vi.fn() },
+      stdin: { write: vi.fn(), end: vi.fn() },
+      on: vi.fn((event: string, cb: (code: number) => void) => {
+        if (event === "close") cb(0)
+      }),
+      kill: vi.fn(),
+    } as unknown as ChildProcess
+    return child
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("returns modified items from successful modification", async () => {
+    const mergedOutput = JSON.stringify([
+      { id: "full-stack", title: "Full Stack", description: "Combined API and UI", dependsOn: ["db-schema"] },
+    ])
+    mockSpawn.mockReturnValue(createMockChildProcess(mergedOutput))
+
+    const result = await parseDagModification(currentItems, "merge api-routes and frontend")
+
+    expect(result.error).toBeUndefined()
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0].id).toBe("full-stack")
+    expect(result.items[0].dependsOn).toContain("db-schema")
+  })
+
+  it("passes current items and modification to claude", async () => {
+    const mockStdinWrite = vi.fn()
+    const child = {
+      stdout: { on: vi.fn((event: string, cb: (data: Buffer) => void) => {
+        if (event === "data") cb(Buffer.from("[]"))
+      }) },
+      stderr: { on: vi.fn() },
+      stdin: { write: mockStdinWrite, end: vi.fn() },
+      on: vi.fn((event: string, cb: (code: number) => void) => {
+        if (event === "close") cb(0)
+      }),
+      kill: vi.fn(),
+    } as unknown as ChildProcess
+    mockSpawn.mockReturnValue(child)
+
+    await parseDagModification(currentItems, "remove dependency between api-routes and frontend")
+
+    expect(mockSpawn).toHaveBeenCalled()
+    const input = mockStdinWrite.mock.calls[0][0]
+    expect(input).toContain("db-schema")
+    expect(input).toContain("api-routes")
+    expect(input).toContain("frontend")
+    expect(input).toContain("remove dependency")
+  })
+
+  it("passes profile environment to spawned claude process", async () => {
+    const profile: ProviderProfile = {
+      id: "test-profile",
+      name: "Test",
+      baseUrl: "https://custom.api.endpoint",
+      authToken: "test-token",
+      haikuModel: "custom-haiku",
+    }
+    mockSpawn.mockReturnValue(createMockChildProcess("[]"))
+
+    await parseDagModification(currentItems, "merge db-schema and api-routes", profile)
+
+    const env = mockSpawn.mock.calls[0][2]?.env
+    expect(env?.ANTHROPIC_BASE_URL).toBe("https://custom.api.endpoint")
+    expect(env?.ANTHROPIC_AUTH_TOKEN).toBe("test-token")
+    expect(env?.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("custom-haiku")
+  })
+
+  it("returns system error on spawn failure", async () => {
+    const errorChild = {
+      stdout: { on: vi.fn() },
+      stderr: { on: vi.fn((event: string, cb: (data: Buffer) => void) => {
+        if (event === "data") cb(Buffer.from("spawn ENOENT error"))
+      }) },
+      stdin: { write: vi.fn(), end: vi.fn() },
+      on: vi.fn((event: string, cb: (code: number) => void) => {
+        if (event === "close") cb(1)
+      }),
+      kill: vi.fn(),
+    } as unknown as ChildProcess
+    mockSpawn.mockReturnValue(errorChild)
+
+    const result = await parseDagModification(currentItems, "merge tasks")
+
+    // After all retries fail, should return system error
+    expect(result.error).toBe("system")
+    expect(result.errorMessage).toContain("exited with code 1")
+  }, 30000)
+
+  it("returns empty items on parse failure", async () => {
+    mockSpawn.mockReturnValue(createMockChildProcess("not valid json output"))
+
+    const result = await parseDagModification(currentItems, "merge tasks")
+
+    expect(result.items).toEqual([])
+  })
+
+  it("handles empty current items", async () => {
+    mockSpawn.mockReturnValue(createMockChildProcess("[]"))
+
+    const result = await parseDagModification([], "add a new task")
+
+    expect(result.items).toEqual([])
   })
 })
