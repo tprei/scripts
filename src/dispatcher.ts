@@ -46,6 +46,8 @@ import {
   formatSplitAllDone,
   formatStackAnalyzing,
   formatDagAnalyzing,
+  formatDagReview,
+  formatDagReviewUpdated,
   formatDagStart,
   formatDagNodeStarting,
   formatDagNodeComplete,
@@ -79,7 +81,7 @@ import {
   TASK_PREFIX, TASK_SHORT, PLAN_PREFIX, THINK_PREFIX, REVIEW_PREFIX,
   EXECUTE_CMD, STATUS_CMD, STATS_CMD, REPLY_PREFIX, REPLY_SHORT,
   CLOSE_CMD, STOP_CMD, HELP_CMD, CLEAN_CMD, USAGE_CMD, CONFIG_CMD,
-  SPLIT_CMD, STACK_CMD, DAG_CMD, LAND_CMD, RETRY_CMD,
+  SPLIT_CMD, STACK_CMD, DAG_CMD, LAND_CMD, RETRY_CMD, RUN_CMD,
   parseTaskArgs, parseReviewArgs, buildReviewAllTask,
   buildRepoKeyboard, buildProfileKeyboard,
   escapeHtml, extractRepoName, appendImageContext,
@@ -485,6 +487,10 @@ export class Dispatcher {
         } else if ((topicSession.mode === "plan" || topicSession.mode === "think") && (text === DAG_CMD || text?.startsWith(DAG_CMD + " "))) {
           const directive = text!.slice(DAG_CMD.length).trim() || undefined
           await this.handleDagCommand(topicSession, directive)
+        } else if (topicSession.mode === "dag-review" && text === RUN_CMD) {
+          await this.handleDagRunCommand(topicSession)
+        } else if (topicSession.mode === "dag-review" && text && !text?.startsWith("/")) {
+          await this.handleDagReviewFeedback(topicSession, text)
         } else if (text === LAND_CMD) {
           await this.handleLandCommand(topicSession)
         } else if (text === RETRY_CMD || text?.startsWith(RETRY_CMD + " ")) {
@@ -2025,7 +2031,106 @@ export class Dispatcher {
       return
     }
 
-    await this.startDag(topicSession, result.items, false)
+    // Switch to dag-review mode and display the review UI
+    topicSession.mode = "dag-review"
+    topicSession.pendingDagItems = result.items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      dependsOn: item.dependsOn,
+    }))
+    topicSession.lastActivityAt = Date.now()
+
+    await this.telegram.sendMessage(
+      formatDagReview(topicSession.slug, topicSession.pendingDagItems),
+      topicSession.threadId,
+    )
+
+    await this.persistTopicSessions()
+    this.updatePinnedSummary()
+    this.broadcastSession(topicSession, "session_updated")
+  }
+
+  /**
+   * Handle /run command in dag-review mode to start DAG execution.
+   */
+  private async handleDagRunCommand(topicSession: TopicSession): Promise<void> {
+    if (!topicSession.pendingDagItems || topicSession.pendingDagItems.length === 0) {
+      await this.telegram.sendMessage(
+        `⚠️ No pending DAG items. Use <code>/dag</code> to extract items first.`,
+        topicSession.threadId,
+      )
+      return
+    }
+
+    // Convert pending items back to DagInput format
+    const dagInputs: DagInput[] = topicSession.pendingDagItems.map((item) => ({
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      dependsOn: item.dependsOn,
+    }))
+
+    // Clear pending items and start the DAG
+    topicSession.pendingDagItems = undefined
+    await this.startDag(topicSession, dagInputs, false)
+  }
+
+  /**
+   * Handle user feedback in dag-review mode to modify the DAG.
+   */
+  private async handleDagReviewFeedback(topicSession: TopicSession, feedback: string): Promise<void> {
+    if (!topicSession.pendingDagItems || topicSession.pendingDagItems.length === 0) {
+      await this.telegram.sendMessage(
+        `⚠️ No pending DAG items to modify. Use <code>/dag</code> to extract items first.`,
+        topicSession.threadId,
+      )
+      return
+    }
+
+    await this.telegram.sendMessage(
+      `🔄 <b>Processing modification...</b>`,
+      topicSession.threadId,
+    )
+
+    // Re-extract with the user's feedback as a directive
+    const profile = topicSession.profileId ? this.profileStore.get(topicSession.profileId) : undefined
+    const result = await extractDagItems(topicSession.conversation, feedback, profile)
+
+    if (result.error === "system") {
+      await this.telegram.sendMessage(
+        `⚠️ <b>System error</b> during re-extraction: <code>${result.errorMessage ?? "Unknown error"}</code>\n\n` +
+        `The DAG remains unchanged. Try a different modification or <code>/run</code> to proceed.`,
+        topicSession.threadId,
+      )
+      return
+    }
+
+    if (result.items.length === 0) {
+      await this.telegram.sendMessage(
+        `⚠️ Could not extract modified items. The DAG remains unchanged.\n\n` +
+        `Try <code>/run</code> to proceed with the current DAG, or provide different feedback.`,
+        topicSession.threadId,
+      )
+      return
+    }
+
+    // Update the pending DAG items
+    topicSession.pendingDagItems = result.items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      dependsOn: item.dependsOn,
+    }))
+    topicSession.lastActivityAt = Date.now()
+
+    await this.telegram.sendMessage(
+      formatDagReviewUpdated(topicSession.slug, topicSession.pendingDagItems, feedback),
+      topicSession.threadId,
+    )
+
+    await this.persistTopicSessions()
+    this.broadcastSession(topicSession, "session_updated")
   }
 
   /**
