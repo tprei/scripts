@@ -114,7 +114,7 @@ export type GooseStreamEvent =
 
 export type SessionState = "spawning" | "working" | "idle" | "completed" | "errored"
 
-export type SessionMode = "task" | "plan" | "think" | "review" | "ci-fix"
+export type SessionMode = "task" | "plan" | "think" | "review" | "ci-fix" | "dag-review"
 
 export interface SessionMeta {
   sessionId: string
@@ -134,6 +134,14 @@ export interface TopicMessage {
   role: "user" | "assistant"
   text: string
   images?: string[]
+}
+
+/** DAG item extracted from conversation, pending user review before execution */
+export interface PendingDagItem {
+  id: string
+  title: string
+  description: string
+  dependsOn: string[]
 }
 
 export interface TopicSession {
@@ -158,4 +166,5 @@ export interface TopicSession {
   dagNodeId?: string
   pendingSplitItems?: { title: string; description: string }[]
   allSplitItems?: { title: string; description: string }[]
+  pendingDagItems?: PendingDagItem[]
 }
