@@ -67,6 +67,7 @@ import {
   renderDagForGitHub, renderDagStatus, upsertDagSection,
   type DagGraph, type DagNode, type DagInput,
 } from "./dag.js"
+import { DagOrchestrator, type DagOrchestratorCallbacks } from "./dag-orchestrator.js"
 import { runQualityGates, type QualityReport } from "./quality-gates.js"
 import { StatsTracker } from "./stats.js"
 import { fetchClaudeUsage } from "./claude-usage.js"
@@ -105,7 +106,7 @@ export class Dispatcher {
   private readonly pendingProfiles = new Map<number, PendingTask>()
   private readonly store: SessionStore
   private readonly profileStore: ProfileStore
-  private readonly dags = new Map<string, DagGraph>()
+  private readonly dagOrchestrator: DagOrchestrator
   private readonly pendingBabysitPRs = new Map<number, Array<{ childSession: TopicSession; prUrl: string; qualityReport?: QualityReport }>>()
   private readonly broadcaster?: StateBroadcaster
   private offset = 0
@@ -125,7 +126,50 @@ export class Dispatcher {
     this.store = new SessionStore(this.config.workspace.root)
     this.profileStore = new ProfileStore(this.config.workspace.root)
     this.stats = new StatsTracker(this.config.workspace.root)
+    this.dagOrchestrator = new DagOrchestrator(
+      telegram,
+      this.profileStore,
+      {
+        workspaceRoot: this.config.workspace.root,
+        maxConcurrentSessions: this.config.workspace.maxConcurrentSessions,
+        maxDagConcurrency: this.config.workspace.maxDagConcurrency,
+      },
+      this.buildDagCallbacks(),
+      broadcaster,
+    )
     this.loadPinnedMessageId()
+  }
+
+  private buildDagCallbacks(): DagOrchestratorCallbacks {
+    return {
+      getActiveSession: (threadId: number) => this.sessions.get(threadId),
+      deleteActiveSession: (threadId: number) => { this.sessions.delete(threadId) },
+      getTopicSession: (threadId: number) => this.topicSessions.get(threadId),
+      setTopicSession: (threadId: number, session: TopicSession) => { this.topicSessions.set(threadId, session) },
+      deleteTopicSession: (threadId: number) => { this.topicSessions.delete(threadId) },
+      getAllTopicSessions: () => this.topicSessions.entries(),
+      getActiveSessionCount: () => this.sessions.size,
+      spawnTopicAgent: (session: TopicSession, task: string, mcpOverrides?: Record<string, unknown>, systemPromptOverride?: string) =>
+        this.spawnTopicAgent(session, task, mcpOverrides, systemPromptOverride),
+      prepareWorkspace: (slug: string, repoUrl?: string, startBranch?: string) =>
+        this.prepareWorkspace(slug, repoUrl, startBranch),
+      removeWorkspace: (session: TopicSession) => this.removeWorkspace(session),
+      prepareFanInBranch: (slug: string, repoUrl: string, upstreamBranches: string[]) =>
+        this.prepareFanInBranch(slug, repoUrl, upstreamBranches),
+      mergeUpstreamBranches: (cwd: string, additionalBranches: string[]) =>
+        this.mergeUpstreamBranches(cwd, additionalBranches),
+      closeChildSessions: (parent: TopicSession) => this.closeChildSessions(parent),
+      updateTopicTitle: (session: TopicSession, emoji: string) => this.updateTopicTitle(session, emoji),
+      extractPRFromConversation: (session: TopicSession) => this.extractPRFromConversation(session),
+      updatePinnedDagStatus: (parent: TopicSession, graph: DagGraph) => this.updatePinnedDagStatus(parent, graph),
+      updatePinnedSplitStatus: (parent: TopicSession) => this.updatePinnedSplitStatus(parent),
+      persistTopicSessions: () => this.persistTopicSessions(),
+      runDeferredBabysit: (threadId: number) => this.runDeferredBabysit(threadId),
+      broadcastSession: (session: TopicSession, eventType: "session_created" | "session_updated", sessionState?: "completed" | "errored") =>
+        this.broadcastSession(session, eventType, sessionState),
+      broadcastSessionDeleted: (slug: string) => this.broadcastSessionDeleted(slug),
+      handleExecuteCommand: (session: TopicSession, task: string) => this.handleExecuteCommand(session, task),
+    }
   }
 
   private pushToConversation(session: TopicSession, message: TopicMessage): void {
@@ -545,15 +589,15 @@ export class Dispatcher {
           await this.handleSplitCommand(topicSession, directive)
         } else if ((topicSession.mode === "plan" || topicSession.mode === "think") && (text === STACK_CMD || text?.startsWith(STACK_CMD + " "))) {
           const directive = text!.slice(STACK_CMD.length).trim() || undefined
-          await this.handleStackCommand(topicSession, directive)
+          await this.dagOrchestrator.handleStackCommand(topicSession, directive)
         } else if ((topicSession.mode === "plan" || topicSession.mode === "think") && (text === DAG_CMD || text?.startsWith(DAG_CMD + " "))) {
           const directive = text!.slice(DAG_CMD.length).trim() || undefined
-          await this.handleDagCommand(topicSession, directive)
+          await this.dagOrchestrator.handleDagCommand(topicSession, directive)
         } else if (text === LAND_CMD) {
-          await this.handleLandCommand(topicSession)
+          await this.dagOrchestrator.handleLandCommand(topicSession)
         } else if (text === RETRY_CMD || text?.startsWith(RETRY_CMD + " ")) {
           const nodeId = text!.slice(RETRY_CMD.length).trim() || undefined
-          await this.handleRetryCommand(topicSession, nodeId)
+          await this.dagOrchestrator.handleRetryCommand(topicSession, nodeId)
         } else if (text?.startsWith(REPLY_PREFIX + " ") || text?.startsWith(REPLY_SHORT + " ") || text === REPLY_PREFIX || text === REPLY_SHORT) {
           const stripped = text.startsWith(REPLY_PREFIX)
             ? text.slice(REPLY_PREFIX.length).trim()
@@ -1352,7 +1396,7 @@ export class Dispatcher {
                 if (this.config.ci.babysitEnabled) {
                   if (topicSession.dagId || topicSession.parentThreadId) {
                     const parentId = topicSession.dagId
-                      ? this.dags.get(topicSession.dagId)?.parentThreadId ?? topicSession.parentThreadId
+                      ? this.dagOrchestrator.getDag(topicSession.dagId)?.parentThreadId ?? topicSession.parentThreadId
                       : topicSession.parentThreadId
                     if (parentId != null) {
                       const queue = this.pendingBabysitPRs.get(parentId) ?? []
@@ -1382,7 +1426,7 @@ export class Dispatcher {
         this.persistTopicSessions().catch(() => {}) // best effort
         this.cleanBuildArtifacts(topicSession.cwd)
 
-        this.notifyParentOfChildComplete(topicSession, state).catch((err) => {
+        this.dagOrchestrator.notifyParentOfChildComplete(topicSession, state).catch((err) => {
           log.warn({ err, slug: topicSession.slug }, "parent notify error")
         })
 
@@ -2132,7 +2176,7 @@ export class Dispatcher {
     topicSession.childThreadIds = []
     topicSession.dagId = dagId
 
-    this.dags.set(dagId, graph)
+    this.dagOrchestrator.getDags().set(dagId, graph)
     this.broadcastDag(graph, "dag_created")
 
     // Send DAG overview
@@ -2326,7 +2370,7 @@ export class Dispatcher {
   ): Promise<void> {
     if (!childSession.dagId || !childSession.dagNodeId) return
 
-    const graph = this.dags.get(childSession.dagId)
+    const graph = this.dagOrchestrator.getDag(childSession.dagId)
     if (!graph) return
 
     const node = graph.nodes.find((n) => n.id === childSession.dagNodeId)
@@ -2501,7 +2545,7 @@ export class Dispatcher {
       return
     }
 
-    const graph = this.dags.get(topicSession.dagId)
+    const graph = this.dagOrchestrator.getDag(topicSession.dagId)
     if (!graph) return
 
     const failedNodes = nodeId
@@ -2563,7 +2607,7 @@ export class Dispatcher {
       }
     }
 
-    const graph = topicSession.dagId ? this.dags.get(topicSession.dagId) : undefined
+    const graph = topicSession.dagId ? this.dagOrchestrator.getDag(topicSession.dagId) : undefined
 
     if (graph) {
       await this.landDag(topicSession, graph)
@@ -2755,7 +2799,7 @@ export class Dispatcher {
     // Clean up DAG graph if this parent had one (keeps PR URLs alive until /close)
     if (topicSession.dagId) {
       this.broadcastDagDeleted(topicSession.dagId)
-      this.dags.delete(topicSession.dagId)
+      this.dagOrchestrator.deleteDag(topicSession.dagId)
     }
 
     // Remove from tracking and delete the topic first for instant user feedback
@@ -2855,7 +2899,7 @@ export class Dispatcher {
   }
 
   getDags(): Map<string, DagGraph> {
-    return this.dags
+    return this.dagOrchestrator.getDags()
   }
 
   getSessionState(threadId: number): SessionState | undefined {
