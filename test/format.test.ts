@@ -10,6 +10,7 @@ import {
   formatSessionError,
   formatSessionInterrupted,
   formatAssistantText,
+  formatAssistantTextChunks,
   formatPlanStart,
   formatPlanIteration,
   formatPlanExecuting,
@@ -222,10 +223,77 @@ describe("formatAssistantText", () => {
     expect(msg).toContain("Reply")
   })
 
-  it("truncates very long text", () => {
-    const longText = "z".repeat(5000)
-    const msg = formatAssistantText("slug", longText)
-    expect(msg).toContain("…")
+  it("includes tool count when provided", () => {
+    const msg = formatAssistantText("slug", "text", undefined, 5)
+    expect(msg).toContain("5 tools")
+  })
+
+  it("includes tool lines when provided", () => {
+    const msg = formatAssistantText("slug", "text", ["📖 file.ts"], 1)
+    expect(msg).toContain("📖 file.ts")
+  })
+})
+
+describe("formatAssistantTextChunks", () => {
+  it("returns single chunk for short text", () => {
+    const chunks = formatAssistantTextChunks("slug", "Short text")
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0]).toContain("Short text")
+    expect(chunks[0]).not.toContain("(1/1)")
+  })
+
+  it("splits long text into multiple chunks with headers", () => {
+    // Create text that needs splitting (multiple paragraphs)
+    const paragraphs = []
+    for (let i = 0; i < 10; i++) {
+      paragraphs.push(`Paragraph ${i}: ${"x".repeat(500)}`)
+    }
+    const longText = paragraphs.join("\n\n")
+
+    const chunks = formatAssistantTextChunks("slug", longText)
+
+    expect(chunks.length).toBeGreaterThan(1)
+    // Each chunk should have header like "(1/N)"
+    for (let i = 0; i < chunks.length; i++) {
+      expect(chunks[i]).toContain(`(${i + 1}/${chunks.length})`)
+    }
+  })
+
+  it("only first chunk includes tool activity", () => {
+    const longText = "x".repeat(5000)
+    const toolLines = ["📖 file.ts"]
+
+    const chunks = formatAssistantTextChunks("slug", longText, toolLines, 1)
+
+    expect(chunks.length).toBeGreaterThan(1)
+    expect(chunks[0]).toContain("📖 file.ts")
+    expect(chunks[0]).toContain("1 tool")
+    // Subsequent chunks should not have tools
+    for (let i = 1; i < chunks.length; i++) {
+      expect(chunks[i]).not.toContain("📖 file.ts")
+    }
+  })
+
+  it("respects paragraph boundaries when splitting", () => {
+    // Create text with clear paragraph boundaries
+    const text = [
+      "First paragraph with some content here.",
+      "Second paragraph with more content here.",
+      "Third paragraph with even more content.",
+    ].join("\n\n")
+
+    const chunks = formatAssistantTextChunks("slug", text)
+
+    // Should not split mid-word or mid-sentence if possible
+    for (const chunk of chunks) {
+      expect(chunk).not.toMatch(/paragraph\s*\n.*paragraph/i)
+    }
+  })
+
+  it("escapes HTML in text", () => {
+    const chunks = formatAssistantTextChunks("slug", "Text with <script>alert('xss')</script>")
+    expect(chunks[0]).toContain("&lt;script&gt;")
+    expect(chunks[0]).not.toContain("<script>")
   })
 })
 

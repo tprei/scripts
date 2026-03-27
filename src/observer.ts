@@ -13,7 +13,7 @@ import {
   formatReviewStart,
   formatSessionComplete,
   formatSessionError,
-  formatAssistantText,
+  formatAssistantTextChunks,
 } from "./format.js"
 
 const log = loggers.observer
@@ -243,10 +243,13 @@ export class Observer {
     const toolLines = state.activityLog.length > 0 ? [...state.activityLog] : undefined
     const toolCount = state.toolCount > 0 ? state.toolCount : undefined
 
-    await this.telegram.sendMessage(
-      formatAssistantText(meta.topicName, text, toolLines, toolCount),
-      meta.threadId,
-    )
+    // Get formatted chunks (may be single message or multiple with headers like "1/3")
+    const chunks = formatAssistantTextChunks(meta.topicName, text, toolLines, toolCount)
+
+    // Send each chunk as a separate message
+    for (const chunk of chunks) {
+      await this.telegram.sendMessage(chunk, meta.threadId)
+    }
     if (state.activityEditTimer !== null) {
       clearTimeout(state.activityEditTimer)
       state.activityEditTimer = null
