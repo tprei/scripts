@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process"
-import type { TopicMessage } from "./types.js"
+import type { TopicMessage, PendingDagItem } from "./types.js"
 import type { DagInput } from "./dag.js"
 import type { ProviderProfile } from "./config-types.js"
 import { loggers } from "./logger.js"
@@ -8,6 +8,12 @@ const log = loggers.dagExtract
 
 export interface DagExtractResult {
   items: DagInput[]
+  error?: "system" | "parse"
+  errorMessage?: string
+}
+
+export interface DagModificationResult {
+  items: PendingDagItem[]
   error?: "system" | "parse"
   errorMessage?: string
 }
@@ -415,4 +421,129 @@ export function buildDagChildPrompt(
   lines.push(`5. Open a pull request targeting \`${targetBranch}\``)
 
   return lines.join("\n")
+}
+
+const DAG_MODIFICATION_PROMPT = [
+  "You are a DAG modification assistant. Given the current DAG items and a user's modification request, output the modified DAG.",
+  "",
+  "Supported modifications:",
+  "- Merge tasks: combine multiple tasks into one",
+  "- Split task: divide one task into multiple tasks",
+  "- Add dependency: make one task depend on another",
+  "- Remove dependency: remove a dependency between tasks",
+  "- Edit description: update a task's title or description",
+  "- Remove task: delete a task (and update dependents)",
+  "",
+  "Rules:",
+  "- Preserve existing task IDs unless merging (then create a new combined ID)",
+  "- Maintain valid dependency structure (no cycles, no self-dependencies)",
+  "- If a task is removed, update tasks that depended on it to depend on its dependencies instead",
+  "- Keep descriptions focused and actionable",
+  "- Output ONLY a JSON array with no surrounding text or markdown fencing",
+  "",
+  "Output format:",
+  '[{ "id": "kebab-id", "title": "short label", "description": "full description", "dependsOn": ["dep-id"] }]',
+].join("\n")
+
+/**
+ * Parse a natural language modification request and apply it to existing DAG items.
+ * Uses Haiku to interpret the modification and return the updated DAG.
+ */
+export async function parseDagModification(
+  currentItems: PendingDagItem[],
+  modification: string,
+  profile?: ProviderProfile,
+): Promise<DagModificationResult> {
+  const currentItemJson = JSON.stringify(currentItems, null, 2)
+  const task = [
+    "## Current DAG Items",
+    "",
+    "```json",
+    currentItemJson,
+    "```",
+    "",
+    "## User's Modification Request",
+    "",
+    modification,
+  ].join("\n")
+
+  log.debug({ itemCount: currentItems.length, modification }, "parsing DAG modification")
+
+  let lastError: Error | undefined
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      log.debug({ attempt, maxRetries: MAX_RETRIES }, "modification attempt")
+      const output = await runClaudeExtraction(task, DAG_MODIFICATION_PROMPT, 60_000, profile)
+      log.debug({ outputLength: output.length }, "modification raw output")
+
+      const items = parseModificationOutput(output)
+      log.debug({ itemCount: items.length }, "parsed modified items")
+      return { items }
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+      const isSpawnError =
+        (err as NodeJS.ErrnoException).code === "ETIMEDOUT" ||
+        (err as NodeJS.ErrnoException).code === "ENOENT" ||
+        (err as NodeJS.ErrnoException).code === "EAGAIN" ||
+        (err instanceof Error && err.message.includes("spawn"))
+
+      if (isSpawnError && attempt < MAX_RETRIES) {
+        const delay = INITIAL_DELAY_MS * Math.pow(2, attempt - 1)
+        log.warn({ attempt, delay, err }, "spawn error, retrying modification")
+        await sleep(delay)
+      } else {
+        log.error({ err }, "modification parsing failed")
+        return { items: [], error: "system", errorMessage: lastError.message }
+      }
+    }
+  }
+
+  return { items: [], error: "system", errorMessage: lastError?.message ?? "Unknown error" }
+}
+
+/**
+ * Parse the output from DAG modification into PendingDagItem array.
+ */
+export function parseModificationOutput(output: string): PendingDagItem[] {
+  let text = output.trim()
+
+  const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/)
+  if (fenceMatch) {
+    text = fenceMatch[1].trim()
+  }
+
+  const arrayMatch = text.match(/\[[\s\S]*\]/)
+  if (!arrayMatch) {
+    log.debug("no JSON array found in modification output")
+    return []
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(arrayMatch[0])
+  } catch (e) {
+    log.debug({ err: String(e) }, "JSON parse error in modification output")
+    return []
+  }
+  if (!Array.isArray(parsed)) {
+    log.debug("parsed modification value is not an array")
+    return []
+  }
+
+  const valid = parsed.filter((item: unknown): item is PendingDagItem => {
+    if (typeof item !== "object" || item === null) return false
+    const obj = item as Record<string, unknown>
+    if (typeof obj.id !== "string" || !obj.id.length) return false
+    if (typeof obj.title !== "string" || !obj.title.length) return false
+    if (typeof obj.description !== "string" || !obj.description.length) return false
+    if (!Array.isArray(obj.dependsOn)) {
+      obj.dependsOn = []
+    }
+    const deps = obj.dependsOn as unknown[]
+    if (!deps.every((d: unknown) => typeof d === "string")) return false
+    return true
+  })
+
+  return valid
 }
