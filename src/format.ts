@@ -654,6 +654,17 @@ export function formatLandError(title: string, error: string): string {
   return `❌ <b>Landing failed</b> at: ${esc(title)}\n<code>${esc(error)}</code>`
 }
 
+export function formatLandRebasing(title: string, index: number, total: number): string {
+  return `🛬 <b>${index + 1}/${total}</b> Rebasing: ${esc(title)} (merge conflict detected)…`
+}
+
+export function formatLandConflict(title: string, files: string[]): string {
+  const fileList = files.length > 0
+    ? `\nConflicting files:\n${files.map((f) => `• <code>${esc(f)}</code>`).join("\n")}`
+    : ""
+  return `❌ <b>Landing blocked</b>: ${esc(title)} has unresolvable merge conflicts${fileList}`
+}
+
 export function formatConfigHelp(): string {
   return [
     `⚙️ <b>Config commands</b>`,
