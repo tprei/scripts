@@ -556,6 +556,76 @@ export function formatDagAnalyzing(slug: string): string {
   return `🔗 <b>Analyzing conversation</b>  ·  🏷 <code>${esc(slug)}</code>\nExtracting work items with dependencies…`
 }
 
+export interface PendingDagItemForReview {
+  id: string
+  title: string
+  description: string
+  dependsOn: string[]
+}
+
+export function formatDagReview(
+  slug: string,
+  items: PendingDagItemForReview[],
+): string {
+  const MAX_DESC = 120
+  const lines: string[] = [
+    `🔗 <b>DAG Review</b>: ${items.length} task${items.length === 1 ? "" : "s"} extracted  ·  🏷 <code>${esc(slug)}</code>`,
+    "",
+  ]
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    const deps = item.dependsOn.length > 0
+      ? ` ← ${item.dependsOn.map((d) => `<code>${esc(d)}</code>`).join(", ")}`
+      : ""
+    const status = item.dependsOn.length === 0 ? "⚡" : "⏳"
+    lines.push(`${i + 1}. ${status} <b>${esc(item.id)}</b> — ${esc(truncate(item.title, MAX_DESC))}${deps}`)
+    if (item.description && item.description !== item.title) {
+      lines.push(`   <i>${esc(truncate(item.description, MAX_DESC))}</i>`)
+    }
+  }
+
+  lines.push("")
+  lines.push("<b>Reply to modify the DAG:</b>")
+  lines.push("• <code>merge X and Y</code> — combine tasks")
+  lines.push("• <code>remove dependency between X and Y</code>")
+  lines.push("• <code>split X into A and B</code>")
+  lines.push("• <code>add dependency: X depends on Y</code>")
+  lines.push("• <code>remove task X</code>")
+  lines.push("")
+  lines.push("<code>/run</code> — start execution")
+
+  return lines.join("\n")
+}
+
+export function formatDagReviewUpdated(
+  slug: string,
+  items: PendingDagItemForReview[],
+  feedback: string,
+): string {
+  const MAX_DESC = 120
+  const lines: string[] = [
+    `🔗 <b>DAG Updated</b>: ${items.length} task${items.length === 1 ? "" : "s"}  ·  🏷 <code>${esc(slug)}</code>`,
+    "",
+    `<i>Applied: ${esc(truncate(feedback, 100))}</i>`,
+    "",
+  ]
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    const deps = item.dependsOn.length > 0
+      ? ` ← ${item.dependsOn.map((d) => `<code>${esc(d)}</code>`).join(", ")}`
+      : ""
+    const status = item.dependsOn.length === 0 ? "⚡" : "⏳"
+    lines.push(`${i + 1}. ${status} <b>${esc(item.id)}</b> — ${esc(truncate(item.title, MAX_DESC))}${deps}`)
+  }
+
+  lines.push("")
+  lines.push("<code>/run</code> — start execution")
+
+  return lines.join("\n")
+}
+
 export function formatDagStart(
   slug: string,
   children: { slug: string; title: string; dependsOn: string[] }[],
