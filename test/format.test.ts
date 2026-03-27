@@ -32,6 +32,8 @@ import {
   formatCINoChecks,
   formatUsage,
   formatDagNodeComplete,
+  formatDagReview,
+  formatDagReviewUpdated,
 } from "../src/format.js"
 import type { ClaudeUsageResponse } from "../src/claude-usage.js"
 import type { AggregateStats, SessionRecord, ModeBreakdown } from "../src/stats.js"
@@ -725,5 +727,163 @@ describe("formatDagNodeComplete", () => {
     const result = formatDagNodeComplete("my-slug", "completed", "My Task", undefined, { done: 3, total: 5, running: 1 })
     expect(result).toContain("3/5 complete")
     expect(result).toContain("1 running")
+  })
+})
+
+describe("formatDagReview", () => {
+  it("shows task count and slug", () => {
+    const items = [
+      { id: "db-schema", title: "Create database schema", description: "", dependsOn: [] },
+    ]
+    const result = formatDagReview("calm-bay", items)
+    expect(result).toContain("1 task")
+    expect(result).toContain("calm-bay")
+  })
+
+  it("pluralizes task count", () => {
+    const items = [
+      { id: "db-schema", title: "Create database schema", description: "", dependsOn: [] },
+      { id: "api-routes", title: "Implement API", description: "", dependsOn: ["db-schema"] },
+    ]
+    const result = formatDagReview("calm-bay", items)
+    expect(result).toContain("2 tasks")
+  })
+
+  it("shows tasks with dependencies", () => {
+    const items = [
+      { id: "db-schema", title: "Create database schema", description: "", dependsOn: [] },
+      { id: "api-routes", title: "Implement API", description: "", dependsOn: ["db-schema"] },
+    ]
+    const result = formatDagReview("calm-bay", items)
+    expect(result).toContain("db-schema")
+    expect(result).toContain("api-routes")
+    expect(result).toContain("← <code>db-schema</code>")
+  })
+
+  it("shows lightning icon for tasks with no dependencies", () => {
+    const items = [
+      { id: "db-schema", title: "Create database schema", description: "", dependsOn: [] },
+    ]
+    const result = formatDagReview("calm-bay", items)
+    expect(result).toContain("⚡")
+  })
+
+  it("shows hourglass icon for tasks with dependencies", () => {
+    const items = [
+      { id: "api-routes", title: "Implement API", description: "", dependsOn: ["db-schema"] },
+    ]
+    const result = formatDagReview("calm-bay", items)
+    expect(result).toContain("⏳")
+  })
+
+  it("shows description when different from title", () => {
+    const items = [
+      { id: "db-schema", title: "Create database schema", description: "Add migrations and models", dependsOn: [] },
+    ]
+    const result = formatDagReview("calm-bay", items)
+    expect(result).toContain("Add migrations and models")
+  })
+
+  it("omits description when same as title", () => {
+    const items = [
+      { id: "db-schema", title: "Create database schema", description: "Create database schema", dependsOn: [] },
+    ]
+    const result = formatDagReview("calm-bay", items)
+    // Should only appear once (in the title line)
+    const matches = result.match(/Create database schema/g)
+    expect(matches).toHaveLength(1)
+  })
+
+  it("includes modification instructions", () => {
+    const items = [
+      { id: "db-schema", title: "Create database schema", description: "", dependsOn: [] },
+    ]
+    const result = formatDagReview("calm-bay", items)
+    expect(result).toContain("merge X and Y")
+    expect(result).toContain("remove dependency")
+    expect(result).toContain("split X")
+    expect(result).toContain("add dependency")
+    expect(result).toContain("remove task")
+  })
+
+  it("includes /run command", () => {
+    const items = [
+      { id: "db-schema", title: "Create database schema", description: "", dependsOn: [] },
+    ]
+    const result = formatDagReview("calm-bay", items)
+    expect(result).toContain("/run")
+  })
+
+  it("escapes HTML in content", () => {
+    const items = [
+      { id: "db-schema", title: "Create <schema>", description: "", dependsOn: [] },
+    ]
+    const result = formatDagReview("calm-bay", items)
+    expect(result).toContain("&lt;schema&gt;")
+    expect(result).not.toContain("<schema>")
+  })
+
+  it("truncates long titles", () => {
+    const longTitle = "a".repeat(200)
+    const items = [
+      { id: "db-schema", title: longTitle, description: "", dependsOn: [] },
+    ]
+    const result = formatDagReview("calm-bay", items)
+    expect(result).toContain("…")
+  })
+})
+
+describe("formatDagReviewUpdated", () => {
+  it("shows updated message with feedback", () => {
+    const items = [
+      { id: "db-schema", title: "Create database schema", description: "", dependsOn: [] },
+    ]
+    const result = formatDagReviewUpdated("calm-bay", items, "merged api-routes and frontend")
+    expect(result).toContain("DAG Updated")
+    expect(result).toContain("merged api-routes and frontend")
+    expect(result).toContain("calm-bay")
+  })
+
+  it("shows task count after update", () => {
+    const items = [
+      { id: "db-schema", title: "Create database schema", description: "", dependsOn: [] },
+      { id: "full-stack", title: "Implement API + UI", description: "", dependsOn: ["db-schema"] },
+    ]
+    const result = formatDagReviewUpdated("calm-bay", items, "merged")
+    expect(result).toContain("2 tasks")
+  })
+
+  it("shows updated dependencies", () => {
+    const items = [
+      { id: "full-stack", title: "Implement API + UI", description: "", dependsOn: ["db-schema"] },
+    ]
+    const result = formatDagReviewUpdated("calm-bay", items, "merged")
+    expect(result).toContain("← <code>db-schema</code>")
+  })
+
+  it("includes /run command", () => {
+    const items = [
+      { id: "db-schema", title: "Create database schema", description: "", dependsOn: [] },
+    ]
+    const result = formatDagReviewUpdated("calm-bay", items, "merged")
+    expect(result).toContain("/run")
+  })
+
+  it("truncates long feedback", () => {
+    const longFeedback = "a".repeat(200)
+    const items = [
+      { id: "db-schema", title: "Create database schema", description: "", dependsOn: [] },
+    ]
+    const result = formatDagReviewUpdated("calm-bay", items, longFeedback)
+    expect(result).toContain("…")
+  })
+
+  it("escapes HTML in feedback", () => {
+    const items = [
+      { id: "db-schema", title: "Create database schema", description: "", dependsOn: [] },
+    ]
+    const result = formatDagReviewUpdated("calm-bay", items, "merged <X> and <Y>")
+    expect(result).toContain("&lt;X&gt;")
+    expect(result).toContain("&lt;Y&gt;")
   })
 })
