@@ -470,7 +470,7 @@ describe("needsRestack", () => {
     expect(needsRestack(graph, "a")).toEqual([])
   })
 
-  it("excludes terminal-state nodes (done, failed, skipped)", () => {
+  it("excludes landed, failed, and skipped nodes", () => {
     const graph = buildDag("test", [
       { id: "a", title: "A", description: "A", dependsOn: [] },
       { id: "b", title: "B", description: "B", dependsOn: ["a"] },
@@ -479,6 +479,7 @@ describe("needsRestack", () => {
     ], 1, "repo")
 
     graph.nodes[1].status = "done"
+    graph.nodes[1].landed = true
     graph.nodes[1].branch = "minion/b"
     graph.nodes[1].mergeBase = "abc"
 
@@ -489,6 +490,37 @@ describe("needsRestack", () => {
     graph.nodes[3].status = "skipped"
     graph.nodes[3].branch = "minion/d"
     graph.nodes[3].mergeBase = "ghi"
+
+    expect(needsRestack(graph, "a")).toEqual([])
+  })
+
+  it("includes done-but-not-landed nodes for restacking", () => {
+    const graph = buildDag("test", [
+      { id: "a", title: "A", description: "A", dependsOn: [] },
+      { id: "b", title: "B", description: "B", dependsOn: ["a"] },
+    ], 1, "repo")
+
+    graph.nodes[0].status = "done"
+    graph.nodes[1].status = "done"
+    graph.nodes[1].branch = "minion/b"
+    graph.nodes[1].mergeBase = "abc"
+
+    const result = needsRestack(graph, "a")
+    expect(result.map((n) => n.id)).toEqual(["b"])
+  })
+
+  it("excludes done-and-landed nodes from restacking", () => {
+    const graph = buildDag("test", [
+      { id: "a", title: "A", description: "A", dependsOn: [] },
+      { id: "b", title: "B", description: "B", dependsOn: ["a"] },
+    ], 1, "repo")
+
+    graph.nodes[0].status = "done"
+    graph.nodes[0].landed = true
+    graph.nodes[1].status = "done"
+    graph.nodes[1].landed = true
+    graph.nodes[1].branch = "minion/b"
+    graph.nodes[1].mergeBase = "abc"
 
     expect(needsRestack(graph, "a")).toEqual([])
   })

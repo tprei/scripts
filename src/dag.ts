@@ -15,6 +15,7 @@ export interface DagNode {
   error?: string
   recoveryAttempted?: boolean
   mergeBase?: string
+  landed?: boolean
 }
 
 export interface DagGraph {
@@ -351,7 +352,7 @@ export function needsRestack(graph: DagGraph, changedNodeId: string): DagNode[] 
     .filter((node) =>
       node.branch != null &&
       node.mergeBase != null &&
-      node.status !== "done" &&
+      !node.landed &&
       node.status !== "failed" &&
       node.status !== "skipped",
     )

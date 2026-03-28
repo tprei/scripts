@@ -2793,6 +2793,7 @@ export class Dispatcher {
           `gh pr merge ${JSON.stringify(node.prUrl!)} --squash`,
           { ...gitOpts, cwd: anyCwd, env: { ...process.env } },
         )
+        node.landed = true
         succeeded++
 
         // Clean up the branch separately — swallow errors since the merge already succeeded
