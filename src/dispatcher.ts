@@ -1280,6 +1280,8 @@ export class Dispatcher {
           timestamp: Date.now(),
         }).catch(() => {}) // best effort
 
+        let parentNotified = false
+
         if (topicSession.mode === "think") {
           this.updateTopicTitle(topicSession, "💬").catch(() => {})
           this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
@@ -1381,17 +1383,29 @@ export class Dispatcher {
                 )
               }
             }
+            parentNotified = true
+            this.notifyParentOfChildComplete(topicSession, state).catch((err) => {
+              log.warn({ err, slug: topicSession.slug }, "parent notify error")
+            })
           }).catch((err) => {
             loggers.observer.error({ err, sessionId }, "flushAndComplete error")
+            if (!parentNotified) {
+              parentNotified = true
+              this.notifyParentOfChildComplete(topicSession, state).catch((err) => {
+                log.warn({ err, slug: topicSession.slug }, "parent notify error")
+              })
+            }
           })
         }
 
         this.persistTopicSessions().catch(() => {}) // best effort
         this.cleanBuildArtifacts(topicSession.cwd)
 
-        this.notifyParentOfChildComplete(topicSession, state).catch((err) => {
-          log.warn({ err, slug: topicSession.slug }, "parent notify error")
-        })
+        if (!parentNotified) {
+          this.notifyParentOfChildComplete(topicSession, state).catch((err) => {
+            log.warn({ err, slug: topicSession.slug }, "parent notify error")
+          })
+        }
 
         if (topicSession.pendingFeedback.length > 0) {
           const feedback = topicSession.pendingFeedback.join("\n\n")
@@ -1871,8 +1885,7 @@ export class Dispatcher {
     if (!parent) return
 
     const label = childSession.splitLabel ?? childSession.slug
-    const prUrl = this.extractPRFromConversation(childSession) ?? undefined
-    if (prUrl) childSession.prUrl = prUrl
+    const prUrl = childSession.prUrl
 
     // Free child conversation memory
     childSession.conversation = []
