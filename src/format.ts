@@ -388,6 +388,7 @@ export function formatHelp(): string {
     `<code>/task [repo] description</code> (or <code>/w</code>) — start a one-shot coding task`,
     `<code>/plan [repo] description</code> — start a multi-turn planning session`,
     `<code>/think [repo] question</code> — start a deep research session`,
+    `<code>/ship [repo] description</code> — think → plan → DAG in one shot`,
     `<code>/review [repo] PR#</code> — review a pull request (or all unreviewed PRs)`,
     `<code>/status</code> — show active sessions`,
     `<code>/stats</code> — show aggregate usage statistics`,
@@ -654,6 +655,33 @@ export function formatSplitChildComplete(slug: string, state: string, label: str
 
 export function formatSplitAllDone(succeeded: number, total: number): string {
   return `📊 <b>Split complete</b>: ${succeeded}/${total} succeeded`
+}
+
+export function formatShipStarting(
+  repo: string,
+  slug: string,
+  task: string,
+): string {
+  const MAX_TASK = 200
+  return [
+    `🚀 <b>Ship started</b>  ·  📦 <b>${esc(repo)}</b>  ·  🏷 <code>${esc(slug)}</code>`,
+    ``,
+    `<blockquote>${esc(truncate(task, MAX_TASK))}</blockquote>`,
+    ``,
+    `Phase 1/3: 🧠 Deep research — exploring the codebase and understanding the problem.`,
+  ].join("\n")
+}
+
+export function formatShipPlanComplete(slug: string): string {
+  return `🚀 <b>Research complete</b>  ·  🏷 <code>${esc(slug)}</code>\n\nPhase 2/3: 📋 Architect — building a detailed implementation plan.`
+}
+
+export function formatShipArchitectStart(slug: string): string {
+  return `📋 <b>Architect planning</b>  ·  🏷 <code>${esc(slug)}</code>\n\nDesigning the implementation plan with task dependencies…`
+}
+
+export function formatShipDagStart(slug: string, nodeCount: number): string {
+  return `🔗 <b>DAG executing</b>  ·  🏷 <code>${esc(slug)}</code>\n\nPhase 3/3: Spawning ${nodeCount} task${nodeCount === 1 ? "" : "s"} from the dependency graph.`
 }
 
 export function formatStackAnalyzing(slug: string): string {

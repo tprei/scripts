@@ -33,6 +33,10 @@ import {
   formatCINoChecks,
   formatUsage,
   formatDagNodeComplete,
+  formatShipStarting,
+  formatShipPlanComplete,
+  formatShipArchitectStart,
+  formatShipDagStart,
 } from "../src/format.js"
 import type { ClaudeUsageResponse } from "../src/claude-usage.js"
 import type { AggregateStats, SessionRecord, ModeBreakdown } from "../src/stats.js"
@@ -793,5 +797,72 @@ describe("formatDagNodeComplete", () => {
     const result = formatDagNodeComplete("my-slug", "completed", "My Task", undefined, { done: 3, total: 5, running: 1 })
     expect(result).toContain("3/5 complete")
     expect(result).toContain("1 running")
+  })
+})
+
+describe("formatShipStarting", () => {
+  it("includes repo, slug, task, and phase 1 indicator", () => {
+    const msg = formatShipStarting("my-repo", "bold-arc", "build the auth system")
+    expect(msg).toContain("Ship started")
+    expect(msg).toContain("my-repo")
+    expect(msg).toContain("bold-arc")
+    expect(msg).toContain("build the auth system")
+    expect(msg).toContain("Phase 1/3")
+    expect(msg).toContain("Deep research")
+  })
+
+  it("truncates long tasks", () => {
+    const longTask = "x".repeat(300)
+    const msg = formatShipStarting("repo", "slug", longTask)
+    expect(msg).toContain("…")
+  })
+
+  it("escapes HTML in task", () => {
+    const msg = formatShipStarting("repo", "slug", "fix <script> injection")
+    expect(msg).toContain("&lt;script&gt;")
+    expect(msg).not.toContain("<script>")
+  })
+})
+
+describe("formatShipPlanComplete", () => {
+  it("includes slug and phase 2 indicator", () => {
+    const msg = formatShipPlanComplete("bold-arc")
+    expect(msg).toContain("bold-arc")
+    expect(msg).toContain("Research complete")
+    expect(msg).toContain("Phase 2/3")
+    expect(msg).toContain("Architect")
+  })
+})
+
+describe("formatShipArchitectStart", () => {
+  it("includes slug and architect message", () => {
+    const msg = formatShipArchitectStart("bold-arc")
+    expect(msg).toContain("bold-arc")
+    expect(msg).toContain("Architect planning")
+    expect(msg).toContain("implementation plan")
+  })
+})
+
+describe("formatShipDagStart", () => {
+  it("includes slug, node count, and phase 3 indicator", () => {
+    const msg = formatShipDagStart("bold-arc", 5)
+    expect(msg).toContain("bold-arc")
+    expect(msg).toContain("DAG executing")
+    expect(msg).toContain("Phase 3/3")
+    expect(msg).toContain("5 tasks")
+  })
+
+  it("uses singular for single task", () => {
+    const msg = formatShipDagStart("bold-arc", 1)
+    expect(msg).toContain("1 task")
+    expect(msg).not.toContain("1 tasks")
+  })
+})
+
+describe("formatHelp (ship command)", () => {
+  it("includes /ship command", () => {
+    const msg = formatHelp()
+    expect(msg).toContain("/ship")
+    expect(msg).toContain("DAG")
   })
 })
