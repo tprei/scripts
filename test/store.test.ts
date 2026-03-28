@@ -295,6 +295,41 @@ describe("SessionStore", () => {
     expect(active.get(100)?.lastState).toBeUndefined()
   })
 
+  it("preserves ship mode fields (autoDag, shipPostDag, softFail) through save/load", async () => {
+    const store = new SessionStore(tmpDir)
+    const sessions = new Map<number, TopicSession>()
+    sessions.set(100, makeSession({
+      autoDag: true,
+      shipPostDag: true,
+      softFail: true,
+    }))
+    sessions.set(200, makeSession({
+      threadId: 200,
+      autoDag: true,
+      shipPostDag: false,
+      softFail: false,
+    }))
+    sessions.set(300, makeSession({
+      threadId: 300,
+      // No ship fields — should remain undefined
+    }))
+
+    await store.save(sessions)
+    const { active } = await store.load()
+
+    expect(active.get(100)?.autoDag).toBe(true)
+    expect(active.get(100)?.shipPostDag).toBe(true)
+    expect(active.get(100)?.softFail).toBe(true)
+
+    expect(active.get(200)?.autoDag).toBe(true)
+    expect(active.get(200)?.shipPostDag).toBe(false)
+    expect(active.get(200)?.softFail).toBe(false)
+
+    expect(active.get(300)?.autoDag).toBeUndefined()
+    expect(active.get(300)?.shipPostDag).toBeUndefined()
+    expect(active.get(300)?.softFail).toBeUndefined()
+  })
+
   it("handles valid JSON with missing sessions field gracefully", async () => {
     fs.writeFileSync(
       path.join(tmpDir, ".sessions.json"),

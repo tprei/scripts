@@ -169,4 +169,10 @@ export interface TopicSession {
   allSplitItems?: { title: string; description: string }[]
   pinnedMessageId?: number
   pendingDagItems?: PendingDagItem[]
+  /** Automatically trigger DAG extraction after plan completes */
+  autoDag?: boolean
+  /** Trigger post-DAG hardening after DAG completes */
+  shipPostDag?: boolean
+  /** Failed nodes don't block dependents (soft-fail mode) */
+  softFail?: boolean
 }
