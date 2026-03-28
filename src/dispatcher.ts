@@ -55,6 +55,8 @@ import {
   formatLandProgress,
   formatLandComplete,
   formatLandError,
+  formatLandSkipped,
+  formatLandSummary,
   formatLandRestacking,
   formatDagCIWaiting,
   formatDagCIFailed,
@@ -2785,8 +2787,39 @@ export class Dispatcher {
     }
 
     let succeeded = 0
+    let skipped = 0
+    const failedTitles: string[] = []
 
     for (const node of prNodes) {
+      // Check PR state before attempting merge — skip if already merged or closed
+      try {
+        const prState = execSync(
+          `gh pr view ${JSON.stringify(node.prUrl!)} --json state --jq .state`,
+          { ...gitOpts, cwd: anyCwd, env: { ...process.env }, encoding: "utf-8" },
+        ).trim()
+
+        if (prState === "MERGED") {
+          node.landed = true
+          skipped++
+          await this.telegram.sendMessage(
+            formatLandSkipped(node.title, prState),
+            topicSession.threadId,
+          )
+          continue
+        }
+
+        if (prState === "CLOSED") {
+          skipped++
+          await this.telegram.sendMessage(
+            formatLandSkipped(node.title, prState),
+            topicSession.threadId,
+          )
+          continue
+        }
+      } catch (err) {
+        log.warn({ err, nodeId: node.id }, "PR state check failed, attempting merge anyway")
+      }
+
       try {
         // Merge the PR with squash (no --delete-branch to avoid crash on worktree checkouts)
         execSync(
@@ -2866,18 +2899,27 @@ export class Dispatcher {
         await new Promise((resolve) => setTimeout(resolve, 3000))
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err)
+        failedTitles.push(node.title)
         await this.telegram.sendMessage(
           formatLandError(node.title, errMsg),
           topicSession.threadId,
         )
-        break
+        continue
       }
     }
 
-    await this.telegram.sendMessage(
-      formatLandComplete(succeeded, prNodes.length),
-      topicSession.threadId,
-    )
+    const failed = failedTitles.length
+    if (failed === 0 && skipped === 0) {
+      await this.telegram.sendMessage(
+        formatLandComplete(succeeded, prNodes.length),
+        topicSession.threadId,
+      )
+    } else {
+      await this.telegram.sendMessage(
+        formatLandSummary(succeeded, failed, skipped, prNodes.length, failedTitles),
+        topicSession.threadId,
+      )
+    }
   }
 
   /**
