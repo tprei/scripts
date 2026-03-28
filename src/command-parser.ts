@@ -9,6 +9,7 @@ export const TASK_SHORT = "/w"
 export const PLAN_PREFIX = "/plan"
 export const THINK_PREFIX = "/think"
 export const REVIEW_PREFIX = "/review"
+export const SHIP_PREFIX = "/ship"
 export const EXECUTE_CMD = "/execute"
 export const STATUS_CMD = "/status"
 export const STATS_CMD = "/stats"
@@ -127,7 +128,7 @@ export function buildReviewAllTask(repoUrl: string): string {
  */
 export function buildRepoKeyboard(
   repoKeys: string[],
-  prefix: "repo" | "plan" | "think" | "review" = "repo",
+  prefix: "repo" | "plan" | "think" | "review" | "ship" = "repo",
 ): { text: string; callback_data: string }[][] {
   const dataPrefix =
     prefix === "think"
@@ -136,7 +137,9 @@ export function buildRepoKeyboard(
         ? "plan-repo"
         : prefix === "review"
           ? "review-repo"
-          : "repo"
+          : prefix === "ship"
+            ? "ship-repo"
+            : "repo"
   const rows: { text: string; callback_data: string }[][] = []
   for (let i = 0; i < repoKeys.length; i += 2) {
     const row = [{ text: repoKeys[i], callback_data: `${dataPrefix}:${repoKeys[i]}` }]

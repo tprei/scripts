@@ -13,6 +13,7 @@ import {
   PLAN_PREFIX,
   THINK_PREFIX,
   REVIEW_PREFIX,
+  SHIP_PREFIX,
   EXECUTE_CMD,
   STATUS_CMD,
   STATS_CMD,
@@ -54,6 +55,7 @@ describe("command-parser constants", () => {
     expect(DAG_CMD).toBe("/dag")
     expect(LAND_CMD).toBe("/land")
     expect(RETRY_CMD).toBe("/retry")
+    expect(SHIP_PREFIX).toBe("/ship")
   })
 })
 
@@ -182,6 +184,11 @@ describe("buildRepoKeyboard", () => {
   it("builds keyboard with review prefix", () => {
     const keyboard = buildRepoKeyboard(["repo1"], "review")
     expect(keyboard[0][0].callback_data).toBe("review-repo:repo1")
+  })
+
+  it("builds keyboard with ship prefix", () => {
+    const keyboard = buildRepoKeyboard(["repo1"], "ship")
+    expect(keyboard[0][0].callback_data).toBe("ship-repo:repo1")
   })
 
   it("handles empty repo list", () => {
