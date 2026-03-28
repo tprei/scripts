@@ -820,7 +820,7 @@ describe("renderDagForGitHub", () => {
     const result = renderDagForGitHub(graph)
 
     expect(result).toContain("✅ Done")
-    expect(result).toContain("⚡ Running")
+    expect(result).toContain("▶️ Running")
     expect(result).toContain("🔜 Ready")
     expect(result).toContain("⏳ Pending")
     expect(result).toContain("❌ Failed")

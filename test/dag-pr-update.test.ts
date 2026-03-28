@@ -68,7 +68,7 @@ describe("DAG PR description update flow", () => {
     const firstSection = renderDagForGitHub(graph, "api")
     const bodyAfterFirst = upsertDagSection(originalBody, firstSection)
 
-    expect(bodyAfterFirst).toContain("⚡ Running")
+    expect(bodyAfterFirst).toContain("▶️ Running")
 
     // Simulate node completion
     graph.nodes[0].status = "done"

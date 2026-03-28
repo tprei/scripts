@@ -91,7 +91,7 @@ describe("DAG PR integration — full lifecycle", () => {
 
     // Schema PR now shows api and worker as running
     const schemaBody = prBodies.get("schema")!
-    expect(schemaBody).toContain("⚡ Running")
+    expect(schemaBody).toContain("▶️ Running")
     expect(schemaBody).toContain("1/4 complete")
     expect(schemaBody).toContain("2 running")
 
@@ -336,7 +336,7 @@ describe("DAG PR integration — edge cases", () => {
 
     expect(body).toContain("## Summary")
     expect(body).toContain("## Test Plan")
-    expect(body).toContain("⚡ Running")
+    expect(body).toContain("▶️ Running")
 
     // Second upsert after completion
     graph.nodes[0].status = "done"
@@ -345,7 +345,7 @@ describe("DAG PR integration — edge cases", () => {
     expect(body).toContain("## Summary")
     expect(body).toContain("## Test Plan")
     expect(body).toContain("✅ Done")
-    expect(body).not.toContain("⚡ Running")
+    expect(body).not.toContain("▶️ Running")
 
     // Only one set of markers
     const markers = countMarkers(body)

@@ -679,7 +679,7 @@ export function formatDagStart(
     const deps = children[i].dependsOn.length > 0
       ? ` ← ${children[i].dependsOn.join(", ")}`
       : ""
-    const status = children[i].dependsOn.length === 0 ? "⚡" : "⏳"
+    const status = children[i].dependsOn.length === 0 ? "▶️" : "⏳"
     lines.push(`${i + 1}. ${status} <b>${esc(children[i].slug)}</b> — ${esc(children[i].title)}${deps}`)
   }
   lines.push("")
@@ -692,7 +692,7 @@ export function formatDagStart(
 }
 
 export function formatDagNodeStarting(nodeTitle: string, nodeId: string, slug: string): string {
-  return `⚡ <b>Starting</b>: ${esc(nodeTitle)} (<code>${esc(nodeId)}</code>)  ·  🏷 <code>${esc(slug)}</code>`
+  return `▶️ <b>Starting</b>: ${esc(nodeTitle)} (<code>${esc(nodeId)}</code>)  ·  🏷 <code>${esc(slug)}</code>`
 }
 
 export function formatDagNodeComplete(
@@ -752,7 +752,7 @@ export function formatDagCIFailed(slug: string, nodeTitle: string, prUrl: string
 }
 
 export function formatDagForceAdvance(nodeTitle: string, nodeId: string): string {
-  return `⚡ Force-advancing <b>${esc(nodeTitle)}</b> (<code>${esc(nodeId)}</code>) past CI failure`
+  return `▶️ Force-advancing <b>${esc(nodeTitle)}</b> (<code>${esc(nodeId)}</code>) past CI failure`
 }
 
 export function formatConfigHelp(): string {
@@ -777,7 +777,7 @@ export function formatPinnedStatus(
   prUrl?: string,
   extra?: { label?: string; state?: string },
 ): string {
-  const statusIcon = status === "completed" ? "✅" : status === "errored" ? "❌" : "⚡"
+  const statusIcon = status === "completed" ? "✅" : status === "errored" ? "❌" : "▶️"
   const statusText = status === "completed" ? "Complete" : status === "errored" ? "Error" : "Working"
 
   const lines: string[] = [
@@ -814,7 +814,7 @@ export function formatPinnedSplitStatus(
   lines.push(``)
 
   for (const child of children) {
-    const icon = child.status === "done" ? "✅" : child.status === "failed" ? "❌" : "⚡"
+    const icon = child.status === "done" ? "✅" : child.status === "failed" ? "❌" : "▶️"
     const prPart = child.prUrl ? ` — <a href="${esc(child.prUrl)}">PR</a>` : ""
     lines.push(`${icon} <code>${esc(child.slug)}</code>${prPart}`)
   }
@@ -845,7 +845,7 @@ export function formatPinnedDagStatus(
   lines.push(``)
 
   for (const node of nodes) {
-    const nodeIcon = node.status === "done" ? "✅" : node.status === "failed" ? "❌" : node.status === "running" ? "⚡" : node.status === "skipped" ? "⏭️" : "⏳"
+    const nodeIcon = node.status === "done" ? "✅" : node.status === "failed" ? "❌" : node.status === "running" ? "▶️" : node.status === "skipped" ? "⏭️" : "⏳"
     const prPart = node.prUrl ? ` — <a href="${esc(node.prUrl)}">PR</a>` : ""
     const title = esc(node.title)
     const styledTitle = node.status === "done" || node.status === "skipped"

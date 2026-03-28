@@ -445,7 +445,7 @@ export function renderDagStatus(graph: DagGraph, isStack?: boolean): string {
   const statusIcon: Record<DagNodeStatus, string> = {
     pending: "⏳",
     ready: "🔜",
-    running: "⚡",
+    running: "▶️",
     done: "✅",
     failed: "❌",
     skipped: "⏭️",
@@ -518,7 +518,7 @@ export { DAG_STATUS_START, DAG_STATUS_END }
 const statusEmoji: Record<DagNodeStatus, string> = {
   pending: "⏳",
   ready: "🔜",
-  running: "⚡",
+  running: "▶️",
   done: "✅",
   failed: "❌",
   skipped: "⏭️",
