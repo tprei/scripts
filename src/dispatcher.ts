@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process"
 import path from "node:path"
 import fs from "node:fs"
+import { SessionRegistry } from "./dispatcher/registry.js"
 import crypto from "node:crypto"
 import type { TelegramClient } from "./telegram.js"
 import { captureException } from "./sentry.js"
@@ -10,8 +11,7 @@ import type { TelegramUpdate, TelegramCallbackQuery, TelegramPhotoSize, SessionM
 import { generateSlug } from "./slugs.js"
 import type { MinionConfig, McpConfig } from "./config-types.js"
 import { DEFAULT_PROMPTS } from "./prompts.js"
-import { SessionStore } from "./store.js"
-import { ProfileStore } from "./profile-store.js"
+
 import {
   esc,
   formatPlanIteration,
@@ -60,8 +60,6 @@ import {
   formatDagCIFailed,
   formatDagForceAdvance,
   formatPinnedStatus,
-  formatPinnedSplitStatus,
-  formatPinnedDagStatus,
 } from "./format.js"
 import { extractSplitItems, buildSplitChildPrompt } from "./split.js"
 import { extractStackItems, extractDagItems, buildDagChildPrompt } from "./dag-extract.js"
@@ -72,14 +70,14 @@ import {
   type DagGraph, type DagNode, type DagInput,
 } from "./dag.js"
 import { runQualityGates, type QualityReport } from "./quality-gates.js"
-import { StatsTracker } from "./stats.js"
+
 import { fetchClaudeUsage } from "./claude-usage.js"
 import { writeSessionLog } from "./session-log.js"
 import { extractPRUrl, findPRByBranch, waitForCI, getFailedCheckLogs, buildCIFixPrompt, buildQualityGateFixPrompt, buildMergeConflictPrompt, checkPRMergeability } from "./ci-babysit.js"
 import { buildConversationDigest } from "./conversation-digest.js"
-import { truncateConversation } from "./conversation-limits.js"
+
 import { DEFAULT_CI_FIX_PROMPT, DEFAULT_RECOVERY_PROMPT } from "./prompts.js"
-import { StateBroadcaster, topicSessionToApi, dagToApi } from "./api-server.js"
+import { StateBroadcaster } from "./api-server.js"
 import { loggers } from "./logger.js"
 import { SessionNotFoundError } from "./errors.js"
 import {
@@ -103,21 +101,22 @@ const log = loggers.dispatcher
 const POLL_TIMEOUT = 30
 
 export class Dispatcher {
-  private readonly sessions = new Map<number, ActiveSession>()
-  private readonly topicSessions = new Map<number, TopicSession>()
-  private readonly pendingTasks = new Map<number, PendingTask>()
-  private readonly pendingProfiles = new Map<number, PendingTask>()
-  private readonly store: SessionStore
-  private readonly profileStore: ProfileStore
-  private readonly dags = new Map<string, DagGraph>()
-  private readonly pendingBabysitPRs = new Map<number, Array<{ childSession: TopicSession; prUrl: string; qualityReport?: QualityReport }>>()
-  private readonly broadcaster?: StateBroadcaster
+  private readonly registry: SessionRegistry
+
+  /** Backward-compatible accessors — tests access these via casting. */
+  get topicSessions() { return this.registry.topicSessions }
+  get sessions() { return this.registry.sessions }
+  get pendingTasks() { return this.registry.pendingTasks }
+  get pendingProfiles() { return this.registry.pendingProfiles }
+  get dags() { return this.registry.dags }
+  get pendingBabysitPRs() { return this.registry.pendingBabysitPRs }
+  get store() { return this.registry.store }
+  get profileStore() { return this.registry.profileStore }
+  get stats() { return this.registry.stats }
+
   private offset = 0
   private running = false
   private cleanupTimer: ReturnType<typeof setInterval> | null = null
-
-  private readonly stats: StatsTracker
-  private pinnedSummaryMessageId: number | null = null
 
   constructor(
     private readonly telegram: TelegramClient,
@@ -125,45 +124,7 @@ export class Dispatcher {
     private readonly config: MinionConfig,
     broadcaster?: StateBroadcaster,
   ) {
-    this.broadcaster = broadcaster
-    this.store = new SessionStore(this.config.workspace.root)
-    this.profileStore = new ProfileStore(this.config.workspace.root)
-    this.stats = new StatsTracker(this.config.workspace.root)
-    this.loadPinnedMessageId()
-  }
-
-  private pushToConversation(session: TopicSession, message: TopicMessage): void {
-    session.conversation.push(message)
-    const { conversation, truncated, truncatedCount } = truncateConversation(
-      session.conversation,
-      this.config.workspace.maxConversationLength,
-    )
-    if (truncated) {
-      session.conversation = conversation
-      log.info({ slug: session.slug, truncatedCount }, "truncated conversation")
-    }
-  }
-
-  private broadcastSession(session: TopicSession, eventType: "session_created" | "session_updated", sessionState?: "completed" | "errored"): void {
-    if (!this.broadcaster) return
-    const apiSession = topicSessionToApi(session, this.config.telegram.chatId, session.activeSessionId, sessionState)
-    this.broadcaster.broadcast({ type: eventType, session: apiSession })
-  }
-
-  private broadcastSessionDeleted(slug: string): void {
-    if (!this.broadcaster) return
-    this.broadcaster.broadcast({ type: "session_deleted", sessionId: slug })
-  }
-
-  private broadcastDag(graph: DagGraph, eventType: "dag_created" | "dag_updated"): void {
-    if (!this.broadcaster) return
-    const apiDag = dagToApi(graph, this.topicSessions, this.sessions, this.config.telegram.chatId)
-    this.broadcaster.broadcast({ type: eventType, dag: apiDag })
-  }
-
-  private broadcastDagDeleted(dagId: string): void {
-    if (!this.broadcaster) return
-    this.broadcaster.broadcast({ type: "dag_deleted", dagId })
+    this.registry = new SessionRegistry(telegram, config, broadcaster)
   }
 
   async loadPersistedSessions(): Promise<void> {
@@ -198,7 +159,7 @@ export class Dispatcher {
         log.info({ slug: session.slug, threadId }, "cleaned expired session")
       }
     }
-    this.updatePinnedSummary()
+    this.registry.updatePinnedSummary()
   }
 
   async start(): Promise<void> {
@@ -315,136 +276,11 @@ export class Dispatcher {
     }
 
     await this.persistTopicSessions()
-    this.updatePinnedSummary()
+    this.registry.updatePinnedSummary()
   }
 
-  private async persistTopicSessions(markInterrupted = false): Promise<void> {
-    const toSave = new Map<number, TopicSession>()
-    const now = Date.now()
-    for (const [threadId, session] of this.topicSessions) {
-      if (markInterrupted && session.activeSessionId) {
-        // Mark as interrupted so we can notify on restart
-        toSave.set(threadId, {
-          ...session,
-          activeSessionId: undefined,
-          interruptedAt: now,
-        })
-      } else {
-        toSave.set(threadId, session)
-      }
-    }
-    await this.store.save(toSave, this.offset)
-  }
-
-  private get pinnedSummaryPath(): string {
-    return path.join(this.config.workspace.root, ".pinned-summary.json")
-  }
-
-  private loadPinnedMessageId(): void {
-    try {
-      const raw = fs.readFileSync(this.pinnedSummaryPath, "utf-8")
-      const data = JSON.parse(raw) as { messageId?: number | null }
-      this.pinnedSummaryMessageId = data.messageId ?? null
-    } catch { /* file doesn't exist yet */ }
-  }
-
-  private savePinnedMessageId(id: number | null): void {
-    try {
-      fs.writeFileSync(this.pinnedSummaryPath, JSON.stringify({ messageId: id }))
-    } catch { /* ignore */ }
-  }
-
-  private formatPinnedSummary(): string {
-    const sessions = [...this.topicSessions.values()]
-    if (sessions.length === 0) return "No active minion sessions."
-    const lines = sessions.map((s) => {
-      const taskText = s.conversation[0]?.text ?? ""
-      const desc = taskText.length > 60 ? taskText.slice(0, 60).trimEnd() + "…" : taskText
-      const icon = s.activeSessionId ? "⚡" : "💬"
-      return `${icon} <b>${escapeHtml(s.slug)}</b>: ${escapeHtml(desc)} (${s.mode})`
-    })
-    return lines.join("\n")
-  }
-
-  private updatePinnedSummary(): void {
-    const html = this.formatPinnedSummary()
-    ;(async () => {
-      if (this.pinnedSummaryMessageId !== null) {
-        const ok = await this.telegram.editMessage(this.pinnedSummaryMessageId, html)
-        if (ok) return
-        this.pinnedSummaryMessageId = null
-        this.savePinnedMessageId(null)
-      }
-      const { ok, messageId } = await this.telegram.sendMessage(html)
-      if (ok && messageId !== null) {
-        await this.telegram.pinChatMessage(messageId)
-        this.pinnedSummaryMessageId = messageId
-        this.savePinnedMessageId(messageId)
-      }
-    })().catch((err) => {
-      log.error({ err }, "updatePinnedSummary error")
-    })
-  }
-
-  /** Pin a message in a thread, updating any previously pinned message. */
-  private async pinThreadMessage(session: TopicSession, html: string): Promise<void> {
-    const threadId = session.threadId
-    try {
-      // If we have an existing pinned message, update it
-      if (session.pinnedMessageId != null) {
-        const ok = await this.telegram.editMessage(session.pinnedMessageId, html, threadId)
-        if (ok) return
-        // Edit failed, create new message
-        session.pinnedMessageId = undefined
-      }
-      // Send new message and pin it
-      const { ok, messageId } = await this.telegram.sendMessage(html, threadId)
-      if (ok && messageId != null) {
-        await this.telegram.pinChatMessage(messageId)
-        session.pinnedMessageId = messageId
-      }
-    } catch (err) {
-      log.warn({ err, slug: session.slug }, "pinThreadMessage error")
-    }
-  }
-
-  /** Update the pinned split status in a parent thread showing all children with PR links. */
-  private async updatePinnedSplitStatus(parent: TopicSession): Promise<void> {
-    if (!parent.childThreadIds || parent.childThreadIds.length === 0) return
-
-    const children: { slug: string; label: string; prUrl?: string; status: "running" | "done" | "failed" }[] = []
-
-    for (const id of parent.childThreadIds) {
-      const child = this.topicSessions.get(id)
-      if (!child) continue
-      children.push({
-        slug: child.slug,
-        label: child.splitLabel ?? child.slug,
-        prUrl: child.prUrl,
-        status: child.activeSessionId ? "running" : child.prUrl ? "done" : "failed",
-      })
-    }
-
-    if (children.length === 0) return
-
-    const html = formatPinnedSplitStatus(parent.slug, parent.repo, children)
-    await this.pinThreadMessage(parent, html)
-  }
-
-  /** Update the pinned DAG status in a parent thread showing all nodes with PR links. */
-  private async updatePinnedDagStatus(parent: TopicSession, graph: DagGraph): Promise<void> {
-    const isStack = !graph.nodes.some((n) => n.dependsOn.length > 1) &&
-      graph.nodes.every((n, i) => i === 0 || n.dependsOn.length === 1)
-
-    const nodes = graph.nodes.map((n) => ({
-      id: n.id,
-      title: n.title,
-      prUrl: n.prUrl,
-      status: n.status as "pending" | "ready" | "running" | "done" | "failed",
-    }))
-
-    const html = formatPinnedDagStatus(parent.slug, parent.repo, nodes, isStack)
-    await this.pinThreadMessage(parent, html)
+  async persistTopicSessions(markInterrupted?: boolean): Promise<void> {
+    return this.registry.persistTopicSessions(this.offset, markInterrupted)
   }
 
   private async poll(): Promise<void> {
@@ -864,7 +700,7 @@ export class Dispatcher {
     }
 
     await this.persistTopicSessions()
-    this.updatePinnedSummary()
+    this.registry.updatePinnedSummary()
 
     const totalItems = removedSessions + removedOrphans + removedRepos
     if (totalItems === 0) {
@@ -1187,8 +1023,8 @@ export class Dispatcher {
     }
 
     this.topicSessions.set(threadId, topicSession)
-    this.broadcastSession(topicSession, "session_created")
-    this.updatePinnedSummary()
+    this.registry.broadcastSession(topicSession, "session_created")
+    this.registry.updatePinnedSummary()
 
     await this.spawnTopicAgent(topicSession, fullTask)
   }
@@ -1218,7 +1054,7 @@ export class Dispatcher {
 
     const sessionId = crypto.randomUUID()
     topicSession.activeSessionId = sessionId
-    this.broadcastSession(topicSession, "session_updated")
+    this.registry.broadcastSession(topicSession, "session_updated")
 
     const meta: SessionMeta = {
       sessionId,
@@ -1231,7 +1067,7 @@ export class Dispatcher {
     }
 
     const onTextCapture = (_sid: string, text: string) => {
-      this.pushToConversation(topicSession, { role: "assistant", text })
+      this.registry.pushToConversation(topicSession, { role: "assistant", text })
     }
 
     const prompts = { ...DEFAULT_PROMPTS, ...this.config.prompts }
@@ -1267,8 +1103,8 @@ export class Dispatcher {
         this.sessions.delete(topicSession.threadId)
         topicSession.activeSessionId = undefined
         topicSession.lastActivityAt = Date.now()
-        this.broadcastSession(topicSession, "session_updated", state)
-        this.updatePinnedSummary()
+        this.registry.broadcastSession(topicSession, "session_updated", state)
+        this.registry.updatePinnedSummary()
 
         this.stats.record({
           slug: topicSession.slug,
@@ -1334,7 +1170,7 @@ export class Dispatcher {
                 )
               }
               if (qualityReport && !qualityReport.allPassed) {
-                this.pushToConversation(topicSession, {
+                this.registry.pushToConversation(topicSession, {
                   role: "user",
                   text: formatQualityReportForContext(qualityReport.results),
                 })
@@ -1352,7 +1188,7 @@ export class Dispatcher {
                 topicSession.prUrl = prUrl
                 this.postSessionDigest(topicSession, prUrl)
                 // Pin the PR link in the thread
-                await this.pinThreadMessage(
+                await this.registry.pinThreadMessage(
                   topicSession,
                   formatPinnedStatus(topicSession.slug, topicSession.repo, "completed", prUrl),
                 )
@@ -1373,7 +1209,7 @@ export class Dispatcher {
                 }
               } else {
                 // No PR - pin the completion status
-                await this.pinThreadMessage(
+                await this.registry.pinThreadMessage(
                   topicSession,
                   formatPinnedStatus(topicSession.slug, topicSession.repo, "completed"),
                 )
@@ -1407,7 +1243,7 @@ export class Dispatcher {
     this.sessions.set(topicSession.threadId, { handle, meta, task })
 
     await this.updateTopicTitle(topicSession, "⚡")
-    this.updatePinnedSummary()
+    this.registry.updatePinnedSummary()
     await this.observer.onSessionStart(meta, task, onTextCapture)
     const systemPrompt = systemPromptOverride ?? (topicSession.mode === "task" ? prompts.task : undefined)
     handle.start(task, systemPrompt)
@@ -1487,7 +1323,7 @@ export class Dispatcher {
 
       const conflictPrompt = buildMergeConflictPrompt(prUrl, conflictAttempt, maxRetries)
       topicSession.mode = "ci-fix"
-      this.pushToConversation(topicSession, { role: "user", text: conflictPrompt })
+      this.registry.pushToConversation(topicSession, { role: "user", text: conflictPrompt })
 
       await new Promise<void>((resolve) => {
         this.spawnCIFixAgent(topicSession, conflictPrompt, () => resolve())
@@ -1578,7 +1414,7 @@ export class Dispatcher {
       log.info({ prUrl, attempt, maxRetries }, "spawning CI fix session")
 
       topicSession.mode = "ci-fix"
-      this.pushToConversation(topicSession, { role: "user", text: fixPrompt })
+      this.registry.pushToConversation(topicSession, { role: "user", text: fixPrompt })
 
       await new Promise<void>((resolve) => {
         this.spawnCIFixAgent(topicSession, fixPrompt, () => resolve())
@@ -1682,7 +1518,7 @@ export class Dispatcher {
       )
 
       childSession.mode = "ci-fix"
-      this.pushToConversation(childSession, { role: "user", text: fixPrompt })
+      this.registry.pushToConversation(childSession, { role: "user", text: fixPrompt })
 
       await new Promise<void>((resolve) => {
         this.spawnCIFixAgent(childSession, fixPrompt, () => resolve())
@@ -1794,7 +1630,7 @@ export class Dispatcher {
     const imagePaths = await this.downloadPhotos(photos, topicSession.cwd)
     const fullFeedback = appendImageContext(feedback, imagePaths)
 
-    this.pushToConversation(topicSession, {
+    this.registry.pushToConversation(topicSession, {
       role: "user",
       text: fullFeedback,
       images: imagePaths.length > 0 ? imagePaths : undefined,
@@ -1881,7 +1717,7 @@ export class Dispatcher {
     )
 
     // Update pinned split status in parent thread
-    await this.updatePinnedSplitStatus(parent)
+    await this.registry.updatePinnedSplitStatus(parent)
 
     // Spawn next queued split item if any
     if (parent.pendingSplitItems && parent.pendingSplitItems.length > 0) {
@@ -2074,7 +1910,7 @@ export class Dispatcher {
     }
 
     this.topicSessions.set(threadId, childSession)
-    this.broadcastSession(childSession, "session_created")
+    this.registry.broadcastSession(childSession, "session_created")
 
     await this.spawnTopicAgent(childSession, task, { browserEnabled: false })
     return threadId
@@ -2205,7 +2041,7 @@ export class Dispatcher {
     topicSession.dagId = dagId
 
     this.dags.set(dagId, graph)
-    this.broadcastDag(graph, "dag_created")
+    this.registry.broadcastDag(graph, "dag_created")
 
     // Send DAG overview
     const childSummaries = graph.nodes.map((n) => ({
@@ -2384,7 +2220,7 @@ export class Dispatcher {
     }
 
     this.topicSessions.set(threadId, childSession)
-    this.broadcastSession(childSession, "session_created")
+    this.registry.broadcastSession(childSession, "session_created")
 
     await this.telegram.sendMessage(
       formatDagNodeStarting(node.title, node.id, slug),
@@ -2559,10 +2395,10 @@ export class Dispatcher {
       }
     }
 
-    this.broadcastDag(graph, "dag_updated")
+    this.registry.broadcastDag(graph, "dag_updated")
 
     // Update pinned DAG status in parent thread
-    await this.updatePinnedDagStatus(parent, graph)
+    await this.registry.updatePinnedDagStatus(parent, graph)
 
     // Update DAG section in all PR descriptions
     await this.updateDagPRDescriptions(graph, childSession.cwd)
@@ -2715,8 +2551,8 @@ export class Dispatcher {
       }
     }
 
-    this.broadcastDag(graph, "dag_updated")
-    await this.updatePinnedDagStatus(topicSession, graph)
+    this.registry.broadcastDag(graph, "dag_updated")
+    await this.registry.updatePinnedDagStatus(topicSession, graph)
     await this.updateDagPRDescriptions(graph, topicSession.cwd)
     await this.persistTopicSessions()
   }
@@ -3001,7 +2837,7 @@ export class Dispatcher {
       if (childActive) await childActive.handle.kill().catch(() => {})
     }
     this.topicSessions.delete(childId)
-    this.broadcastSessionDeleted(child.slug)
+    this.registry.broadcastSessionDeleted(child.slug)
     await this.telegram.deleteForumTopic(childId).catch(() => {})
     await this.removeWorkspace(child).catch(() => {})
     log.info({ slug: child.slug, threadId: childId }, "closed child topic")
@@ -3015,15 +2851,15 @@ export class Dispatcher {
 
     // Clean up DAG graph if this parent had one (keeps PR URLs alive until /close)
     if (topicSession.dagId) {
-      this.broadcastDagDeleted(topicSession.dagId)
+      this.registry.broadcastDagDeleted(topicSession.dagId)
       this.dags.delete(topicSession.dagId)
     }
 
     // Remove from tracking and delete the topic first for instant user feedback
     this.topicSessions.delete(threadId)
-    this.broadcastSessionDeleted(topicSession.slug)
+    this.registry.broadcastSessionDeleted(topicSession.slug)
     await this.persistTopicSessions()
-    this.updatePinnedSummary()
+    this.registry.updatePinnedSummary()
     await this.telegram.deleteForumTopic(threadId)
     log.info({ slug: topicSession.slug, threadId }, "closed and deleted topic")
 
@@ -3162,9 +2998,9 @@ export class Dispatcher {
     await this.telegram.deleteForumTopic(threadId)
     await this.removeWorkspace(topicSession)
     this.topicSessions.delete(threadId)
-    this.broadcastSessionDeleted(topicSession.slug)
+    this.registry.broadcastSessionDeleted(topicSession.slug)
     await this.persistTopicSessions()
-    this.updatePinnedSummary()
+    this.registry.updatePinnedSummary()
   }
 }
 
