@@ -517,12 +517,12 @@ export class Dispatcher {
     }
 
     if (text?.startsWith(THINK_PREFIX)) {
-      await this.handleThinkCommand(text.slice(THINK_PREFIX.length).trim(), message.message_thread_id, photos)
+      await this.handleSessionCommand("think", text.slice(THINK_PREFIX.length).trim(), message.message_thread_id, photos)
       return
     }
 
     if (text?.startsWith(PLAN_PREFIX)) {
-      await this.handlePlanCommand(text.slice(PLAN_PREFIX.length).trim(), message.message_thread_id, photos)
+      await this.handleSessionCommand("plan", text.slice(PLAN_PREFIX.length).trim(), message.message_thread_id, photos)
       return
     }
 
@@ -530,7 +530,7 @@ export class Dispatcher {
       const body = text.startsWith(TASK_PREFIX)
         ? text.slice(TASK_PREFIX.length).trim()
         : text.slice(TASK_SHORT.length).trim()
-      await this.handleTaskCommand(body, message.message_thread_id, photos)
+      await this.handleSessionCommand("task", body, message.message_thread_id, photos)
       return
     }
 
@@ -881,8 +881,26 @@ export class Dispatcher {
     await this.telegram.sendMessage(`🧹 Cleaned ${parts.join(", ")} — freed ~${freedMB} MB.`)
   }
 
-  private async handleTaskCommand(args: string, replyThreadId?: number, photos?: TelegramPhotoSize[]): Promise<void> {
-    if (this.sessions.size >= this.config.workspace.maxConcurrentSessions) {
+  private static readonly SESSION_USAGE: Record<"task" | "plan" | "think", string> = {
+    task: "task [repo] description of the task</code> (alias: <code>/w</code>)",
+    plan: "plan [repo] description of what to plan</code>",
+    think: "think [repo] question or topic to research</code>",
+  }
+
+  private static readonly SESSION_LABELS: Record<"task" | "plan" | "think" | "review", { repo: string; profile: string }> = {
+    task: { repo: "Pick a repo for", profile: "Pick a profile for" },
+    plan: { repo: "Pick a repo for plan", profile: "Pick a profile for plan" },
+    think: { repo: "Pick a repo for research", profile: "Pick a profile for research" },
+    review: { repo: "Pick a repo for review", profile: "Pick a profile for review" },
+  }
+
+  private async handleSessionCommand(
+    mode: "task" | "plan" | "think",
+    args: string,
+    replyThreadId?: number,
+    photos?: TelegramPhotoSize[],
+  ): Promise<void> {
+    if (mode === "task" && this.sessions.size >= this.config.workspace.maxConcurrentSessions) {
       if (replyThreadId !== undefined) {
         await this.telegram.sendMessage(
           `⚠️ Max concurrent sessions (${this.config.workspace.maxConcurrentSessions}) reached. Wait for one to finish.`,
@@ -896,12 +914,12 @@ export class Dispatcher {
 
     if (!task) {
       if (replyThreadId !== undefined) {
-        await this.telegram.sendMessage(
-          `Usage: <code>/task [repo] description of the task</code> (alias: <code>/w</code>)\n` +
-          `Repos: ${Object.keys(this.config.repos).map((s) => `<code>${s}</code>`).join(", ")}\n` +
-          `Or use a full URL or omit repo entirely.`,
-          replyThreadId,
-        )
+        let usage = `Usage: <code>/${Dispatcher.SESSION_USAGE[mode]}`
+        if (mode === "task") {
+          usage += `\nRepos: ${Object.keys(this.config.repos).map((s) => `<code>${s}</code>`).join(", ")}\n` +
+            `Or use a full URL or omit repo entirely.`
+        }
+        await this.telegram.sendMessage(usage, replyThreadId)
       }
       return
     }
@@ -909,144 +927,21 @@ export class Dispatcher {
     if (!repoUrl) {
       const repoKeys = Object.keys(this.config.repos)
       if (repoKeys.length > 0) {
-        const keyboard = buildRepoKeyboard(repoKeys)
+        const keyboardPrefix = mode === "task" ? "repo" as const : mode
+        const keyboard = buildRepoKeyboard(repoKeys, keyboardPrefix)
         const msgId = await this.telegram.sendMessageWithKeyboard(
-          `Pick a repo for: <i>${escapeHtml(task)}</i>`,
+          `${Dispatcher.SESSION_LABELS[mode].repo}: <i>${escapeHtml(task)}</i>`,
           keyboard,
           replyThreadId,
         )
         if (msgId) {
-          this.pendingTasks.set(msgId, { task, threadId: replyThreadId, mode: "task" })
+          this.pendingTasks.set(msgId, { task, threadId: replyThreadId, mode })
         }
         return
       }
     }
 
-    const defaultProfileId = this.profileStore.getDefaultId()
-    if (defaultProfileId) {
-      await this.startTopicSession(repoUrl, task, "task", photos, defaultProfileId)
-      return
-    }
-
-    const profiles = this.profileStore.list()
-    if (profiles.length > 1) {
-      const keyboard = buildProfileKeyboard(profiles)
-      const msgId = await this.telegram.sendMessageWithKeyboard(
-        `Pick a profile for: <i>${escapeHtml(task)}</i>`,
-        keyboard,
-        replyThreadId,
-      )
-      if (msgId) {
-        this.pendingProfiles.set(msgId, { task, threadId: replyThreadId, repoUrl, mode: "task" })
-      }
-      return
-    }
-
-    await this.startTopicSession(repoUrl, task, "task", photos)
-  }
-
-  private async handlePlanCommand(args: string, replyThreadId?: number, photos?: TelegramPhotoSize[]): Promise<void> {
-    const { repoUrl, task } = parseTaskArgs(this.config.repos, args)
-
-    if (!task) {
-      if (replyThreadId !== undefined) {
-        await this.telegram.sendMessage(
-          `Usage: <code>/plan [repo] description of what to plan</code>`,
-          replyThreadId,
-        )
-      }
-      return
-    }
-
-    if (!repoUrl) {
-      const repoKeys = Object.keys(this.config.repos)
-      if (repoKeys.length > 0) {
-        const keyboard = buildRepoKeyboard(repoKeys, "plan")
-        const msgId = await this.telegram.sendMessageWithKeyboard(
-          `Pick a repo for plan: <i>${escapeHtml(task)}</i>`,
-          keyboard,
-          replyThreadId,
-        )
-        if (msgId) {
-          this.pendingTasks.set(msgId, { task, threadId: replyThreadId, mode: "plan" })
-        }
-        return
-      }
-    }
-
-    const defaultProfileId = this.profileStore.getDefaultId()
-    if (defaultProfileId) {
-      await this.startTopicSession(repoUrl, task, "plan", photos, defaultProfileId)
-      return
-    }
-
-    const profiles = this.profileStore.list()
-    if (profiles.length > 1) {
-      const keyboard = buildProfileKeyboard(profiles)
-      const msgId = await this.telegram.sendMessageWithKeyboard(
-        `Pick a profile for plan: <i>${escapeHtml(task)}</i>`,
-        keyboard,
-        replyThreadId,
-      )
-      if (msgId) {
-        this.pendingProfiles.set(msgId, { task, threadId: replyThreadId, repoUrl, mode: "plan" })
-      }
-      return
-    }
-
-    await this.startTopicSession(repoUrl, task, "plan", photos)
-  }
-
-  private async handleThinkCommand(args: string, replyThreadId?: number, photos?: TelegramPhotoSize[]): Promise<void> {
-    const { repoUrl, task } = parseTaskArgs(this.config.repos, args)
-
-    if (!task) {
-      if (replyThreadId !== undefined) {
-        await this.telegram.sendMessage(
-          `Usage: <code>/think [repo] question or topic to research</code>`,
-          replyThreadId,
-        )
-      }
-      return
-    }
-
-    if (!repoUrl) {
-      const repoKeys = Object.keys(this.config.repos)
-      if (repoKeys.length > 0) {
-        const keyboard = buildRepoKeyboard(repoKeys, "think")
-        const msgId = await this.telegram.sendMessageWithKeyboard(
-          `Pick a repo for research: <i>${escapeHtml(task)}</i>`,
-          keyboard,
-          replyThreadId,
-        )
-        if (msgId) {
-          this.pendingTasks.set(msgId, { task, threadId: replyThreadId, mode: "think" })
-        }
-        return
-      }
-    }
-
-    const defaultProfileId = this.profileStore.getDefaultId()
-    if (defaultProfileId) {
-      await this.startTopicSession(repoUrl, task, "think", photos, defaultProfileId)
-      return
-    }
-
-    const profiles = this.profileStore.list()
-    if (profiles.length > 1) {
-      const keyboard = buildProfileKeyboard(profiles)
-      const msgId = await this.telegram.sendMessageWithKeyboard(
-        `Pick a profile for research: <i>${escapeHtml(task)}</i>`,
-        keyboard,
-        replyThreadId,
-      )
-      if (msgId) {
-        this.pendingProfiles.set(msgId, { task, threadId: replyThreadId, repoUrl, mode: "think" })
-      }
-      return
-    }
-
-    await this.startTopicSession(repoUrl, task, "think", photos)
+    await this.resolveProfileAndStart(repoUrl, task, mode, replyThreadId, photos)
   }
 
   private async handleReviewCommand(args: string, replyThreadId?: number): Promise<void> {
@@ -1066,7 +961,7 @@ export class Dispatcher {
       if (repoKeys.length === 1) {
         const repoUrl = this.config.repos[repoKeys[0]]
         const task = buildReviewAllTask(repoUrl)
-        await this.startReviewSession(repoUrl, task, replyThreadId)
+        await this.resolveProfileAndStart(repoUrl, task, "review", replyThreadId)
         return
       }
       const keyboard = buildRepoKeyboard(repoKeys, "review")
@@ -1083,7 +978,7 @@ export class Dispatcher {
 
     if (parsed.repoUrl && !parsed.task) {
       const task = buildReviewAllTask(parsed.repoUrl)
-      await this.startReviewSession(parsed.repoUrl, task, replyThreadId)
+      await this.resolveProfileAndStart(parsed.repoUrl, task, "review", replyThreadId)
       return
     }
 
@@ -1104,15 +999,21 @@ export class Dispatcher {
     }
 
     if (parsed.repoUrl && parsed.task) {
-      await this.startReviewSession(parsed.repoUrl, parsed.task, replyThreadId)
+      await this.resolveProfileAndStart(parsed.repoUrl, parsed.task, "review", replyThreadId)
       return
     }
   }
 
-  private async startReviewSession(repoUrl: string, task: string, replyThreadId?: number): Promise<void> {
+  private async resolveProfileAndStart(
+    repoUrl: string | undefined,
+    task: string,
+    mode: "task" | "plan" | "think" | "review",
+    replyThreadId?: number,
+    photos?: TelegramPhotoSize[],
+  ): Promise<void> {
     const defaultProfileId = this.profileStore.getDefaultId()
     if (defaultProfileId) {
-      await this.startTopicSession(repoUrl, task, "review", undefined, defaultProfileId)
+      await this.startTopicSession(repoUrl, task, mode, photos, defaultProfileId)
       return
     }
 
@@ -1120,17 +1021,17 @@ export class Dispatcher {
     if (profiles.length > 1) {
       const keyboard = buildProfileKeyboard(profiles)
       const msgId = await this.telegram.sendMessageWithKeyboard(
-        `Pick a profile for review: <i>${escapeHtml(task)}</i>`,
+        `${Dispatcher.SESSION_LABELS[mode].profile}: <i>${escapeHtml(task)}</i>`,
         keyboard,
         replyThreadId,
       )
       if (msgId) {
-        this.pendingProfiles.set(msgId, { task, threadId: replyThreadId, repoUrl, mode: "review" })
+        this.pendingProfiles.set(msgId, { task, threadId: replyThreadId, repoUrl, mode })
       }
       return
     }
 
-    await this.startTopicSession(repoUrl, task, "review")
+    await this.startTopicSession(repoUrl, task, mode, photos)
   }
 
   private async startTopicSession(
