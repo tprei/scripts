@@ -68,7 +68,7 @@ import { extractStackItems, extractDagItems, buildDagChildPrompt } from "./dag-e
 import {
   buildDag, advanceDag, failNode, resetFailedNode, isDagComplete,
   readyNodes, dagProgress, getUpstreamBranches, topologicalSort,
-  renderDagForGitHub, renderDagStatus, upsertDagSection, needsRestack,
+  renderDagForGitHub, renderDagStatus, upsertDagSection, needsRestack, cleanupMergedBranch,
   type DagGraph, type DagNode, type DagInput,
 } from "./dag.js"
 import { runQualityGates, type QualityReport } from "./quality-gates.js"
@@ -2788,12 +2788,18 @@ export class Dispatcher {
 
     for (const node of prNodes) {
       try {
-        // Merge the PR with squash and delete the branch
+        // Merge the PR with squash (no --delete-branch to avoid crash on worktree checkouts)
         execSync(
-          `gh pr merge ${JSON.stringify(node.prUrl!)} --squash --delete-branch`,
+          `gh pr merge ${JSON.stringify(node.prUrl!)} --squash`,
           { ...gitOpts, cwd: anyCwd, env: { ...process.env } },
         )
         succeeded++
+
+        // Clean up the branch separately — swallow errors since the merge already succeeded
+        if (node.branch) {
+          const worktreePath = this.findWorktreePathForBranch(node, graph)
+          cleanupMergedBranch(node.branch, worktreePath, anyCwd)
+        }
 
         await this.telegram.sendMessage(
           formatLandProgress(node.title, node.prUrl!, succeeded - 1, prNodes.length),
@@ -2871,6 +2877,17 @@ export class Dispatcher {
       formatLandComplete(succeeded, prNodes.length),
       topicSession.threadId,
     )
+  }
+
+  /**
+   * Find the worktree path for a DAG node's branch by looking up its child session cwd.
+   */
+  private findWorktreePathForBranch(node: DagNode, graph: DagGraph): string | undefined {
+    if (node.threadId) {
+      const child = this.topicSessions.get(node.threadId)
+      if (child?.cwd) return child.cwd
+    }
+    return undefined
   }
 
   /**

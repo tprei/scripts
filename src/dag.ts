@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process"
 import { DagCycleError, DagSelfDependencyError, UnknownNodeError } from "./errors.js"
 
 export type DagNodeStatus = "pending" | "ready" | "running" | "done" | "failed" | "skipped" | "ci-pending" | "ci-failed"
@@ -659,4 +660,38 @@ export function upsertDagSection(body: string, dagSection: string): string {
 
   const separator = body.length > 0 && !body.endsWith("\n") ? "\n\n" : body.length > 0 ? "\n" : ""
   return body + separator + dagSection
+}
+
+export interface BranchCleanupResult {
+  worktreeRemoved: boolean
+  remoteBranchDeleted: boolean
+}
+
+export function cleanupMergedBranch(
+  branch: string,
+  worktreePath: string | undefined,
+  cwd: string,
+  opts?: { timeout?: number },
+): BranchCleanupResult {
+  const timeout = opts?.timeout ?? 120_000
+  const execOpts = { stdio: ["pipe" as const, "pipe" as const, "pipe" as const], timeout, cwd, env: { ...process.env } }
+  const result: BranchCleanupResult = { worktreeRemoved: false, remoteBranchDeleted: false }
+
+  if (worktreePath) {
+    try {
+      execSync(`git worktree remove --force ${JSON.stringify(worktreePath)}`, execOpts)
+      result.worktreeRemoved = true
+    } catch {
+      // Worktree may already be cleaned up
+    }
+  }
+
+  try {
+    execSync(`git push origin --delete ${JSON.stringify(branch)}`, execOpts)
+    result.remoteBranchDeleted = true
+  } catch {
+    // Remote branch may already be deleted (e.g., by GitHub after PR merge)
+  }
+
+  return result
 }
