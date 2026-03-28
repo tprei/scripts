@@ -7,7 +7,7 @@ import type { TelegramClient } from "./telegram.js"
 import { captureException } from "./sentry.js"
 import { SessionHandle, type SessionConfig } from "./session.js"
 import { Observer } from "./observer.js"
-import type { TelegramUpdate, TelegramCallbackQuery, TelegramPhotoSize, SessionMeta, TopicSession, SessionState, TopicMessage } from "./types.js"
+import type { TelegramUpdate, TelegramCallbackQuery, TelegramPhotoSize, SessionMeta, TopicSession, SessionState } from "./types.js"
 import { generateSlug } from "./slugs.js"
 import type { MinionConfig, McpConfig } from "./config-types.js"
 import { DEFAULT_PROMPTS } from "./prompts.js"
@@ -90,7 +90,6 @@ import {
   escapeHtml, extractRepoName, appendImageContext,
 } from "./command-parser.js"
 import {
-  type ActiveSession, type PendingTask,
   buildContextPrompt, buildExecutionPrompt,
   prepareWorkspace, removeWorkspace, cleanBuildArtifacts, dirSizeBytes,
   downloadPhotos, prepareFanInBranch, mergeUpstreamBranches,
