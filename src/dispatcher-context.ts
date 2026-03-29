@@ -10,10 +10,8 @@
 
 import type { TelegramClient } from "./telegram.js"
 import type { Observer } from "./observer.js"
-import type { SessionHandle, SessionConfig } from "./session.js"
 import type {
-  SessionMeta, TopicSession, TopicMessage,
-  SessionMode, GooseStreamEvent, AutoAdvance,
+  TopicSession, TopicMessage,
   TelegramPhotoSize,
 } from "./types.js"
 import type { MinionConfig, McpConfig } from "./config-types.js"
