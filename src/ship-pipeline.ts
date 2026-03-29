@@ -131,34 +131,13 @@ export class ShipPipeline {
       return
     }
 
-    let pending = completedNodes.length
     let passed = 0
     let failed = 0
-
-    const onVerifyDone = async () => {
-      if (pending > 0) return
-      topicSession.verificationState = {
-        dagId: graph.id,
-        maxRounds: 1,
-        rounds: [{
-          round: 1,
-          checks: completedNodes.map((n) => ({
-            kind: "completeness-review" as const,
-            status: (passed === completedNodes.length ? "passed" : "failed") as "passed" | "failed",
-            nodeId: n.id,
-            finishedAt: Date.now(),
-          })),
-          startedAt: Date.now(),
-        }],
-        status: failed === 0 ? "passed" : "failed",
-      }
-      await this.shipFinalize(topicSession)
-    }
+    const verifyStartedAt = Date.now()
 
     for (const node of completedNodes) {
       const childSession = this.findChildSession(topicSession, node.threadId)
       if (!childSession) {
-        pending--
         failed++
         continue
       }
@@ -198,56 +177,73 @@ export class ShipPipeline {
         sessionEnvPassthrough: this.ctx.config.sessionEnvPassthrough,
       }
 
-      const handle = new SessionHandle(
-        meta,
-        (event) => {
-          this.ctx.observer.onEvent(meta, event).catch((err) => {
-            loggers.observer.error({ err, sessionId }, "verify onEvent error")
-          })
-        },
-        async (m, state) => {
-          if (childSession.activeSessionId !== m.sessionId) return
-          this.ctx.sessions.delete(childSession.threadId)
-          childSession.activeSessionId = undefined
+      await new Promise<void>((resolve) => {
+        const handle = new SessionHandle(
+          meta,
+          (event) => {
+            this.ctx.observer.onEvent(meta, event).catch((err) => {
+              loggers.observer.error({ err, sessionId }, "verify onEvent error")
+            })
+          },
+          async (m, state) => {
+            if (childSession.activeSessionId !== m.sessionId) { resolve(); return }
+            this.ctx.sessions.delete(childSession.threadId)
+            childSession.activeSessionId = undefined
 
-          const durationMs = Date.now() - m.startedAt
-          await this.ctx.observer.onSessionComplete(m, state, durationMs).catch(() => {})
+            const durationMs = Date.now() - m.startedAt
+            await this.ctx.observer.onSessionComplete(m, state, durationMs).catch(() => {})
 
-          const output = childSession.conversation
-            .filter((msg) => msg.role === "assistant")
-            .map((msg) => msg.text)
-            .join("\n")
-          const result = parseCompletenessResult(output)
+            const output = childSession.conversation
+              .filter((msg) => msg.role === "assistant")
+              .map((msg) => msg.text)
+              .join("\n")
+            const result = parseCompletenessResult(output)
 
-          if (result.passed) {
-            passed++
-          } else {
-            failed++
-          }
-          pending--
+            if (result.passed) {
+              passed++
+            } else {
+              failed++
+            }
 
-          this.ctx.telegram.sendMessage(
-            `${result.passed ? "✅" : "❌"} Verification ${result.passed ? "passed" : "failed"}: <b>${esc(node.title)}</b>`,
-            topicSession.threadId,
-          ).catch(() => {})
+            this.ctx.telegram.sendMessage(
+              `${result.passed ? "✅" : "❌"} Verification ${result.passed ? "passed" : "failed"}: <b>${esc(node.title)}</b>`,
+              topicSession.threadId,
+            ).catch(() => {})
 
-          onVerifyDone().catch((err) => {
-            log.error({ err }, "shipFinalize error after verification")
-          })
-        },
-        this.ctx.config.workspace.sessionTimeoutMs,
-        this.ctx.config.workspace.sessionInactivityTimeoutMs,
-        sessionConfig,
-      )
+            resolve()
+          },
+          this.ctx.config.workspace.sessionTimeoutMs,
+          this.ctx.config.workspace.sessionInactivityTimeoutMs,
+          sessionConfig,
+        )
 
-      this.ctx.sessions.set(childSession.threadId, { handle, meta, task: verifyTask })
-      const onDeadThread = () => {
-        this.ctx.topicSessions.delete(meta.threadId)
-        this.ctx.persistTopicSessions().catch(() => {})
-      }
-      await this.ctx.observer.onSessionStart(meta, verifyTask, onTextCapture, onDeadThread)
-      handle.start(verifyTask)
+        this.ctx.sessions.set(childSession.threadId, { handle, meta, task: verifyTask })
+        const onDeadThread = () => {
+          this.ctx.topicSessions.delete(meta.threadId)
+          this.ctx.persistTopicSessions().catch(() => {})
+        }
+        this.ctx.observer.onSessionStart(meta, verifyTask, onTextCapture, onDeadThread)
+          .then(() => handle.start(verifyTask))
+          .catch((err) => { log.error({ err }, "verify session start failed"); resolve() })
+      })
     }
+
+    topicSession.verificationState = {
+      dagId: graph.id,
+      maxRounds: 1,
+      rounds: [{
+        round: 1,
+        checks: completedNodes.map((n) => ({
+          kind: "completeness-review" as const,
+          status: (passed === completedNodes.length ? "passed" : "failed") as "passed" | "failed",
+          nodeId: n.id,
+          finishedAt: Date.now(),
+        })),
+        startedAt: verifyStartedAt,
+      }],
+      status: failed === 0 ? "passed" : "failed",
+    }
+    await this.shipFinalize(topicSession)
   }
 
   private findChildSession(parent: TopicSession, threadId?: number): TopicSession | undefined {

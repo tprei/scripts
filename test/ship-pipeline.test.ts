@@ -280,13 +280,11 @@ describe("ShipPipeline", () => {
         isStack: false,
       }
 
-      // No child session registered in topicSessions — the node is skipped
-      // but onVerifyDone is only called from session completion callbacks,
-      // so with no sessions spawned, the pipeline stays in verify phase
+      // No child session registered — the node is skipped and verification
+      // completes immediately, advancing through shipFinalize
       await pipeline.shipAdvanceToVerification(session, graph)
 
-      expect(session.autoAdvance!.phase).toBe("verify")
-      // No sessions were spawned
+      expect(session.autoAdvance!.phase).toBe("done")
       expect(ctx.sessions.size).toBe(0)
     })
   })
