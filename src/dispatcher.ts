@@ -2820,11 +2820,23 @@ export class Dispatcher {
           continue
         }
 
-        // Merge the PR with squash and delete the branch
+        // Merge the PR with squash
         execSync(
-          `gh pr merge ${JSON.stringify(node.prUrl!)} --squash --delete-branch`,
+          `gh pr merge ${JSON.stringify(node.prUrl!)} --squash`,
           { ...gitOpts, cwd: anyCwd, env: { ...process.env } },
         )
+
+        // Delete remote branch separately — may fail if checked out in a worktree
+        if (node.branch) {
+          try {
+            execSync(
+              `git push origin --delete ${JSON.stringify(node.branch)}`,
+              { ...gitOpts, cwd: anyCwd, env: { ...process.env } },
+            )
+          } catch (err) {
+            log.warn({ err, nodeId: node.id, branch: node.branch }, "remote branch deletion failed, continuing")
+          }
+        }
         node.status = "landed"
         succeeded++
 
