@@ -1,6 +1,6 @@
 import { DagCycleError, DagSelfDependencyError, UnknownNodeError } from "./errors.js"
 
-export type DagNodeStatus = "pending" | "ready" | "running" | "done" | "failed" | "skipped" | "ci-pending" | "ci-failed"
+export type DagNodeStatus = "pending" | "ready" | "running" | "done" | "failed" | "skipped" | "ci-pending" | "ci-failed" | "landed"
 
 export interface DagNode {
   id: string
@@ -291,7 +291,7 @@ export function resetFailedNode(graph: DagGraph, nodeId: string): string[] {
  */
 export function isDagComplete(graph: DagGraph): boolean {
   return graph.nodes.every((n) =>
-    n.status === "done" || n.status === "failed" || n.status === "skipped" || n.status === "ci-failed",
+    n.status === "done" || n.status === "failed" || n.status === "skipped" || n.status === "ci-failed" || n.status === "landed",
   )
 }
 
@@ -352,7 +352,8 @@ export function needsRestack(graph: DagGraph, changedNodeId: string): DagNode[] 
       node.mergeBase != null &&
       node.status !== "done" &&
       node.status !== "failed" &&
-      node.status !== "skipped",
+      node.status !== "skipped" &&
+      node.status !== "landed",
     )
 }
 
@@ -387,8 +388,9 @@ export function dagProgress(graph: DagGraph): {
   skipped: number
   ciPending: number
   ciFailed: number
+  landed: number
 } {
-  const counts = { total: 0, done: 0, running: 0, ready: 0, pending: 0, failed: 0, skipped: 0, ciPending: 0, ciFailed: 0 }
+  const counts = { total: 0, done: 0, running: 0, ready: 0, pending: 0, failed: 0, skipped: 0, ciPending: 0, ciFailed: 0, landed: 0 }
   for (const node of graph.nodes) {
     counts.total++
     if (node.status === "ci-pending") counts.ciPending++
@@ -451,6 +453,7 @@ export function renderDagStatus(graph: DagGraph, isStack?: boolean): string {
     skipped: "⏭️",
     "ci-pending": "🔄",
     "ci-failed": "⚠️",
+    landed: "🏁",
   }
 
   const progress = dagProgress(graph)
@@ -485,7 +488,7 @@ export function renderDagStatus(graph: DagGraph, isStack?: boolean): string {
       : ""
 
     const title = escapeHtml(node.title)
-    const styledTitle = node.status === "done" || node.status === "skipped"
+    const styledTitle = node.status === "done" || node.status === "skipped" || node.status === "landed"
       ? `<s>${title}</s>`
       : node.status === "running" || node.status === "failed"
         ? `<b>${title}</b>`
@@ -496,6 +499,7 @@ export function renderDagStatus(graph: DagGraph, isStack?: boolean): string {
   lines.push("")
   lines.push(
     `Progress: ${progress.done}/${progress.total} complete` +
+    (progress.landed > 0 ? `, ${progress.landed} landed` : "") +
     (progress.running > 0 ? `, ${progress.running} running` : "") +
     (progress.ciPending > 0 ? `, ${progress.ciPending} awaiting CI` : "") +
     (progress.failed > 0 ? `, ${progress.failed} failed` : "") +
@@ -524,6 +528,7 @@ const statusEmoji: Record<DagNodeStatus, string> = {
   skipped: "⏭️",
   "ci-pending": "🔄",
   "ci-failed": "⚠️",
+  landed: "🏁",
 }
 
 const statusLabel: Record<DagNodeStatus, string> = {
@@ -535,6 +540,7 @@ const statusLabel: Record<DagNodeStatus, string> = {
   skipped: "Skipped",
   "ci-pending": "CI Pending",
   "ci-failed": "CI Failed",
+  landed: "Landed",
 }
 
 /**
@@ -580,6 +586,7 @@ export function renderDagForGitHub(graph: DagGraph, currentNodeId?: string): str
   lines.push("  classDef skipped fill:#656d76,stroke:#424a53,color:#fff,stroke-dasharray: 5 5")
   lines.push("  classDef ci-pending fill:#0969da,stroke:#0550ae,color:#fff,stroke-dasharray: 3 3")
   lines.push("  classDef ci-failed fill:#bf8700,stroke:#9a6700,color:#fff")
+  lines.push("  classDef landed fill:#1a7f37,stroke:#116329,color:#fff")
   lines.push("  classDef current stroke:#bf8700,stroke-width:3px")
 
   // Node declarations
@@ -631,6 +638,7 @@ export function renderDagForGitHub(graph: DagGraph, currentNodeId?: string): str
   lines.push("")
   lines.push(
     `**Progress:** ${progress.done}/${progress.total} complete` +
+    (progress.landed > 0 ? ` · ${progress.landed} landed` : "") +
     (progress.running > 0 ? ` · ${progress.running} running` : "") +
     (progress.ciPending > 0 ? ` · ${progress.ciPending} awaiting CI` : "") +
     (progress.failed > 0 ? ` · ${progress.failed} failed` : "") +

@@ -2798,11 +2798,34 @@ export class Dispatcher {
 
     for (const node of prNodes) {
       try {
+        // Check if PR is already merged (idempotent retry support)
+        let prState: string
+        try {
+          prState = execSync(
+            `gh pr view ${JSON.stringify(node.prUrl!)} --json state --jq .state`,
+            { ...gitOpts, cwd: anyCwd, encoding: "utf-8", env: { ...process.env } },
+          ).trim()
+        } catch {
+          prState = "UNKNOWN"
+        }
+
+        if (prState === "MERGED") {
+          node.status = "landed"
+          succeeded++
+          log.info({ nodeId: node.id, prUrl: node.prUrl }, "PR already merged, marking as landed")
+          await this.telegram.sendMessage(
+            formatLandProgress(node.title, node.prUrl!, succeeded - 1, prNodes.length),
+            topicSession.threadId,
+          )
+          continue
+        }
+
         // Merge the PR with squash and delete the branch
         execSync(
           `gh pr merge ${JSON.stringify(node.prUrl!)} --squash --delete-branch`,
           { ...gitOpts, cwd: anyCwd, env: { ...process.env } },
         )
+        node.status = "landed"
         succeeded++
 
         await this.telegram.sendMessage(
@@ -2938,6 +2961,27 @@ export class Dispatcher {
 
     for (const { title, prUrl } of prUrls) {
       try {
+        // Check if PR is already merged (idempotent retry support)
+        let prState: string
+        try {
+          prState = execSync(
+            `gh pr view ${JSON.stringify(prUrl)} --json state --jq .state`,
+            { ...gitOpts, cwd: anyCwd, encoding: "utf-8", env: { ...process.env } },
+          ).trim()
+        } catch {
+          prState = "UNKNOWN"
+        }
+
+        if (prState === "MERGED") {
+          succeeded++
+          log.info({ prUrl }, "PR already merged, skipping")
+          await this.telegram.sendMessage(
+            formatLandProgress(title, prUrl, succeeded - 1, prUrls.length),
+            topicSession.threadId,
+          )
+          continue
+        }
+
         execSync(
           `gh pr merge ${JSON.stringify(prUrl)} --squash`,
           { ...gitOpts, cwd: anyCwd, env: { ...process.env } },
