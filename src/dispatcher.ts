@@ -811,11 +811,9 @@ export class Dispatcher {
     const staleTtlMs = this.config.workspace.staleTtlMs
     const idle: [number, TopicSession][] = []
     for (const [threadId, session] of this.topicSessions) {
-      // Clean up idle sessions OR sessions that have been interrupted too long
-      const isIdle = !session.activeSessionId
-      const isStaleInterrupted =
-        session.interruptedAt && now - session.interruptedAt >= staleTtlMs
-      if (isIdle || isStaleInterrupted) {
+      if (session.activeSessionId) continue
+      const staleTime = session.interruptedAt ?? session.lastActivityAt
+      if (now - staleTime > staleTtlMs) {
         idle.push([threadId, session])
       }
     }
@@ -862,21 +860,46 @@ export class Dispatcher {
       }
     }
 
+    const isActiveCache = (key: string) =>
+      [...activeRepos].some((r) => key === r || key.startsWith(`${r}-`))
+
     const reposDir = path.join(root, ".repos")
     if (fs.existsSync(reposDir)) {
-      const repos = fs.readdirSync(reposDir, { withFileTypes: true })
-      for (const repo of repos) {
-        if (!repo.isDirectory()) continue
-        const repoName = repo.name.replace(/\.git$/, "")
-        if (activeRepos.has(repoName)) continue
-        const repoPath = path.join(reposDir, repo.name)
-        freedBytes += dirSizeBytes(repoPath)
-        try {
-          fs.rmSync(repoPath, { recursive: true, force: true })
-          removedRepos++
-          log.info({ path: repoPath }, "removed bare repo")
-        } catch (err) {
-          log.warn({ err, path: repoPath }, "failed to remove bare repo")
+      const repoEntries = fs.readdirSync(reposDir, { withFileTypes: true })
+      for (const entry of repoEntries) {
+        const entryPath = path.join(reposDir, entry.name)
+
+        if (entry.isDirectory() && entry.name.endsWith(".git")) {
+          const repoName = entry.name.replace(/\.git$/, "")
+          if (activeRepos.has(repoName)) continue
+          freedBytes += dirSizeBytes(entryPath)
+          try {
+            fs.rmSync(entryPath, { recursive: true, force: true })
+            removedRepos++
+            log.info({ path: entryPath }, "removed bare repo")
+          } catch (err) {
+            log.warn({ err, path: entryPath }, "failed to remove bare repo")
+          }
+        } else if (entry.isDirectory() && entry.name.endsWith("-node_modules")) {
+          const cacheKey = entry.name.replace(/-node_modules$/, "")
+          if (isActiveCache(cacheKey)) continue
+          freedBytes += dirSizeBytes(entryPath)
+          try {
+            fs.rmSync(entryPath, { recursive: true, force: true })
+            removedRepos++
+            log.info({ path: entryPath }, "removed cached node_modules")
+          } catch (err) {
+            log.warn({ err, path: entryPath }, "failed to remove cached node_modules")
+          }
+        } else if (!entry.isDirectory() && entry.name.endsWith("-lock.hash")) {
+          const cacheKey = entry.name.replace(/-lock\.hash$/, "")
+          if (isActiveCache(cacheKey)) continue
+          try {
+            fs.rmSync(entryPath)
+            log.info({ path: entryPath }, "removed cached lock hash")
+          } catch (err) {
+            log.warn({ err, path: entryPath }, "failed to remove cached lock hash")
+          }
         }
       }
     }
