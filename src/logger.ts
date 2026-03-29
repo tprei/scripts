@@ -52,6 +52,7 @@ export const loggers = {
   stats: createLogger({ component: "stats" }),
   sessionLog: createLogger({ component: "session-log" }),
   minion: createLogger({ component: "minion" }),
+  verification: createLogger({ component: "verification" }),
 } as const
 
 /**
