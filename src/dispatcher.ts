@@ -3036,10 +3036,13 @@ export class Dispatcher {
             loggers.observer.error({ err, sessionId }, "verify onEvent error")
           })
         },
-        (m, state) => {
+        async (m, state) => {
           if (childSession.activeSessionId !== m.sessionId) return
           this.sessions.delete(childSession.threadId)
           childSession.activeSessionId = undefined
+
+          const durationMs = Date.now() - m.startedAt
+          await this.observer.onSessionComplete(m, state, durationMs).catch(() => {})
 
           const output = childSession.conversation
             .filter((msg) => msg.role === "assistant")
@@ -3053,9 +3056,6 @@ export class Dispatcher {
             failed++
           }
           pending--
-
-          const durationMs = Date.now() - m.startedAt
-          this.observer.onSessionComplete(m, state, durationMs).catch(() => {})
 
           this.telegram.sendMessage(
             `${result.passed ? "✅" : "❌"} Verification ${result.passed ? "passed" : "failed"}: <b>${esc(node.title)}</b>`,
