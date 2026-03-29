@@ -6,7 +6,7 @@ import type { TelegramClient } from "./telegram.js"
 import { captureException } from "./sentry.js"
 import { SessionHandle, type SessionConfig } from "./session.js"
 import { Observer } from "./observer.js"
-import type { TelegramUpdate, TelegramCallbackQuery, TelegramPhotoSize, SessionMeta, TopicSession, SessionMode, SessionState, TopicMessage, AutoAdvance, ShipPhase } from "./types.js"
+import type { TelegramUpdate, TelegramCallbackQuery, TelegramPhotoSize, SessionMeta, TopicSession, SessionMode, SessionState, TopicMessage, AutoAdvance } from "./types.js"
 import { generateSlug } from "./slugs.js"
 import type { MinionConfig, McpConfig } from "./config-types.js"
 import { DEFAULT_PROMPTS } from "./prompts.js"
@@ -2998,7 +2998,6 @@ export class Dispatcher {
       )
 
       childSession.mode = "ship-verify"
-      const prevOnComplete = topicSession.autoAdvance
 
       const sessionId = crypto.randomUUID()
       childSession.activeSessionId = sessionId
@@ -3017,7 +3016,6 @@ export class Dispatcher {
         this.pushToConversation(childSession, { role: "assistant", text })
       }
 
-      const prompts = { ...DEFAULT_PROMPTS, ...this.config.prompts }
       const childProfile = childSession.profileId ? this.profileStore.get(childSession.profileId) : undefined
       const sessionConfig: import("./session.js").SessionConfig = {
         goose: this.config.goose,
