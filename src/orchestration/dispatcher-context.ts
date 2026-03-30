@@ -89,6 +89,9 @@ export interface DispatcherContext {
   /** Persist topic sessions to disk. */
   persistTopicSessions(markInterrupted?: boolean): Promise<void>
 
+  /** Persist DAG graphs to disk. */
+  persistDags(): Promise<void>
+
   // ── UI updates ─────────────────────────────────────────────────────
 
   /** Update the global pinned summary message. */

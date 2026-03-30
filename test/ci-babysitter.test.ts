@@ -72,6 +72,7 @@ function makeContext(overrides: Partial<DispatcherContext> = {}): DispatcherCont
     pushToConversation: vi.fn(),
     extractPRFromConversation: vi.fn().mockReturnValue(null),
     persistTopicSessions: vi.fn().mockResolvedValue(undefined),
+    persistDags: vi.fn().mockResolvedValue(undefined),
     updatePinnedSummary: vi.fn(),
     updateTopicTitle: vi.fn().mockResolvedValue(undefined),
     pinThreadMessage: vi.fn().mockResolvedValue(undefined),

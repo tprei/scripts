@@ -74,6 +74,7 @@ export class DagOrchestrator {
     topicSession.dagId = dagId
 
     this.ctx.dags.set(dagId, graph)
+    await this.ctx.persistDags()
     this.ctx.broadcastDag(graph, "dag_created")
 
     const childSummaries = graph.nodes.map((n) => ({
@@ -477,6 +478,7 @@ export class DagOrchestrator {
     }
 
     await this.ctx.persistTopicSessions()
+    await this.ctx.persistDags()
   }
 
   async updateDagPRDescriptions(graph: DagGraph, cwd: string): Promise<void> {
@@ -518,7 +520,13 @@ export class DagOrchestrator {
     }
 
     const graph = this.ctx.dags.get(topicSession.dagId)
-    if (!graph) return
+    if (!graph) {
+      await this.ctx.telegram.sendMessage(
+        "❌ DAG not found — it may have been lost. Use <code>/close</code> and re-create.",
+        topicSession.threadId,
+      )
+      return
+    }
 
     const failedNodes = nodeId
       ? graph.nodes.filter((n) => n.id === nodeId && (n.status === "failed" || n.status === "ci-failed"))
@@ -562,6 +570,7 @@ export class DagOrchestrator {
 
     await this.updateDagPRDescriptions(graph, topicSession.cwd)
     await this.ctx.persistTopicSessions()
+    await this.ctx.persistDags()
   }
 
   async handleForceCommand(topicSession: TopicSession, nodeId?: string): Promise<void> {
@@ -571,7 +580,13 @@ export class DagOrchestrator {
     }
 
     const graph = this.ctx.dags.get(topicSession.dagId)
-    if (!graph) return
+    if (!graph) {
+      await this.ctx.telegram.sendMessage(
+        "❌ DAG not found — it may have been lost. Use <code>/close</code> and re-create.",
+        topicSession.threadId,
+      )
+      return
+    }
 
     const ciFailedNodes = nodeId
       ? graph.nodes.filter((n) => n.id === nodeId && n.status === "ci-failed")
@@ -603,5 +618,6 @@ export class DagOrchestrator {
     await this.ctx.updatePinnedDagStatus(topicSession, graph)
     await this.updateDagPRDescriptions(graph, topicSession.cwd)
     await this.ctx.persistTopicSessions()
+    await this.ctx.persistDags()
   }
 }
