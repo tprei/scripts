@@ -36,7 +36,6 @@ interface UniverseNodeData {
 }
 
 function UniverseNodeComponent({ data }: { data: UniverseNodeData }) {
-  const tg = useTelegram()
   const isDark = data.isDark
   const session = data.session
   const statusColors = getStatusColors(isDark)
