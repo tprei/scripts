@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { loggers } from "./logger.js"
-import { formatProfileList, formatConfigHelp } from "./format.js"
+import { formatProfileList, formatConfigHelp } from "./telegram/format.js"
 import { escapeHtml, extractRepoName } from "./command-parser.js"
 import { dirSizeBytes } from "./session-manager.js"
 import type { DispatcherContext } from "./dispatcher-context.js"

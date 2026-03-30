@@ -14,7 +14,7 @@ import {
   formatLandSummary,
   formatLandConflictResolution,
   formatLandRestacking,
-} from "./format.js"
+} from "./telegram/format.js"
 import { loggers } from "./logger.js"
 
 const log = loggers.dispatcher

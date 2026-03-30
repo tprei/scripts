@@ -8,7 +8,7 @@ import {
   formatSplitChildComplete,
   formatSplitAllDone,
   formatStackAnalyzing,
-} from "./format.js"
+} from "./telegram/format.js"
 
 export class SplitOrchestrator {
   private readonly ctx: DispatcherContext

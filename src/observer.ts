@@ -1,6 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
-import type { TelegramClient } from "./telegram.js"
+import type { TelegramClient } from "./telegram/telegram.js"
 import type { GooseStreamEvent, GooseMessage, GooseToolRequestContent, GooseToolResponseContent, SessionMeta } from "./types.js"
 import { captureException } from "./sentry.js"
 import { loggers } from "./logger.js"
@@ -18,7 +18,7 @@ import {
   formatSessionComplete,
   formatSessionError,
   formatAssistantTextChunks,
-} from "./format.js"
+} from "./telegram/format.js"
 
 const log = loggers.observer
 

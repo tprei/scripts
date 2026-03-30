@@ -16,7 +16,7 @@ import {
   formatDagCIWaiting,
   formatDagCIFailed,
   formatDagForceAdvance,
-} from "./format.js"
+} from "./telegram/format.js"
 import { buildDagChildPrompt } from "./dag-extract.js"
 import {
   buildDag,

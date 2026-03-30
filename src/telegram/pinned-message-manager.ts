@@ -1,8 +1,8 @@
 import path from "node:path"
 import fs from "node:fs"
 import type { TelegramClient } from "./telegram.js"
-import type { TopicSession } from "./types.js"
-import type { DagGraph } from "./dag.js"
+import type { TopicSession } from "../types.js"
+import type { DagGraph } from "../dag.js"
 import {
   formatPinnedSplitStatus,
   formatPinnedDagStatus,
@@ -10,7 +10,7 @@ import {
   esc,
   truncate,
 } from "./format.js"
-import { loggers } from "./logger.js"
+import { loggers } from "../logger.js"
 
 const log = loggers.dispatcher
 

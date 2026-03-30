@@ -5,7 +5,7 @@ import type { DagGraph } from "./dag.js"
 import { SessionHandle, type SessionConfig } from "./session.js"
 import { buildCompletenessReviewPrompt, parseCompletenessResult } from "./verification.js"
 import { extractDagItems } from "./dag-extract.js"
-import { esc, formatShipPhaseAdvance, formatShipComplete } from "./format.js"
+import { esc, formatShipPhaseAdvance, formatShipComplete } from "./telegram/format.js"
 import { loggers } from "./logger.js"
 
 const log = loggers.ship

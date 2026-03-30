@@ -2,16 +2,16 @@ import fs from "node:fs"
 import path from "node:path"
 import { pipeline } from "node:stream/promises"
 import { Readable } from "node:stream"
-import type { TelegramUpdate, TelegramForumTopic } from "./types.js"
-import { captureException } from "./sentry.js"
-import { loggers } from "./logger.js"
+import type { TelegramUpdate, TelegramForumTopic } from "../types.js"
+import { captureException } from "../sentry.js"
+import { loggers } from "../logger.js"
 import {
   TelegramRateLimitError,
   TelegramHttpError,
   TelegramResponseError,
   TelegramRetryExhaustedError,
   isThreadNotFoundError,
-} from "./errors.js"
+} from "../errors.js"
 
 const MAX_LENGTH = 4096
 const log = loggers.telegram

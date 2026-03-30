@@ -19,7 +19,7 @@ import {
   formatCIConflicts,
   formatCIResolvingConflicts,
   formatCINoChecks,
-} from "./format.js"
+} from "./telegram/format.js"
 import { captureException } from "./sentry.js"
 import { loggers } from "./logger.js"
 

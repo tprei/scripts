@@ -2,7 +2,7 @@ import { execSync } from "node:child_process"
 import path from "node:path"
 import fs from "node:fs"
 import crypto from "node:crypto"
-import type { TelegramClient } from "./telegram.js"
+import type { TelegramClient } from "./telegram/telegram.js"
 import { captureException } from "./sentry.js"
 import { SessionHandle, type SessionConfig } from "./session.js"
 import { Observer } from "./observer.js"
@@ -33,7 +33,7 @@ import {
   formatConfigHelp,
   formatDagAnalyzing,
   formatPinnedStatus,
-} from "./format.js"
+} from "./telegram/format.js"
 import { runQualityGates } from "./quality-gates.js"
 import { StatsTracker } from "./stats.js"
 import { fetchClaudeUsage } from "./claude-usage.js"
@@ -65,7 +65,7 @@ import { LandingManager } from "./landing-manager.js"
 import { DagOrchestrator } from "./dag-orchestrator.js"
 import { ShipPipeline } from "./ship-pipeline.js"
 import { SplitOrchestrator } from "./split-orchestrator.js"
-import { PinnedMessageManager } from "./pinned-message-manager.js"
+import { PinnedMessageManager } from "./telegram/pinned-message-manager.js"
 import { routeCommand } from "./command-router.js"
 
 const log = loggers.dispatcher

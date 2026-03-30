@@ -8,7 +8,7 @@
  * owned by the Dispatcher core.
  */
 
-import type { TelegramClient } from "./telegram.js"
+import type { TelegramClient } from "./telegram/telegram.js"
 import type { Observer } from "./observer.js"
 import type {
   TopicSession, TopicMessage,

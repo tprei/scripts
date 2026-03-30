@@ -590,8 +590,8 @@ export function formatCINoChecks(slug: string, prUrl: string): string {
   return `⏳ <b>No CI checks found</b>  ·  🏷 <code>${esc(slug)}</code>  ·  PR #${esc(prNum)}\n\nTimed out waiting for checks to appear.`
 }
 
-import type { ClaudeUsageResponse, UsageTier } from "./claude-usage.js"
-import type { AggregateStats, SessionRecord, ModeBreakdown } from "./stats.js"
+import type { ClaudeUsageResponse, UsageTier } from "../claude-usage.js"
+import type { AggregateStats, SessionRecord, ModeBreakdown } from "../stats.js"
 
 function formatElapsed(ms: number): string {
   const secs = Math.round(ms / 1000)
