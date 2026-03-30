@@ -11,6 +11,7 @@ import { generateSlug, taskToLabel } from "../slugs.js"
 import type { MinionConfig, McpConfig } from "../config/config-types.js"
 import { DEFAULT_PROMPTS } from "../config/prompts.js"
 import { SessionStore } from "../store.js"
+import { DagStore } from "../dag-store.js"
 import { ProfileStore } from "../profile-store.js"
 import {
   formatPlanIteration,
@@ -58,7 +59,7 @@ import {
 } from "../session/session-manager.js"
 import { extractDagItems } from "../dag/dag-extract.js"
 import { buildSplitChildPrompt } from "./split.js"
-import type { DagGraph } from "../dag/dag.js"
+import { advanceDag, failNode, renderDagStatus, type DagGraph } from "../dag/dag.js"
 import type { DispatcherContext } from "./dispatcher-context.js"
 import { CIBabysitter } from "../ci/ci-babysitter.js"
 import { LandingManager } from "../dag/landing-manager.js"
@@ -78,6 +79,7 @@ export class Dispatcher {
   private readonly pendingTasks = new Map<number, PendingTask>()
   private readonly pendingProfiles = new Map<number, PendingTask>()
   private readonly store: SessionStore
+  private readonly dagStore: DagStore
   private readonly profileStore: ProfileStore
   private readonly dags = new Map<string, DagGraph>()
   private readonly broadcaster?: StateBroadcaster
@@ -101,6 +103,7 @@ export class Dispatcher {
   ) {
     this.broadcaster = broadcaster
     this.store = new SessionStore(this.config.workspace.root)
+    this.dagStore = new DagStore(this.config.workspace.root)
     this.profileStore = new ProfileStore(this.config.workspace.root)
     this.stats = new StatsTracker(this.config.workspace.root)
 
@@ -140,6 +143,7 @@ export class Dispatcher {
       pushToConversation: (s, m) => this.pushToConversation(s, m),
       extractPRFromConversation: (ts) => this.extractPRFromConversation(ts),
       persistTopicSessions: (mark) => this.persistTopicSessions(mark),
+      persistDags: () => this.persistDags(),
       updatePinnedSummary: () => this.pinnedMessages.updatePinnedSummary(),
       updateTopicTitle: (ts, emoji) => this.pinnedMessages.updateTopicTitle(ts, emoji),
       pinThreadMessage: (s, html) => this.pinnedMessages.pinThreadMessage(s, html),
@@ -236,7 +240,60 @@ export class Dispatcher {
         log.info({ slug: session.slug, threadId }, "cleaned expired session")
       }
     }
+    const loadedDags = await this.dagStore.load()
+    for (const [dagId, graph] of loadedDags) {
+      this.dags.set(dagId, graph)
+    }
+    if (loadedDags.size > 0) {
+      log.info({ count: loadedDags.size }, "loaded persisted DAGs")
+      await this.reconcileDags()
+    }
+
     this.pinnedMessages.updatePinnedSummary()
+  }
+
+  private async reconcileDags(): Promise<void> {
+    for (const [dagId, graph] of this.dags) {
+      let mutated = false
+
+      for (const node of graph.nodes) {
+        if (node.status === "running") {
+          const childAlive = node.threadId != null &&
+            this.topicSessions.get(node.threadId)?.activeSessionId != null
+          if (!childAlive) {
+            failNode(graph, node.id)
+            node.error = "Session lost during restart"
+            node.recoveryAttempted = false
+            mutated = true
+            log.warn({ dagId, nodeId: node.id }, "reconciled running node → failed (session dead)")
+          }
+        } else if (node.status === "ci-pending") {
+          node.status = "ci-failed"
+          node.error = "CI status unknown after restart"
+          mutated = true
+          log.warn({ dagId, nodeId: node.id }, "reconciled ci-pending node → ci-failed")
+        }
+      }
+
+      if (mutated) {
+        advanceDag(graph)
+
+        const parent = this.topicSessions.get(graph.parentThreadId)
+        if (parent) {
+          this.telegram.sendMessage(
+            `⚡ DAG recovered after restart — some nodes were transitioned. Use <code>/retry</code> to re-run failed nodes.\n\n${renderDagStatus(graph)}`,
+            graph.parentThreadId,
+          ).catch((err) => {
+            log.warn({ err, dagId }, "failed to send DAG recovery notification")
+          })
+          this.pinnedMessages.updatePinnedDagStatus(parent, graph).catch(() => {})
+        }
+
+        this.broadcastDag(graph, "dag_updated")
+      }
+    }
+
+    await this.persistDags()
   }
 
   async start(): Promise<void> {
@@ -333,6 +390,10 @@ export class Dispatcher {
     log.info({ count: stale.length }, "cleaning up stale sessions")
 
     for (const [threadId, session] of stale) {
+      if (session.dagId) {
+        this.dags.delete(session.dagId)
+        this.broadcastDagDeleted(session.dagId)
+      }
       await this.closeChildSessions(session)
       await this.telegram.deleteForumTopic(threadId)
       await this.removeWorkspace(session)
@@ -359,6 +420,11 @@ export class Dispatcher {
       }
     }
     await this.store.save(toSave, this.offset)
+    await this.dagStore.save(this.dags)
+  }
+
+  private async persistDags(): Promise<void> {
+    await this.dagStore.save(this.dags)
   }
 
   // ── Polling & update handling ─────────────────────────────────────────

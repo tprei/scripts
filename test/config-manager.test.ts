@@ -81,6 +81,7 @@ function createMockContext(overrides: Partial<DispatcherContext> = {}): Dispatch
     pushToConversation: () => {},
     extractPRFromConversation: () => null,
     persistTopicSessions: vi.fn(async () => {}),
+    persistDags: vi.fn(async () => {}),
     updatePinnedSummary: vi.fn(),
     updateTopicTitle: async () => {},
     pinThreadMessage: async () => {},

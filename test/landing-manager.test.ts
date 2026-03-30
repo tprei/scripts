@@ -71,6 +71,7 @@ function createMockContext(overrides: Partial<DispatcherContext> = {}): Dispatch
     pushToConversation: () => {},
     extractPRFromConversation: () => null,
     persistTopicSessions: async () => {},
+    persistDags: async () => {},
     updatePinnedSummary: () => {},
     updateTopicTitle: async () => {},
     pinThreadMessage: async () => {},
