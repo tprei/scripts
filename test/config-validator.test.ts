@@ -12,6 +12,7 @@ import {
   validateAgentDefinitions,
   validateApiServerConfig,
   validateProviderProfile,
+  validateGitHubAppConfig,
   validateConfigOrThrow,
   assertValidConfig,
   ConfigValidationError,
@@ -488,6 +489,68 @@ describe("validateAgentDefinitions", () => {
     })
     expect(result.valid).toBe(false)
     expect(result.errors.some((e) => e.path.includes("settingsJson"))).toBe(true)
+  })
+})
+
+describe("validateGitHubAppConfig", () => {
+  it("accepts undefined config", () => {
+    const result = validateGitHubAppConfig(undefined)
+    expect(result.valid).toBe(true)
+  })
+
+  it("accepts null config", () => {
+    const result = validateGitHubAppConfig(null)
+    expect(result.valid).toBe(true)
+  })
+
+  it("validates complete config", () => {
+    const result = validateGitHubAppConfig({
+      appId: "123",
+      privateKey: "-----BEGIN RSA PRIVATE KEY-----\nfoo\n-----END RSA PRIVATE KEY-----",
+      installationId: "456",
+    })
+    expect(result.valid).toBe(true)
+  })
+
+  it("rejects config with missing appId", () => {
+    const result = validateGitHubAppConfig({
+      privateKey: "key",
+      installationId: "456",
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.path.includes("appId"))).toBe(true)
+  })
+
+  it("rejects config with missing privateKey", () => {
+    const result = validateGitHubAppConfig({
+      appId: "123",
+      installationId: "456",
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.path.includes("privateKey"))).toBe(true)
+  })
+
+  it("rejects config with missing installationId", () => {
+    const result = validateGitHubAppConfig({
+      appId: "123",
+      privateKey: "key",
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.path.includes("installationId"))).toBe(true)
+  })
+
+  it("rejects empty string fields", () => {
+    const result = validateGitHubAppConfig({
+      appId: "",
+      privateKey: "key",
+      installationId: "456",
+    })
+    expect(result.valid).toBe(false)
+  })
+
+  it("rejects non-object config", () => {
+    const result = validateGitHubAppConfig("not-an-object")
+    expect(result.valid).toBe(false)
   })
 })
 

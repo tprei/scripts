@@ -56,6 +56,7 @@ export const loggers = {
   ship: createLogger({ component: "ship" }),
   conflictResolver: createLogger({ component: "conflict-resolver" }),
   dagStore: createLogger({ component: "dag-store" }),
+  github: createLogger({ component: "github" }),
 } as const
 
 /**

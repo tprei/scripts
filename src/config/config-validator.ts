@@ -12,6 +12,7 @@ import type {
   ApiServerConfig,
   ProviderProfile,
   TelegramQueueConfig,
+  GitHubAppConfig,
 } from "./config-types.js"
 
 export class ConfigValidationError extends Error {
@@ -355,6 +356,25 @@ export function validateSentryConfig(config: unknown, path = "sentry"): Validati
   return { valid: errors.length === 0, errors }
 }
 
+export function validateGitHubAppConfig(config: unknown, path = "githubApp"): ValidationResult {
+  const errors: ConfigValidationError[] = []
+  if (config === undefined || config === null) {
+    return { valid: true, errors }
+  }
+  if (typeof config !== "object") {
+    errors.push(error(path, "expected object or undefined"))
+    return { valid: false, errors }
+  }
+  const c = config as Partial<GitHubAppConfig>
+
+  for (const field of ["appId", "privateKey", "installationId"] as const) {
+    const err = validateNonEmptyString(c[field], `${path}.${field}`)
+    if (err) errors.push(err)
+  }
+
+  return { valid: errors.length === 0, errors }
+}
+
 export function validateAgentDefinitions(config: unknown, path = "agentDefs"): ValidationResult {
   const errors: ConfigValidationError[] = []
   if (config === undefined || config === null) {
@@ -475,6 +495,9 @@ export function validateMinionConfig(config: unknown): ValidationResult {
   // Optional configs
   const sentryResult = validateSentryConfig(c.sentry)
   errors.push(...sentryResult.errors)
+
+  const githubAppResult = validateGitHubAppConfig(c.githubApp)
+  errors.push(...githubAppResult.errors)
 
   const agentDefsResult = validateAgentDefinitions(c.agentDefs)
   errors.push(...agentDefsResult.errors)

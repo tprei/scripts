@@ -16,6 +16,7 @@ export type {
   CiConfig,
   DagCiPolicy,
   ProviderProfile,
+  GitHubAppConfig,
 } from "./config/config-types.js"
 export {
   validateMinionConfig,
@@ -33,6 +34,7 @@ export {
   validateAgentDefinitions,
   validateApiServerConfig,
   validateProviderProfile,
+  validateGitHubAppConfig,
 } from "./config/config-validator.js"
 export type { ValidationResult } from "./config/config-validator.js"
 export { DEFAULT_PROMPTS, DEFAULT_TASK_PROMPT, DEFAULT_PLAN_PROMPT, DEFAULT_THINK_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_SHIP_PLAN_PROMPT, DEFAULT_SHIP_VERIFY_PROMPT } from "./config/prompts.js"
@@ -59,3 +61,4 @@ export { cleanupMergedBranch, type BranchCleanupResult } from "./dag/dag.js"
 export { resolveConflictsWithAgent, buildConflictResolutionPrompt } from "./conflict-resolver.js"
 export { formatLandSkipped, formatLandSummary, formatLandConflictResolution } from "./telegram/format.js"
 export { injectAgentFiles, resolvePackageAssetsDir, type InjectionResult } from "./session/inject-assets.js"
+export { GitHubTokenProvider } from "./github/index.js"

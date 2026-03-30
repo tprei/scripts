@@ -9,6 +9,7 @@ import { Dispatcher } from "./orchestration/dispatcher.js"
 import { createApiServer, StateBroadcaster, type DispatcherApi } from "./api-server.js"
 import { loggers } from "./logger.js"
 import { initSentry } from "./sentry.js"
+import { GitHubTokenProvider } from "./github/index.js"
 
 const log = loggers.minion
 
@@ -54,7 +55,8 @@ export function createMinion(config: MinionConfig, options?: MinionOptions): Min
     activityEditDebounceMs: config.observer.activityEditDebounceMs,
   })
   const broadcaster = new StateBroadcaster()
-  const dispatcher = new Dispatcher(telegram, observer, config, broadcaster)
+  const tokenProvider = new GitHubTokenProvider(config.githubApp)
+  const dispatcher = new Dispatcher(telegram, observer, config, broadcaster, tokenProvider)
 
   let apiServer: http.Server | undefined
 
@@ -96,6 +98,7 @@ export function createMinion(config: MinionConfig, options?: MinionOptions): Min
         })
       }
 
+      await tokenProvider.refreshEnv()
       await dispatcher.loadPersistedSessions()
       dispatcher.startCleanupTimer()
       await dispatcher.start()

@@ -9,6 +9,7 @@ import { Observer } from "../telegram/observer.js"
 import type { TelegramUpdate, TelegramCallbackQuery, TelegramPhotoSize, SessionMeta, TopicSession, SessionMode, SessionState, TopicMessage, AutoAdvance } from "../types.js"
 import { generateSlug, taskToLabel } from "../slugs.js"
 import type { MinionConfig, McpConfig } from "../config/config-types.js"
+import type { GitHubTokenProvider } from "../github/index.js"
 import { DEFAULT_PROMPTS } from "../config/prompts.js"
 import { SessionStore } from "../store.js"
 import { ProfileStore } from "../profile-store.js"
@@ -98,6 +99,7 @@ export class Dispatcher {
     private readonly observer: Observer,
     private readonly config: MinionConfig,
     broadcaster?: StateBroadcaster,
+    private readonly tokenProvider?: GitHubTokenProvider,
   ) {
     this.broadcaster = broadcaster
     this.store = new SessionStore(this.config.workspace.root)
@@ -1081,6 +1083,7 @@ export class Dispatcher {
   // ── Agent spawning ────────────────────────────────────────────────────
 
   private async spawnTopicAgent(topicSession: TopicSession, task: string, mcpOverrides?: Partial<McpConfig>, systemPromptOverride?: string): Promise<void> {
+    await this.tokenProvider?.refreshEnv()
     if (this.sessions.size >= this.config.workspace.maxConcurrentSessions) {
       await this.telegram.sendMessage(
         `⚠️ Max concurrent sessions reached. Try again later.`,
@@ -1722,6 +1725,7 @@ export class Dispatcher {
   // ── Workspace wrappers ────────────────────────────────────────────────
 
   private async prepareWorkspace(slug: string, repoUrl?: string, startBranch?: string): Promise<string | null> {
+    await this.tokenProvider?.refreshEnv()
     return prepareWorkspace(slug, this.config.workspace.root, repoUrl, startBranch)
   }
 
