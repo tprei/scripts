@@ -157,7 +157,9 @@ function ensureGitAskpass(): string {
 function buildGitEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0" }
   if (process.env.GITHUB_TOKEN) {
-    env.GIT_ASKPASS = ensureGitAskpass()
+    const askpass = ensureGitAskpass()
+    env.GIT_ASKPASS = askpass
+    process.env.GIT_ASKPASS = askpass
   }
   return env
 }
