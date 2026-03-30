@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useRef, useEffect } from 'preact/hooks'
+import { useMemo, useCallback, useRef, useEffect, useState } from 'preact/hooks'
 import {
   ReactFlow,
   useNodesState,
@@ -21,6 +21,7 @@ import { ContextMenu, useLongPress, useContextMenu } from './ContextMenu'
 import type { ContextMenuActions } from './ContextMenu'
 import { layoutUniverse } from './universe-layout'
 import type { UniverseEdge } from './universe-layout'
+import { NodeDetailPopup } from './NodeDetailPopup'
 import { useTelegram } from '../hooks'
 
 interface UniverseNodeData {
@@ -31,6 +32,7 @@ interface UniverseNodeData {
   nodeType: 'dag' | 'parent-child' | 'standalone'
   isDark: boolean
   onContextMenu: (session: MinionSession, position: { x: number; y: number }) => void
+  onNodeClick: (session: MinionSession) => void
 }
 
 function UniverseNodeComponent({ data }: { data: UniverseNodeData }) {
@@ -55,13 +57,12 @@ function UniverseNodeComponent({ data }: { data: UniverseNodeData }) {
   const longPressHandlers = useLongPress(handleContextMenuOpen, handleContextMenuOpen)
 
   const handleClick = useCallback(() => {
-    if (session?.threadId && session?.chatId) {
-      const threadUrl = `https://t.me/c/${String(session.chatId).replace(/^-100/, '')}/${session.threadId}`
-      tg.navigation.openTgLink(threadUrl)
+    if (session) {
+      data.onNodeClick(session)
     }
-  }, [session, tg.navigation])
+  }, [session, data])
 
-  const hasThread = Boolean(session?.threadId && session?.chatId)
+  const hasSession = Boolean(session)
   const isActive = session?.status === 'running' || session?.status === 'pending'
 
   const nodeTypeLabel = data.nodeType === 'dag' ? 'DAG' : data.nodeType === 'parent-child' ? 'Tree' : null
@@ -75,9 +76,9 @@ function UniverseNodeComponent({ data }: { data: UniverseNodeData }) {
     >
       <Handle type="target" position={Position.Top} style={{ opacity: 0 }} />
       <div
-        onClick={hasThread ? handleClick : undefined}
-        role={hasThread ? 'button' : undefined}
-        tabIndex={hasThread ? 0 : undefined}
+        onClick={hasSession ? handleClick : undefined}
+        role={hasSession ? 'button' : undefined}
+        tabIndex={hasSession ? 0 : undefined}
         class={`${attentionRing}`}
         data-testid={`universe-node-${session?.id || data.label}`}
         style={{
@@ -90,7 +91,7 @@ function UniverseNodeComponent({ data }: { data: UniverseNodeData }) {
           borderStyle: 'solid',
           borderRadius: '10px',
           padding: '10px 12px',
-          cursor: hasThread ? 'pointer' : 'default',
+          cursor: hasSession ? 'pointer' : 'default',
           boxShadow: isActive
             ? `0 0 12px ${colors.border}40`
             : '0 1px 3px rgba(0,0,0,0.1)',
@@ -170,7 +171,18 @@ export function UniverseCanvas({
   const tg = useTelegram()
   const isDark = tg.darkMode
   const contextMenu = useContextMenu()
+  const [detailSession, setDetailSession] = useState<MinionSession | null>(null)
   const prevLayoutRef = useRef<{ nodes: Node[]; edges: UniverseEdge[] } | null>(null)
+
+  // Keep popup session data fresh when sessions update
+  useEffect(() => {
+    if (detailSession) {
+      const updated = sessions.find((s) => s.id === detailSession.id)
+      if (updated && updated !== detailSession) {
+        setDetailSession(updated)
+      }
+    }
+  }, [sessions, detailSession])
 
   const handleNodeContextMenu = useCallback(
     (session: MinionSession, position: { x: number; y: number }) => {
@@ -178,6 +190,10 @@ export function UniverseCanvas({
     },
     [contextMenu]
   )
+
+  const handleNodeClick = useCallback((session: MinionSession) => {
+    setDetailSession(session)
+  }, [])
 
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(() => {
     if (sessions.length === 0 && dags.length === 0) {
@@ -194,9 +210,10 @@ export function UniverseCanvas({
         ...node.data,
         isDark,
         onContextMenu: handleNodeContextMenu,
+        onNodeClick: handleNodeClick,
       },
     }))
-  }, [layoutNodes, isDark, handleNodeContextMenu])
+  }, [layoutNodes, isDark, handleNodeContextMenu, handleNodeClick])
 
   const [nodes, setNodes, onNodesChange] = useNodesState(nodesWithHandlers)
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges)
@@ -301,6 +318,13 @@ export function UniverseCanvas({
           position={contextMenu.state.position}
           actions={contextMenuActions}
           onClose={contextMenu.close}
+        />
+      )}
+
+      {detailSession && (
+        <NodeDetailPopup
+          session={detailSession}
+          onClose={() => setDetailSession(null)}
         />
       )}
     </div>
