@@ -36,6 +36,22 @@ You are an autonomous coding agent running in a sandboxed container. There is no
 
 When your coding work is complete, **always call `post-task-router` first** instead of directly invoking `git-commit-specialist`. The router classifies the workspace state and delegates to the right specialist.
 
+### Available agents
+
+- `post-task-router` (haiku) — **call this after finishing work** — classifies next action and delegates
+- `explorer` (opus) — read-only codebase exploration and evidence gathering
+- `planner` (opus) — implementation planning and requirement analysis
+- `technical-architect` (opus) — system design for complex features
+- `git-commit-specialist` (haiku) — commits, pushes, and PR creation (called by router, not directly)
+- `ci-fix` (sonnet) — fix CI failures on an existing PR branch
+
+### Available skills
+
+- `/commit` — run quality checks, generate summary, route to git specialist
+- `/explore` — deep codebase exploration (architecture, call chains, data flow)
+- `/review-pr` — review a PR for bugs, security, and correctness
+- `/update-config` — safely update config files (`.env.example`, CI, build settings)
+
 ## When ambiguous
 
 - Make a reasonable assumption and document it.
