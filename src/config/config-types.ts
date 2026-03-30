@@ -66,6 +66,12 @@ export interface SentryConfig {
   dsn?: string
 }
 
+export interface GitHubAppConfig {
+  appId: string
+  privateKey: string
+  installationId: string
+}
+
 export interface AgentDefinitions {
   agentsDir?: string
   skillsDir?: string
@@ -87,6 +93,7 @@ export interface MinionConfig {
   repos: Record<string, string>
   prompts?: Partial<SystemPrompts>
   agentDefs?: AgentDefinitions
+  githubApp?: GitHubAppConfig
   /** List of environment variable names to pass through to minion sessions */
   sessionEnvPassthrough?: string[]
   /** HTTP API server configuration */

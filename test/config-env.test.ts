@@ -184,6 +184,60 @@ describe("configFromEnv", () => {
     })
   })
 
+  describe("githubApp from env vars", () => {
+    const ghAppKeys = ["GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID"]
+
+    beforeEach(() => {
+      for (const key of ghAppKeys) {
+        originalEnv[key] = process.env[key]
+        delete process.env[key]
+      }
+    })
+
+    afterEach(() => {
+      for (const key of ghAppKeys) {
+        if (originalEnv[key] === undefined) {
+          delete process.env[key]
+        } else {
+          process.env[key] = originalEnv[key]
+        }
+      }
+    })
+
+    it("returns undefined githubApp when no env vars set", () => {
+      const config = configFromEnv()
+      expect(config.githubApp).toBeUndefined()
+    })
+
+    it("parses all three env vars", () => {
+      process.env["GITHUB_APP_ID"] = "123"
+      process.env["GITHUB_APP_PRIVATE_KEY"] = "-----BEGIN RSA PRIVATE KEY-----\\nfoo\\n-----END RSA PRIVATE KEY-----"
+      process.env["GITHUB_APP_INSTALLATION_ID"] = "456"
+      const config = configFromEnv()
+      expect(config.githubApp).toEqual({
+        appId: "123",
+        privateKey: "-----BEGIN RSA PRIVATE KEY-----\nfoo\n-----END RSA PRIVATE KEY-----",
+        installationId: "456",
+      })
+    })
+
+    it("throws when only partial vars set", () => {
+      process.env["GITHUB_APP_ID"] = "123"
+      expect(() => configFromEnv()).toThrow(ConfigError)
+      expect(() => configFromEnv()).toThrow(/Partial GitHub App config/)
+    })
+
+    it("allows overrides to replace env-derived githubApp", () => {
+      process.env["GITHUB_APP_ID"] = "from-env"
+      process.env["GITHUB_APP_PRIVATE_KEY"] = "key"
+      process.env["GITHUB_APP_INSTALLATION_ID"] = "inst"
+      const config = configFromEnv({
+        githubApp: { appId: "override", privateKey: "k", installationId: "i" },
+      })
+      expect(config.githubApp!.appId).toBe("override")
+    })
+  })
+
   describe("claude config", () => {
     it("defaults reviewModel to opus", () => {
       const config = configFromEnv()

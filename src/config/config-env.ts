@@ -1,4 +1,4 @@
-import type { MinionConfig } from "./config-types.js"
+import type { MinionConfig, GitHubAppConfig } from "./config-types.js"
 import { ConfigError, ConfigFormatError } from "../errors.js"
 import { validateMinionConfig, ConfigValidationError } from "./config-validator.js"
 
@@ -18,6 +18,32 @@ function optionalNumber(name: string, fallback: number): number {
   const n = Number(val)
   if (isNaN(n)) throw new ConfigFormatError(name, "a number", val)
   return n
+}
+
+function buildGitHubAppConfig(): GitHubAppConfig | undefined {
+  const appId = process.env["GITHUB_APP_ID"]
+  const privateKey = process.env["GITHUB_APP_PRIVATE_KEY"]
+  const installationId = process.env["GITHUB_APP_INSTALLATION_ID"]
+
+  if (!appId && !privateKey && !installationId) return undefined
+
+  if (!appId || !privateKey || !installationId) {
+    const missing = [
+      !appId && "GITHUB_APP_ID",
+      !privateKey && "GITHUB_APP_PRIVATE_KEY",
+      !installationId && "GITHUB_APP_INSTALLATION_ID",
+    ].filter(Boolean).join(", ")
+    throw new ConfigError(
+      `Partial GitHub App config: missing ${missing}. Set all three GITHUB_APP_* vars or none`,
+      missing.split(", ")[0],
+    )
+  }
+
+  return {
+    appId,
+    privateKey: privateKey.replace(/\\n/g, "\n"),
+    installationId,
+  }
 }
 
 function buildAgentDefs(): MinionConfig["agentDefs"] {
@@ -100,6 +126,7 @@ export function configFromEnv(overrides?: Partial<MinionConfig>): MinionConfig {
     sentry: {
       dsn: process.env["SENTRY_DSN"] ?? undefined,
     },
+    githubApp: buildGitHubAppConfig(),
     agentDefs: buildAgentDefs(),
     repos: {},
     sessionEnvPassthrough: process.env["SESSION_ENV_PASSTHROUGH"]
