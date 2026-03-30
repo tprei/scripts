@@ -327,7 +327,6 @@ export class LandingManager {
 
       await this.waitForMergeability(prNumber, repoFlag)
     } catch {
-      let conflictResolved = false
       try {
         const unmerged = gitSync(["diff", "--name-only", "--diff-filter=U"], { cwd })
         if (unmerged.length > 0) {
@@ -335,9 +334,8 @@ export class LandingManager {
             `🤖 Attempting conflict resolution for <b>${esc(node.title)}</b>…`,
             topicSession.threadId,
           )
-          conflictResolved = await resolveConflictsWithAgent(cwd, node.branch, baseBranch)
 
-          if (conflictResolved) {
+          if (await resolveConflictsWithAgent(cwd, node.branch, baseBranch)) {
             gitSync(["rebase", "--continue"], { cwd, env: { GIT_EDITOR: "true" } })
             gitSync(["push", "--force-with-lease", "origin", node.branch], { cwd })
 
