@@ -1033,17 +1033,6 @@ export function formatPinnedStatus(
   return lines.join("\n")
 }
 
-/**
- * Build a Telegram forum topic deep-link URL.
- * Chat IDs like -1001234567890 become 1234567890 in the t.me/c/ URL.
- * Returns undefined if chatId or threadId is missing.
- */
-export function threadLink(chatId: number | string | undefined, threadId: number | undefined): string | undefined {
-  if (chatId == null || threadId == null) return undefined
-  const raw = String(chatId).replace(/^-100/, "")
-  return `https://t.me/c/${raw}/${threadId}`
-}
-
 export function formatPinnedSplitStatus(
   parentSlug: string,
   repo: string,
