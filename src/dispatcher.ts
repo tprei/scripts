@@ -497,17 +497,15 @@ export class Dispatcher {
         }
 
         const defaultProfileId = this.profileStore.getDefaultId()
-        if (pending.mode === "ship-think") {
-          const autoAdvance: AutoAdvance = { phase: "think", featureDescription: pending.task, autoLand: false }
-          await this.startTopicSession(repoUrl, pending.task, "ship-think", undefined, defaultProfileId, autoAdvance)
-        } else if (defaultProfileId) {
-          await this.startTopicSessionWithProfile(repoUrl, pending.task, pending.mode, defaultProfileId)
+        if (defaultProfileId) {
+          await this.startTopicSession(repoUrl, pending.task, pending.mode, undefined, defaultProfileId, pending.autoAdvance)
         } else {
           const profiles = this.profileStore.list()
           if (profiles.length > 1) {
+            const label = pending.mode === "ship-think" ? "ship" : pending.mode
             const keyboard = buildProfileKeyboard(profiles)
             const msgId = await this.telegram.sendMessageWithKeyboard(
-              `Pick a profile for: <i>${escapeHtml(pending.task)}</i>`,
+              `Pick a profile for ${label}: <i>${escapeHtml(pending.task)}</i>`,
               keyboard,
               pending.threadId,
             )
@@ -515,7 +513,7 @@ export class Dispatcher {
               this.pendingProfiles.set(msgId, pending)
             }
           } else {
-            await this.startTopicSessionWithProfile(repoUrl, pending.task, pending.mode, undefined)
+            await this.startTopicSession(repoUrl, pending.task, pending.mode, undefined, undefined, pending.autoAdvance)
           }
         }
         return
@@ -539,7 +537,7 @@ export class Dispatcher {
         this.pendingProfiles.delete(messageId)
         await this.telegram.answerCallbackQuery(query.id, `Selected: ${profile.name}`)
         await this.telegram.deleteMessage(messageId)
-        await this.startTopicSessionWithProfile(pending.repoUrl, pending.task, pending.mode, profileId)
+        await this.startTopicSession(pending.repoUrl, pending.task, pending.mode, undefined, profileId, pending.autoAdvance)
         return
       }
     }
@@ -963,7 +961,7 @@ export class Dispatcher {
           replyThreadId,
         )
         if (msgId) {
-          this.pendingTasks.set(msgId, { task, threadId: replyThreadId, mode: "ship-think" })
+          this.pendingTasks.set(msgId, { task, threadId: replyThreadId, mode: "ship-think", autoAdvance })
         }
         return
       }
@@ -996,7 +994,7 @@ export class Dispatcher {
         replyThreadId,
       )
       if (msgId) {
-        this.pendingProfiles.set(msgId, { task, threadId: replyThreadId, repoUrl, mode })
+        this.pendingProfiles.set(msgId, { task, threadId: replyThreadId, repoUrl, mode, autoAdvance })
       }
       return
     }
@@ -1072,15 +1070,6 @@ export class Dispatcher {
     this.pinnedMessages.updatePinnedSummary()
 
     await this.spawnTopicAgent(topicSession, fullTask)
-  }
-
-  private async startTopicSessionWithProfile(
-    repoUrl: string | undefined,
-    task: string,
-    mode: SessionMode,
-    profileId?: string,
-  ): Promise<void> {
-    return this.startTopicSession(repoUrl, task, mode, undefined, profileId)
   }
 
   private async updateTopicTitle(topicSession: TopicSession, stateEmoji: string): Promise<void> {
