@@ -200,6 +200,80 @@ describe("PinnedMessageManager", () => {
       expect(html).toMatch(/💬.*idle-one/)
     })
 
+    it("works with string chatId", async () => {
+      const telegram = makeTelegram()
+      const topicSessions = new Map<number, TopicSession>()
+      topicSessions.set(1, makeSession({ threadId: 42 }))
+
+      const mgr = new PinnedMessageManager({ telegram, topicSessions, workspaceRoot: "/tmp/workspace", chatId: "-1001234567890" })
+      mgr.updatePinnedSummary()
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const html = telegram.sendMessage.mock.calls[0][0] as string
+      expect(html).toContain('href="https://t.me/c/1234567890/42"')
+    })
+
+    it("shows multiple parents each with their own children", async () => {
+      const telegram = makeTelegram()
+      const topicSessions = new Map<number, TopicSession>()
+      const parent1 = makeSession({ threadId: 10, slug: "parent-one", childThreadIds: [20] })
+      const child1 = makeSession({ threadId: 20, slug: "child-a", parentThreadId: 10, splitLabel: "Task A" })
+      const parent2 = makeSession({ threadId: 30, slug: "parent-two", childThreadIds: [40] })
+      const child2 = makeSession({ threadId: 40, slug: "child-b", parentThreadId: 30, splitLabel: "Task B" })
+      topicSessions.set(10, parent1)
+      topicSessions.set(20, child1)
+      topicSessions.set(30, parent2)
+      topicSessions.set(40, child2)
+
+      const mgr = new PinnedMessageManager({ telegram, topicSessions, workspaceRoot: "/tmp/workspace" })
+      mgr.updatePinnedSummary()
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const html = telegram.sendMessage.mock.calls[0][0] as string
+      expect(html).toContain("parent-one")
+      expect(html).toContain("parent-two")
+      expect(html).toContain("child-a")
+      expect(html).toContain("child-b")
+      expect(html).toContain("4 total")
+    })
+
+    it("shows done count for parent with all children completed", async () => {
+      const telegram = makeTelegram()
+      const topicSessions = new Map<number, TopicSession>()
+      const parent = makeSession({ threadId: 10, slug: "main-task", childThreadIds: [20, 30] })
+      const child1 = makeSession({ threadId: 20, slug: "child-one", parentThreadId: 10, prUrl: "https://pr/1", activeSessionId: undefined })
+      const child2 = makeSession({ threadId: 30, slug: "child-two", parentThreadId: 10, prUrl: "https://pr/2", activeSessionId: undefined })
+      topicSessions.set(10, parent)
+      topicSessions.set(20, child1)
+      topicSessions.set(30, child2)
+
+      const mgr = new PinnedMessageManager({ telegram, topicSessions, workspaceRoot: "/tmp/workspace" })
+      mgr.updatePinnedSummary()
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const html = telegram.sendMessage.mock.calls[0][0] as string
+      expect(html).toContain("2/2 done")
+    })
+
+    it("truncates long conversation descriptions", async () => {
+      const telegram = makeTelegram()
+      const topicSessions = new Map<number, TopicSession>()
+      const longText = "A".repeat(100)
+      topicSessions.set(1, makeSession({ conversation: [{ role: "user", text: longText }] }))
+
+      const mgr = new PinnedMessageManager({ telegram, topicSessions, workspaceRoot: "/tmp/workspace" })
+      mgr.updatePinnedSummary()
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const html = telegram.sendMessage.mock.calls[0][0] as string
+      expect(html.length).toBeLessThan(longText.length + 200)
+      expect(html).toContain("…")
+    })
+
     it("standalone session without children shows no tree formatting", async () => {
       const telegram = makeTelegram()
       const topicSessions = new Map<number, TopicSession>()
@@ -373,6 +447,34 @@ describe("PinnedMessageManager", () => {
 
       const html = telegram.sendMessage.mock.calls[0][0] as string
       expect(html).not.toContain("t.me/c/")
+    })
+  })
+
+  describe("updatePinnedDagStatus with stack graph", () => {
+    it("detects stack mode and renders with stack formatting", async () => {
+      const telegram = makeTelegram()
+      const topicSessions = new Map<number, TopicSession>()
+      const parent = makeSession()
+
+      const graph: DagGraph = {
+        id: "stack-1",
+        parentThreadId: 1,
+        repoUrl: "https://github.com/org/repo",
+        startBranch: "main",
+        nodes: [
+          { id: "1", title: "First", description: "first", dependsOn: [], status: "done", branch: "b1", threadId: 2 } as DagNode,
+          { id: "2", title: "Second", description: "second", dependsOn: ["1"], status: "done", branch: "b2", threadId: 3 } as DagNode,
+          { id: "3", title: "Third", description: "third", dependsOn: ["2"], status: "running", branch: "b3", threadId: 4 } as DagNode,
+        ],
+      }
+
+      const mgr = new PinnedMessageManager({ telegram, topicSessions, workspaceRoot: "/tmp/workspace" })
+      await mgr.updatePinnedDagStatus(parent, graph)
+
+      const html = telegram.sendMessage.mock.calls[0][0] as string
+      expect(html).toContain("First")
+      expect(html).toContain("Second")
+      expect(html).toContain("Third")
     })
   })
 
