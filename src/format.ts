@@ -417,10 +417,55 @@ export function formatFollowUpIteration(slug: string, iteration: number): string
   return `🔄 <b>Follow-up</b>  ·  🏷 <code>${esc(slug)}</code>  ·  iteration ${iteration}`
 }
 
+/**
+ * Build a Telegram forum topic deep-link URL.
+ * Chat IDs like -1001234567890 become 1234567890 in the t.me/c/ URL.
+ * Returns undefined if chatId or threadId is missing.
+ */
+export function threadLink(chatId: number | string | undefined, threadId: number | undefined): string | undefined {
+  if (chatId == null || threadId == null) return undefined
+  const raw = String(chatId).replace(/^-100/, "")
+  return `https://t.me/c/${raw}/${threadId}`
+}
+
+export interface StatusTaskSession {
+  meta: { topicName: string; repo: string; startedAt: number; mode: string; threadId?: number }
+  task: string
+  handle: { isActive(): boolean; getState(): string }
+}
+
+export interface StatusTopicSession {
+  threadId?: number
+  slug: string
+  repo: string
+  mode?: string
+  conversation: { role: string; text: string }[]
+  activeSessionId?: string
+  prUrl?: string
+  lastState?: "completed" | "errored"
+  parentThreadId?: number
+  childThreadIds?: number[]
+  splitLabel?: string
+}
+
+function modeLabel(mode: string): string {
+  switch (mode) {
+    case "think": return "🧠 think"
+    case "plan": return "📋 plan"
+    case "review": return "👀 review"
+    case "ci-fix": return "🔧 ci-fix"
+    case "ship-think": return "🚢 think"
+    case "ship-plan": return "🚢 plan"
+    case "ship-verify": return "🚢 verify"
+    default: return "⚡ task"
+  }
+}
+
 export function formatStatus(
-  taskSessions: { meta: { topicName: string; repo: string; startedAt: number; mode: string }; task: string; handle: { isActive(): boolean; getState(): string } }[],
-  topicSessions: { slug: string; repo: string; mode?: string; conversation: { role: string; text: string }[]; activeSessionId?: string }[],
+  taskSessions: StatusTaskSession[],
+  topicSessions: StatusTopicSession[],
   maxConcurrent: number,
+  chatId?: number | string,
 ): string {
   const lines: string[] = [`📊 <b>Status</b>  ·  ${taskSessions.length}/${maxConcurrent} slots in use`, ""]
 
@@ -429,26 +474,116 @@ export function formatStatus(
     return lines.join("\n")
   }
 
+  // Build lookup: threadId → topicSession for child resolution
+  const topicByThread = new Map<number, StatusTopicSession>()
+  for (const ts of topicSessions) {
+    if (ts.threadId != null) topicByThread.set(ts.threadId, ts)
+  }
+
+  // Build set of child threadIds so we can skip them at top level
+  const childSet = new Set<number>()
+  for (const ts of topicSessions) {
+    if (ts.parentThreadId != null && ts.threadId != null) childSet.add(ts.threadId)
+  }
+
+  // Build lookup: threadId → active task session
+  const activeByThread = new Map<number, StatusTaskSession>()
+  for (const s of taskSessions) {
+    if (s.meta.threadId != null) activeByThread.set(s.meta.threadId, s)
+  }
+
+  // Render active task sessions as top-level items
+  const renderedThreads = new Set<number>()
+
   for (const { meta, task, handle } of taskSessions) {
+    // Skip children — they'll be rendered under their parent
+    if (meta.threadId != null && childSet.has(meta.threadId)) continue
+
     const state = handle.getState()
     const icon = handle.isActive() ? "🟢" : "🔴"
     const elapsed = formatElapsed(Date.now() - meta.startedAt)
-    const mode = meta.mode === "think" ? "🧠 think" : meta.mode === "plan" ? "📋 plan" : meta.mode === "review" ? "👀 review" : meta.mode === "ci-fix" ? "🔧 ci-fix" : meta.mode === "ship-think" ? "🚢 think" : meta.mode === "ship-plan" ? "🚢 plan" : meta.mode === "ship-verify" ? "🚢 verify" : "⚡ task"
-    lines.push(`${icon} <b>${esc(meta.topicName)}</b>  ·  📦 ${esc(meta.repo)}  ·  ${mode}  ·  ${state}  ·  ⏱ ${elapsed}`)
-    lines.push(`   <blockquote>${esc(truncate(task, 120))}</blockquote>`)
+    const mode = modeLabel(meta.mode)
+    const link = threadLink(chatId, meta.threadId)
+    const slugPart = link
+      ? `<a href="${esc(link)}">${esc(meta.topicName)}</a>`
+      : `<b>${esc(meta.topicName)}</b>`
+    const prUrl = meta.threadId != null ? topicByThread.get(meta.threadId)?.prUrl : undefined
+    const prPart = prUrl ? ` · <a href="${esc(prUrl)}">PR</a>` : ""
+
+    lines.push(`${icon} ${slugPart}  ·  📦 ${esc(meta.repo)}  ·  ${mode}  ·  ${state}  ·  ⏱ ${elapsed}${prPart}`)
+
+    // Render children if this topic has them
+    const topicForTask = meta.threadId != null ? topicByThread.get(meta.threadId) : undefined
+    if (topicForTask?.childThreadIds && topicForTask.childThreadIds.length > 0) {
+      renderChildTree(lines, topicForTask.childThreadIds, topicByThread, activeByThread, chatId)
+    } else {
+      lines.push(`   <blockquote>${esc(truncate(task, 120))}</blockquote>`)
+    }
     lines.push("")
+
+    if (meta.threadId != null) renderedThreads.add(meta.threadId)
   }
 
-  const standbyTopics = topicSessions.filter((p) => !p.activeSessionId)
+  // Render standby topic sessions (not active, not children)
+  const standbyTopics = topicSessions.filter(
+    (ts) => !ts.activeSessionId
+      && (ts.threadId == null || (!childSet.has(ts.threadId) && !renderedThreads.has(ts.threadId))),
+  )
+
   for (const topic of standbyTopics) {
-    const originalTask = topic.conversation[0]?.text ?? ""
-    const topicMode = topic.mode === "think" ? "🧠 think" : topic.mode === "review" ? "👀 review" : topic.mode === "ship-think" ? "🚢 think" : topic.mode === "ship-plan" ? "🚢 plan" : topic.mode === "ship-verify" ? "🚢 verify" : "📋 plan"
-    lines.push(`🟡 <b>${esc(topic.slug)}</b>  ·  📦 ${esc(topic.repo)}  ·  ${topicMode}  ·  awaiting feedback`)
-    lines.push(`   <blockquote>${esc(truncate(originalTask, 120))}</blockquote>`)
+    const desc = truncate(topic.conversation[0]?.text ?? "", 50)
+    const topicIcon = topic.lastState === "errored" ? "❌" : topic.prUrl ? "✅" : "💬"
+    const link = threadLink(chatId, topic.threadId)
+    const slugPart = link
+      ? `<a href="${esc(link)}">${esc(topic.slug)}</a>`
+      : `<code>${esc(topic.slug)}</code>`
+    const prPart = topic.prUrl ? ` · <a href="${esc(topic.prUrl)}">PR</a>` : ""
+    const mode = modeLabel(topic.mode ?? "plan")
+
+    if (topic.childThreadIds && topic.childThreadIds.length > 0) {
+      const children = topic.childThreadIds
+        .map((id) => topicByThread.get(id))
+        .filter((c): c is StatusTopicSession => c != null)
+      const doneCount = children.filter((c) => c.prUrl && !c.activeSessionId).length
+      lines.push(`${topicIcon} ${slugPart}: ${esc(desc)} (${doneCount}/${children.length} done)`)
+      renderChildTree(lines, topic.childThreadIds, topicByThread, activeByThread, chatId)
+    } else {
+      lines.push(`${topicIcon} ${slugPart}  ·  📦 ${esc(topic.repo)}  ·  ${mode}  ·  awaiting feedback${prPart}`)
+      lines.push(`   <blockquote>${esc(truncate(topic.conversation[0]?.text ?? "", 120))}</blockquote>`)
+    }
     lines.push("")
   }
 
   return lines.join("\n")
+}
+
+function renderChildTree(
+  lines: string[],
+  childThreadIds: number[],
+  topicByThread: Map<number, StatusTopicSession>,
+  activeByThread: Map<number, StatusTaskSession>,
+  chatId?: number | string,
+): void {
+  const children = childThreadIds
+    .map((id) => topicByThread.get(id))
+    .filter((c): c is StatusTopicSession => c != null)
+
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]
+    const isLast = i === children.length - 1
+    const branch = isLast ? "└── " : "├── "
+    const active = child.threadId != null ? activeByThread.get(child.threadId) : undefined
+    const childIcon = active?.handle.isActive()
+      ? "⚡"
+      : child.lastState === "errored" ? "❌" : child.prUrl ? "✅" : "⏳"
+    const childLink = threadLink(chatId, child.threadId)
+    const childSlug = childLink
+      ? `<a href="${esc(childLink)}">${esc(child.slug)}</a>`
+      : `<code>${esc(child.slug)}</code>`
+    const label = child.splitLabel ? `: ${esc(truncate(child.splitLabel, 40))}` : ""
+    const childPr = child.prUrl ? ` · <a href="${esc(child.prUrl)}">PR</a>` : ""
+    lines.push(`${branch}${childIcon} ${childSlug}${label}${childPr}`)
+  }
 }
 
 export function formatHelp(): string {
