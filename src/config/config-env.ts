@@ -1,5 +1,5 @@
 import type { MinionConfig } from "./config-types.js"
-import { ConfigError, ConfigFormatError } from "./errors.js"
+import { ConfigError, ConfigFormatError } from "../errors.js"
 import { validateMinionConfig, ConfigValidationError } from "./config-validator.js"
 
 function required(name: string): string {

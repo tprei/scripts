@@ -1,4 +1,4 @@
-import type { SystemPrompts } from "./config-types.js"
+import type { SystemPrompts } from "./config/config-types.js"
 
 export const DEFAULT_TASK_PROMPT = [
   "You are a coding minion running in a sandboxed environment.",

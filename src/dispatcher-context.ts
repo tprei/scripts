@@ -14,7 +14,7 @@ import type {
   TopicSession, TopicMessage,
   TelegramPhotoSize,
 } from "./types.js"
-import type { MinionConfig, McpConfig } from "./config-types.js"
+import type { MinionConfig, McpConfig } from "./config/config-types.js"
 import type { DagGraph, DagNode, DagInput } from "./dag.js"
 import type { QualityReport } from "./quality-gates.js"
 import type { ActiveSession } from "./session-manager.js"

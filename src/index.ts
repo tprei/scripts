@@ -1,6 +1,6 @@
 export { createMinion } from "./minion.js"
 export type { MinionInstance } from "./minion.js"
-export { configFromEnv } from "./config-env.js"
+export { configFromEnv } from "./config/config-env.js"
 export type {
   MinionConfig,
   TelegramConfig,
@@ -16,7 +16,7 @@ export type {
   CiConfig,
   DagCiPolicy,
   ProviderProfile,
-} from "./config-types.js"
+} from "./config/config-types.js"
 export {
   validateMinionConfig,
   validateConfigOrThrow,
@@ -33,8 +33,8 @@ export {
   validateAgentDefinitions,
   validateApiServerConfig,
   validateProviderProfile,
-} from "./config-validator.js"
-export type { ValidationResult } from "./config-validator.js"
+} from "./config/config-validator.js"
+export type { ValidationResult } from "./config/config-validator.js"
 export { DEFAULT_PROMPTS, DEFAULT_TASK_PROMPT, DEFAULT_PLAN_PROMPT, DEFAULT_THINK_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_SHIP_PLAN_PROMPT, DEFAULT_SHIP_VERIFY_PROMPT } from "./prompts.js"
 export { TelegramClient } from "./telegram.js"
 export { Observer } from "./observer.js"
