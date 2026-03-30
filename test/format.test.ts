@@ -33,6 +33,7 @@ import {
   formatCINoChecks,
   formatUsage,
   formatDagNodeComplete,
+  formatDagNodeStarting,
   formatShipThinkStart,
   formatShipPlanStart,
   formatShipVerifyStart,
@@ -728,6 +729,223 @@ describe("formatStatus (review mode)", () => {
   })
 })
 
+describe("threadLink", () => {
+  it("builds a t.me deep link from chat ID and thread ID", () => {
+    expect(threadLink(-1001234567890, 100)).toBe("https://t.me/c/1234567890/100")
+  })
+
+  it("handles string chat ID", () => {
+    expect(threadLink("-1001234567890", 200)).toBe("https://t.me/c/1234567890/200")
+  })
+
+  it("returns undefined when chatId is missing", () => {
+    expect(threadLink(undefined, 100)).toBeUndefined()
+  })
+
+  it("returns undefined when threadId is missing", () => {
+    expect(threadLink(-1001234567890, undefined)).toBeUndefined()
+  })
+})
+
+describe("formatStatus (tree view with links)", () => {
+  const CHAT_ID = -1001234567890
+
+  it("renders clickable topic links when chatId is provided", () => {
+    const msg = formatStatus(
+      [{
+        meta: { topicName: "bold-arc", repo: "my-repo", startedAt: Date.now() - 30000, mode: "task", threadId: 100 },
+        task: "fix the bug",
+        handle: { isActive: () => true, getState: () => "working" },
+      }],
+      [],
+      5,
+      CHAT_ID,
+    )
+    expect(msg).toContain('<a href="https://t.me/c/1234567890/100">bold-arc</a>')
+    expect(msg).toContain("🟢")
+    expect(msg).toContain("working")
+  })
+
+  it("falls back to bold text without chatId", () => {
+    const msg = formatStatus(
+      [{
+        meta: { topicName: "bold-arc", repo: "my-repo", startedAt: Date.now(), mode: "task" },
+        task: "fix the bug",
+        handle: { isActive: () => true, getState: () => "working" },
+      }],
+      [],
+      5,
+    )
+    expect(msg).toContain("<b>bold-arc</b>")
+    expect(msg).not.toContain("<a href")
+  })
+
+  it("renders standby topics with clickable links", () => {
+    const msg = formatStatus(
+      [],
+      [{
+        threadId: 200,
+        slug: "calm-bay",
+        repo: "my-repo",
+        mode: "plan",
+        conversation: [{ role: "user", text: "plan the feature" }],
+      }],
+      5,
+      CHAT_ID,
+    )
+    expect(msg).toContain('<a href="https://t.me/c/1234567890/200">calm-bay</a>')
+    expect(msg).toContain("awaiting feedback")
+  })
+
+  it("renders PR links inline for active sessions", () => {
+    const msg = formatStatus(
+      [{
+        meta: { topicName: "bold-arc", repo: "my-repo", startedAt: Date.now(), mode: "task", threadId: 100 },
+        task: "fix the bug",
+        handle: { isActive: () => true, getState: () => "working" },
+      }],
+      [{
+        threadId: 100,
+        slug: "bold-arc",
+        repo: "my-repo",
+        mode: "task",
+        conversation: [{ role: "user", text: "fix the bug" }],
+        activeSessionId: "sess-1",
+        prUrl: "https://github.com/org/repo/pull/42",
+      }],
+      5,
+      CHAT_ID,
+    )
+    expect(msg).toContain('<a href="https://github.com/org/repo/pull/42">PR</a>')
+  })
+
+  it("renders PR links inline for standby topics", () => {
+    const msg = formatStatus(
+      [],
+      [{
+        threadId: 200,
+        slug: "calm-bay",
+        repo: "my-repo",
+        mode: "task",
+        conversation: [{ role: "user", text: "done task" }],
+        prUrl: "https://github.com/org/repo/pull/99",
+      }],
+      5,
+      CHAT_ID,
+    )
+    expect(msg).toContain('<a href="https://github.com/org/repo/pull/99">PR</a>')
+  })
+
+  it("renders tree-formatted children for split sessions", () => {
+    const msg = formatStatus(
+      [],
+      [
+        {
+          threadId: 300,
+          slug: "parent-slug",
+          repo: "my-repo",
+          mode: "plan",
+          conversation: [{ role: "user", text: "split work" }],
+          childThreadIds: [301, 302],
+        },
+        {
+          threadId: 301,
+          slug: "child-one",
+          repo: "my-repo",
+          mode: "task",
+          conversation: [{ role: "user", text: "task 1" }],
+          parentThreadId: 300,
+          splitLabel: "Add auth",
+          prUrl: "https://github.com/org/repo/pull/10",
+        },
+        {
+          threadId: 302,
+          slug: "child-two",
+          repo: "my-repo",
+          mode: "task",
+          conversation: [{ role: "user", text: "task 2" }],
+          parentThreadId: 300,
+          lastState: "errored",
+        },
+      ],
+      5,
+      CHAT_ID,
+    )
+    expect(msg).toContain("├── ")
+    expect(msg).toContain("└── ")
+    expect(msg).toContain('<a href="https://t.me/c/1234567890/301">child-one</a>')
+    expect(msg).toContain(": Add auth")
+    expect(msg).toContain('<a href="https://github.com/org/repo/pull/10">PR</a>')
+    expect(msg).toContain("❌")
+    expect(msg).toContain("✅")
+  })
+
+  it("shows errored standby topic with error icon", () => {
+    const msg = formatStatus(
+      [],
+      [{
+        threadId: 400,
+        slug: "err-slug",
+        repo: "my-repo",
+        mode: "task",
+        conversation: [{ role: "user", text: "something" }],
+        lastState: "errored",
+      }],
+      5,
+    )
+    expect(msg).toContain("❌")
+    expect(msg).toContain("err-slug")
+  })
+
+  it("shows completed standby topic with check icon when PR exists", () => {
+    const msg = formatStatus(
+      [],
+      [{
+        threadId: 500,
+        slug: "done-slug",
+        repo: "my-repo",
+        mode: "task",
+        conversation: [{ role: "user", text: "done" }],
+        prUrl: "https://github.com/org/repo/pull/55",
+      }],
+      5,
+    )
+    expect(msg).toContain("✅")
+    expect(msg).toContain("done-slug")
+  })
+
+  it("skips child sessions from top-level active rendering", () => {
+    const msg = formatStatus(
+      [{
+        meta: { topicName: "child-one", repo: "my-repo", startedAt: Date.now(), mode: "task", threadId: 301 },
+        task: "sub-task",
+        handle: { isActive: () => true, getState: () => "working" },
+      }],
+      [
+        {
+          threadId: 300,
+          slug: "parent-slug",
+          repo: "my-repo",
+          mode: "plan",
+          conversation: [{ role: "user", text: "plan" }],
+          childThreadIds: [301],
+        },
+        {
+          threadId: 301,
+          slug: "child-one",
+          repo: "my-repo",
+          mode: "task",
+          conversation: [{ role: "user", text: "sub-task" }],
+          parentThreadId: 300,
+        },
+      ],
+      5,
+    )
+    // child-one should not appear as a top-level 🟢 entry
+    expect(msg).not.toMatch(/🟢.*child-one/)
+  })
+})
+
 describe("formatCIConflicts", () => {
   it("includes slug, PR number, and conflict message", () => {
     const msg = formatCIConflicts("test-slug", "https://github.com/org/repo/pull/42")
@@ -864,6 +1082,65 @@ describe("formatDagNodeComplete", () => {
     const result = formatDagNodeComplete("my-slug", "completed", "My Task", undefined, { done: 3, total: 5, running: 1 })
     expect(result).toContain("3/5 complete")
     expect(result).toContain("1 running")
+  })
+
+  it("renders slug as clickable link when threadId and chatId provided", () => {
+    const result = formatDagNodeComplete("my-slug", "completed", "My Task", undefined, undefined, 42, -1001234567890)
+    expect(result).toContain('<a href="https://t.me/c/1234567890/42">my-slug</a>')
+    expect(result).not.toContain("<b>my-slug</b>")
+  })
+
+  it("falls back to bold slug when threadId missing", () => {
+    const result = formatDagNodeComplete("my-slug", "completed", "My Task", undefined, undefined, undefined, -1001234567890)
+    expect(result).toContain("<b>my-slug</b>")
+    expect(result).not.toContain("<a href=")
+  })
+
+  it("falls back to bold slug when chatId missing", () => {
+    const result = formatDagNodeComplete("my-slug", "completed", "My Task", undefined, undefined, 42)
+    expect(result).toContain("<b>my-slug</b>")
+    expect(result).not.toContain("<a href=")
+  })
+})
+
+describe("formatDagNodeStarting", () => {
+  it("renders basic output without link params", () => {
+    const result = formatDagNodeStarting("My Task", "node-1", "my-slug")
+    expect(result).toContain("Starting")
+    expect(result).toContain("My Task")
+    expect(result).toContain("node-1")
+    expect(result).toContain("<code>my-slug</code>")
+  })
+
+  it("renders slug as clickable link when threadId and chatId provided", () => {
+    const result = formatDagNodeStarting("My Task", "node-1", "my-slug", 42, -1001234567890)
+    expect(result).toContain('<a href="https://t.me/c/1234567890/42">my-slug</a>')
+    expect(result).not.toContain("<code>my-slug</code>")
+  })
+
+  it("falls back to code slug when only threadId provided", () => {
+    const result = formatDagNodeStarting("My Task", "node-1", "my-slug", 42)
+    expect(result).toContain("<code>my-slug</code>")
+  })
+})
+
+describe("formatSplitChildComplete with links", () => {
+  it("renders slug as clickable link when threadId and chatId provided", () => {
+    const result = formatSplitChildComplete("bold-arc", "completed", "Add auth", undefined, 42, -1001234567890)
+    expect(result).toContain('<a href="https://t.me/c/1234567890/42">bold-arc</a>')
+    expect(result).not.toContain("<b>bold-arc</b>")
+  })
+
+  it("falls back to bold slug when no link params", () => {
+    const result = formatSplitChildComplete("bold-arc", "completed", "Add auth")
+    expect(result).toContain("<b>bold-arc</b>")
+    expect(result).not.toContain("<a href=")
+  })
+
+  it("renders both topic link and PR link", () => {
+    const result = formatSplitChildComplete("bold-arc", "completed", "Add auth", "https://github.com/org/repo/pull/42", 99, -1001234567890)
+    expect(result).toContain('<a href="https://t.me/c/1234567890/99">bold-arc</a>')
+    expect(result).toContain('<a href="https://github.com/org/repo/pull/42">PR</a>')
   })
 })
 

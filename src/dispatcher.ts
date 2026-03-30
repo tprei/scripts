@@ -550,7 +550,7 @@ export class Dispatcher {
   private async handleStatusCommand(): Promise<void> {
     const taskSessions = [...this.sessions.values()]
     const topicSessionList = [...this.topicSessions.values()]
-    const msg = formatStatus(taskSessions, topicSessionList, this.config.workspace.maxConcurrentSessions)
+    const msg = formatStatus(taskSessions, topicSessionList, this.config.workspace.maxConcurrentSessions, this.config.telegram.chatId)
     await this.telegram.sendMessage(msg)
   }
 
