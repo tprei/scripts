@@ -27,6 +27,9 @@ export interface WorkspaceConfig {
   staleTtlMs: number
   cleanupIntervalMs: number
   maxConversationLength: number
+  maxJudgeOptions: number
+  judgeAdvocateTimeoutMs: number
+  judgeTimeoutMs: number
 }
 
 export type DagCiPolicy = "block" | "warn" | "skip"

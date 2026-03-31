@@ -568,6 +568,12 @@ describe("formatHelp", () => {
     const msg = formatHelp()
     expect(msg).toContain("/usage")
   })
+
+  it("includes /judge command", () => {
+    const msg = formatHelp()
+    expect(msg).toContain("/judge")
+    expect(msg).toContain("judge arena")
+  })
 })
 
 describe("formatSplitAnalyzing", () => {

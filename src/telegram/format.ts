@@ -609,6 +609,7 @@ export function formatHelp(): string {
     `<code>/split [directive]</code> — split plan into parallel sub-tasks (plan/think mode)`,
     `<code>/stack [directive]</code> — create stacked PRs (sequential chain, plan/think mode)`,
     `<code>/dag [directive]</code> — create a dependency DAG of tasks (plan/think mode)`,
+    `<code>/judge [directive]</code> — run a judge arena to debate design options (plan/think mode)`,
     `<code>/land</code> — merge completed stack/DAG PRs to main in order`,
     `<code>/retry [node-id]</code> — retry failed DAG nodes`,
     `<code>/stop</code> — stop the running agent but keep the thread and data`,
