@@ -22,7 +22,8 @@ You are running in a sandboxed environment. Local changes do not persist after t
 4. Write clear commit messages using conventional commits format
 5. Rebase onto the latest default branch before pushing (see below)
 6. Push the branch: `git push -u origin <branch>`
-7. Open a PR: `gh pr create --title "..." --body "..."`
+7. Open a PR: `gh pr create --title "[minions] ..." --body "..."`
+   - **PR titles MUST start with `[minions]`** — e.g., `[minions] feat: add retry logic`
 
 ## Rebase before push
 
