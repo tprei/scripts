@@ -184,6 +184,68 @@ describe("routeCommand", () => {
       expect(routeCommand("/judge", 10, "task", true)).toBeNull()
     })
 
+    describe("ship mode commands", () => {
+      it("routes /execute in ship-plan mode", () => {
+        expect(routeCommand("/execute", 10, "ship-plan", true)).toEqual({ type: "execute", threadId: 10, directive: undefined })
+      })
+
+      it("routes /execute with directive in ship-think mode", () => {
+        expect(routeCommand("/execute only backend", 10, "ship-think", true)).toEqual({
+          type: "execute",
+          threadId: 10,
+          directive: "only backend",
+        })
+      })
+
+      it("routes /split in ship-plan mode", () => {
+        expect(routeCommand("/split", 10, "ship-plan", true)).toEqual({ type: "split", threadId: 10, directive: undefined })
+      })
+
+      it("routes /split with directive in ship-think mode", () => {
+        expect(routeCommand("/split first two items", 10, "ship-think", true)).toEqual({
+          type: "split",
+          threadId: 10,
+          directive: "first two items",
+        })
+      })
+
+      it("routes /stack in ship-plan mode", () => {
+        expect(routeCommand("/stack", 10, "ship-plan", true)).toEqual({ type: "stack", threadId: 10, directive: undefined })
+      })
+
+      it("routes /stack in ship-think mode", () => {
+        expect(routeCommand("/stack auth flow", 10, "ship-think", true)).toEqual({
+          type: "stack",
+          threadId: 10,
+          directive: "auth flow",
+        })
+      })
+
+      it("routes /dag in ship-plan mode", () => {
+        expect(routeCommand("/dag backend only", 10, "ship-plan", true)).toEqual({
+          type: "dag",
+          threadId: 10,
+          directive: "backend only",
+        })
+      })
+
+      it("routes /dag in ship-think mode", () => {
+        expect(routeCommand("/dag", 10, "ship-think", true)).toEqual({ type: "dag", threadId: 10, directive: undefined })
+      })
+
+      it("routes /judge in ship-plan mode", () => {
+        expect(routeCommand("/judge", 10, "ship-plan", true)).toEqual({ type: "judge", threadId: 10, directive: undefined })
+      })
+
+      it("routes /judge with directive in ship-think mode", () => {
+        expect(routeCommand("/judge focus on perf", 10, "ship-think", true)).toEqual({
+          type: "judge",
+          threadId: 10,
+          directive: "focus on perf",
+        })
+      })
+    })
+
     it("routes /land", () => {
       expect(routeCommand("/land", 10, "plan", true)).toEqual({ type: "land", threadId: 10 })
     })
