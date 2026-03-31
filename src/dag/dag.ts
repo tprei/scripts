@@ -340,7 +340,7 @@ export function getDownstreamNodes(graph: DagGraph, nodeId: string): DagNode[] {
  *
  * Returns nodes in topological order so they can be restacked parent-first.
  */
-export function needsRestack(graph: DagGraph, changedNodeId: string): DagNode[] {
+export function needsRestack(graph: DagGraph, changedNodeId: string, opts?: { includeDone?: boolean }): DagNode[] {
   const sorted = topologicalSort(graph)
   const downstream = getDownstreamNodes(graph, changedNodeId)
   const downstreamIds = new Set(downstream.map((n) => n.id))
@@ -351,7 +351,7 @@ export function needsRestack(graph: DagGraph, changedNodeId: string): DagNode[] 
     .filter((node) =>
       node.branch != null &&
       node.mergeBase != null &&
-      node.status !== "done" &&
+      (opts?.includeDone || node.status !== "done") &&
       node.status !== "failed" &&
       node.status !== "skipped" &&
       node.status !== "landed",
