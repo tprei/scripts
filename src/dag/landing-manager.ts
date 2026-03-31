@@ -170,7 +170,7 @@ export class LandingManager {
           topicSession.threadId,
         )
 
-        const toRestack = needsRestack(graph, node.id)
+        const toRestack = needsRestack(graph, node.id, { includeDone: true })
         if (toRestack.length > 0) {
           const cwd = this.findValidCwd(topicSession, graph)
           if (cwd) {
@@ -318,7 +318,11 @@ export class LandingManager {
     try {
       gitSync(["fetch", "origin", node.branch, baseBranch], { cwd })
       gitSync(["checkout", node.branch], { cwd })
-      gitSync(["rebase", `origin/${baseBranch}`], { cwd })
+      if (node.mergeBase) {
+        gitSync(["rebase", "--onto", `origin/${baseBranch}`, node.mergeBase, node.branch], { cwd })
+      } else {
+        gitSync(["rebase", `origin/${baseBranch}`], { cwd })
+      }
       gitSync(["push", "--force-with-lease", "origin", node.branch], { cwd })
 
       await this.ctx.telegram.sendMessage(

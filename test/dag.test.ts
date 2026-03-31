@@ -569,6 +569,73 @@ describe("needsRestack", () => {
     const result = needsRestack(graph, "a")
     expect(result.map((n) => n.id)).toEqual(["b"])
   })
+
+  it("excludes done nodes by default", () => {
+    const graph = buildDag("test", [
+      { id: "a", title: "A", description: "A", dependsOn: [] },
+      { id: "b", title: "B", description: "B", dependsOn: ["a"] },
+      { id: "c", title: "C", description: "C", dependsOn: ["a"] },
+    ], 1, "repo")
+
+    graph.nodes[1].status = "done"
+    graph.nodes[1].branch = "minion/b"
+    graph.nodes[1].mergeBase = "abc"
+
+    graph.nodes[2].status = "ready"
+    graph.nodes[2].branch = "minion/c"
+    graph.nodes[2].mergeBase = "def"
+
+    const result = needsRestack(graph, "a")
+    expect(result.map((n) => n.id)).toEqual(["c"])
+  })
+
+  it("includes done nodes when includeDone is true", () => {
+    const graph = buildDag("test", [
+      { id: "a", title: "A", description: "A", dependsOn: [] },
+      { id: "b", title: "B", description: "B", dependsOn: ["a"] },
+      { id: "c", title: "C", description: "C", dependsOn: ["a"] },
+    ], 1, "repo")
+
+    graph.nodes[1].status = "done"
+    graph.nodes[1].branch = "minion/b"
+    graph.nodes[1].mergeBase = "abc"
+
+    graph.nodes[2].status = "done"
+    graph.nodes[2].branch = "minion/c"
+    graph.nodes[2].mergeBase = "def"
+
+    const result = needsRestack(graph, "a", { includeDone: true })
+    expect(result.map((n) => n.id)).toEqual(["b", "c"])
+  })
+
+  it("still excludes landed/failed/skipped nodes even when includeDone is true", () => {
+    const graph = buildDag("test", [
+      { id: "a", title: "A", description: "A", dependsOn: [] },
+      { id: "b", title: "B", description: "B", dependsOn: ["a"] },
+      { id: "c", title: "C", description: "C", dependsOn: ["a"] },
+      { id: "d", title: "D", description: "D", dependsOn: ["a"] },
+      { id: "e", title: "E", description: "E", dependsOn: ["a"] },
+    ], 1, "repo")
+
+    graph.nodes[1].status = "done"
+    graph.nodes[1].branch = "minion/b"
+    graph.nodes[1].mergeBase = "abc"
+
+    graph.nodes[2].status = "landed"
+    graph.nodes[2].branch = "minion/c"
+    graph.nodes[2].mergeBase = "def"
+
+    graph.nodes[3].status = "failed"
+    graph.nodes[3].branch = "minion/d"
+    graph.nodes[3].mergeBase = "ghi"
+
+    graph.nodes[4].status = "skipped"
+    graph.nodes[4].branch = "minion/e"
+    graph.nodes[4].mergeBase = "jkl"
+
+    const result = needsRestack(graph, "a", { includeDone: true })
+    expect(result.map((n) => n.id)).toEqual(["b"])
+  })
 })
 
 describe("mergeBase field", () => {
