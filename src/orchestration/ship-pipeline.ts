@@ -136,12 +136,33 @@ export class ShipPipeline {
     }
 
     if (result.items.length === 0) {
-      log.warn({ slug: topicSession.slug }, "DAG extraction yielded 0 items, falling back to /execute")
+      log.warn({ slug: topicSession.slug }, "DAG extraction yielded 0 items, retrying with enriched prompt")
       await this.ctx.telegram.sendMessage(
-        `⚠️ No work items extracted — falling back to <code>/execute</code>.`,
+        `⚠️ No work items extracted — retrying with enriched prompt…`,
         topicSession.threadId,
       )
-      await this.ctx.handleExecuteCommand(topicSession)
+
+      const retryDirective = [
+        "The previous extraction returned zero items. Re-read the conversation carefully.",
+        "There IS a plan with actionable work items — extract each discrete task as a separate item.",
+        "Look for numbered lists, bullet points, headings, or paragraphs describing distinct changes.",
+        "Each item should be a meaningful unit of work that can produce its own PR.",
+        "You MUST output at least one item. Only output [] if the conversation truly contains no plan.",
+      ].join("\n")
+
+      const retryResult = await extractDagItems(topicSession.conversation, retryDirective, profile)
+
+      if (retryResult.items.length === 0) {
+        log.warn({ slug: topicSession.slug }, "DAG extraction retry also yielded 0 items")
+        await this.ctx.telegram.sendMessage(
+          `⚠️ Still no work items after retry.\n\nYou can:\n• <code>/dag</code> — try again\n• <code>/execute</code> — run as a single task\n• <code>/split</code> — extract parallel items\n• <code>/close</code> — cancel`,
+          topicSession.threadId,
+        )
+        return
+      }
+
+      await this.ctx.startDag(topicSession, retryResult.items, false)
+      await this.ctx.persistTopicSessions()
       return
     }
 
