@@ -238,6 +238,44 @@ describe("configFromEnv", () => {
     })
   })
 
+  describe("judge arena config", () => {
+    it("defaults maxJudgeOptions to 4", () => {
+      const config = configFromEnv()
+      expect(config.workspace.maxJudgeOptions).toBe(4)
+    })
+
+    it("defaults judgeAdvocateTimeoutMs to 90000", () => {
+      const config = configFromEnv()
+      expect(config.workspace.judgeAdvocateTimeoutMs).toBe(90_000)
+    })
+
+    it("defaults judgeTimeoutMs to 120000", () => {
+      const config = configFromEnv()
+      expect(config.workspace.judgeTimeoutMs).toBe(120_000)
+    })
+
+    it("reads MAX_JUDGE_OPTIONS env var", () => {
+      process.env["MAX_JUDGE_OPTIONS"] = "6"
+      const config = configFromEnv()
+      expect(config.workspace.maxJudgeOptions).toBe(6)
+      delete process.env["MAX_JUDGE_OPTIONS"]
+    })
+
+    it("reads JUDGE_ADVOCATE_TIMEOUT_MS env var", () => {
+      process.env["JUDGE_ADVOCATE_TIMEOUT_MS"] = "60000"
+      const config = configFromEnv()
+      expect(config.workspace.judgeAdvocateTimeoutMs).toBe(60_000)
+      delete process.env["JUDGE_ADVOCATE_TIMEOUT_MS"]
+    })
+
+    it("reads JUDGE_TIMEOUT_MS env var", () => {
+      process.env["JUDGE_TIMEOUT_MS"] = "180000"
+      const config = configFromEnv()
+      expect(config.workspace.judgeTimeoutMs).toBe(180_000)
+      delete process.env["JUDGE_TIMEOUT_MS"]
+    })
+  })
+
   describe("claude config", () => {
     it("defaults reviewModel to opus", () => {
       const config = configFromEnv()

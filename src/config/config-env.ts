@@ -95,6 +95,9 @@ export function configFromEnv(overrides?: Partial<MinionConfig>): MinionConfig {
       staleTtlMs: optionalNumber("SESSION_STALE_TTL_MS", 2 * 24 * 60 * 60 * 1000),
       cleanupIntervalMs: optionalNumber("CLEANUP_INTERVAL_MS", 60 * 60 * 1000),
       maxConversationLength: optionalNumber("MAX_CONVERSATION_LENGTH", 100),
+      maxJudgeOptions: optionalNumber("MAX_JUDGE_OPTIONS", 4),
+      judgeAdvocateTimeoutMs: optionalNumber("JUDGE_ADVOCATE_TIMEOUT_MS", 90_000),
+      judgeTimeoutMs: optionalNumber("JUDGE_TIMEOUT_MS", 120_000),
     },
     ci: {
       babysitEnabled: optional("CI_BABYSIT_ENABLED", "true") === "true",
