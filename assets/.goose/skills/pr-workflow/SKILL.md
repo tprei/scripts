@@ -18,8 +18,10 @@ Use conventional commit messages: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`
 
 Use the `gh` CLI (pre-authenticated via GITHUB_TOKEN):
 
+**PR titles MUST start with `[minions]`** — e.g., `[minions] feat: short description`.
+
 ```bash
-gh pr create --title "feat: short description" --body "## Summary
+gh pr create --title "[minions] feat: short description" --body "## Summary
 - what changed and why
 
 ## Test plan

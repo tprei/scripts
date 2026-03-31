@@ -21,7 +21,8 @@ You are running in a sandboxed environment. Local changes do not persist after t
 3. Group related changes into logical commits
 4. Write clear commit messages using conventional commits format
 5. Push the branch: `git push -u origin <branch>`
-6. Open a PR: `gh pr create --title "..." --body "..."`
+6. Open a PR: `gh pr create --title "[minions] ..." --body "..."`
+   - **PR titles MUST start with `[minions]`** — e.g., `[minions] feat: add retry logic`
 
 ## Commit message format
 
