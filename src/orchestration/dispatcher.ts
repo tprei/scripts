@@ -1534,6 +1534,7 @@ export class Dispatcher {
     topicSession.mode = "task"
     topicSession.activeSessionId = undefined
     topicSession.pendingFeedback = []
+    topicSession.autoAdvance = undefined
 
     await this.spawnTopicAgent(topicSession, executionTask)
   }
