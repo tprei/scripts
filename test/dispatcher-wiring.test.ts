@@ -228,4 +228,43 @@ describe("Dispatcher module wiring", () => {
     expect(dispatcher.getDags()).toBeInstanceOf(Map)
     expect(dispatcher.getDags().size).toBe(0)
   })
+
+  it("handleExecuteCommand clears autoAdvance when breaking out of ship pipeline", async () => {
+    const telegram = makeMockTelegram()
+    const config = makeConfig()
+    const observer = new Observer(telegram, 123)
+    const dispatcher = new Dispatcher(telegram, observer, config)
+
+    const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
+
+    const session: TopicSession = {
+      threadId: 300,
+      repo: "test-repo",
+      cwd: "/tmp/test",
+      slug: "ship-slug",
+      conversation: [{ role: "assistant", text: "here is my plan" }],
+      pendingFeedback: [],
+      mode: "ship-plan",
+      lastActivityAt: Date.now(),
+      autoAdvance: {
+        phase: "plan",
+        featureDescription: "Build a feature",
+        autoLand: false,
+      },
+    }
+    topicSessions.set(300, session)
+
+    const d = dispatcher as unknown as {
+      handleExecuteCommand(ts: TopicSession, directive?: string): Promise<void>
+      spawnTopicAgent(ts: TopicSession, task: string): Promise<void>
+    }
+    // Stub spawnTopicAgent so it doesn't actually spawn a process
+    d.spawnTopicAgent = vi.fn().mockResolvedValue(undefined)
+
+    await d.handleExecuteCommand(session)
+
+    expect(session.mode).toBe("task")
+    expect(session.autoAdvance).toBeUndefined()
+    expect(session.pendingFeedback).toEqual([])
+  })
 })
