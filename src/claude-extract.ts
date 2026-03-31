@@ -3,7 +3,7 @@ import type { TopicMessage } from "./types.js"
 import type { ProviderProfile } from "./config/config-types.js"
 import type { Logger } from "pino"
 
-const MAX_ASSISTANT_CHARS = 4000
+export const MAX_ASSISTANT_CHARS = 4000
 
 export interface ExtractionOptions {
   timeoutMs?: number
@@ -157,14 +157,18 @@ export async function retryClaudeExtraction<T>(
 /**
  * Build a text representation of a conversation for extraction prompts.
  */
-export function buildConversationText(conversation: TopicMessage[], directive?: string): string {
+export function buildConversationText(
+  conversation: TopicMessage[],
+  directive?: string,
+  maxAssistantChars: number = MAX_ASSISTANT_CHARS,
+): string {
   const lines: string[] = ["## Conversation\n"]
 
   for (const msg of conversation) {
     const label = msg.role === "user" ? "**User**" : "**Agent**"
     lines.push(`${label}:`)
-    if (msg.role === "assistant" && msg.text.length > MAX_ASSISTANT_CHARS) {
-      lines.push(`[earlier output truncated]\n…${msg.text.slice(-MAX_ASSISTANT_CHARS)}`)
+    if (msg.role === "assistant" && msg.text.length > maxAssistantChars) {
+      lines.push(`[earlier output truncated]\n…${msg.text.slice(-maxAssistantChars)}`)
     } else {
       lines.push(msg.text)
     }

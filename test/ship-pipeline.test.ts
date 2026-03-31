@@ -290,8 +290,13 @@ describe("ShipPipeline", () => {
       expect(msg![0]).toContain("/split")
     })
 
-    it("falls back to /execute when no items extracted", async () => {
-      mockExtractDagItems.mockResolvedValueOnce({ items: [] })
+    it("retries with enriched prompt when no items extracted, then succeeds", async () => {
+      const retryItems = [
+        { id: "a", title: "Task A", description: "Do A", dependsOn: [] },
+      ]
+      mockExtractDagItems
+        .mockResolvedValueOnce({ items: [] })
+        .mockResolvedValueOnce({ items: retryItems })
 
       const session = makeSession({
         autoAdvance: makeAutoAdvance({ phase: "plan" }),
@@ -299,12 +304,42 @@ describe("ShipPipeline", () => {
 
       await pipeline.shipAdvanceToDag(session)
 
+      expect(mockExtractDagItems).toHaveBeenCalledTimes(2)
+      expect(mockExtractDagItems).toHaveBeenNthCalledWith(2,
+        session.conversation,
+        expect.stringContaining("previous extraction returned zero items"),
+        undefined,
+      )
       expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
-        expect.stringContaining("falling back to"),
+        expect.stringContaining("retrying with enriched prompt"),
         session.threadId,
       )
-      expect(ctx.handleExecuteCommand).toHaveBeenCalledWith(session)
+      expect(ctx.startDag).toHaveBeenCalledWith(session, retryItems, false)
+      expect(ctx.handleExecuteCommand).not.toHaveBeenCalled()
+    })
+
+    it("prompts user with options when retry also yields no items", async () => {
+      mockExtractDagItems
+        .mockResolvedValueOnce({ items: [] })
+        .mockResolvedValueOnce({ items: [] })
+
+      const session = makeSession({
+        autoAdvance: makeAutoAdvance({ phase: "plan" }),
+      })
+
+      await pipeline.shipAdvanceToDag(session)
+
+      expect(mockExtractDagItems).toHaveBeenCalledTimes(2)
+      expect(ctx.handleExecuteCommand).not.toHaveBeenCalled()
       expect(ctx.startDag).not.toHaveBeenCalled()
+      const msg = (ctx.telegram.sendMessage as ReturnType<typeof vi.fn>).mock.calls.find(
+        (c: unknown[]) => typeof c[0] === "string" && c[0].includes("Still no work items"),
+      )
+      expect(msg).toBeDefined()
+      expect(msg![0]).toContain("/dag")
+      expect(msg![0]).toContain("/execute")
+      expect(msg![0]).toContain("/split")
+      expect(msg![0]).toContain("/close")
     })
 
     it("starts DAG with extracted items", async () => {

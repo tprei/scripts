@@ -1,7 +1,7 @@
 import type { TopicMessage } from "../types.js"
 import type { DagInput } from "./dag.js"
 import type { ProviderProfile } from "../config/config-types.js"
-import { retryClaudeExtraction, buildConversationText, ParseError } from "../claude-extract.js"
+import { retryClaudeExtraction, buildConversationText, ParseError, MAX_ASSISTANT_CHARS } from "../claude-extract.js"
 import { loggers } from "../logger.js"
 
 const log = loggers.dagExtract
@@ -54,6 +54,7 @@ const STACK_EXTRACTION_PROMPT = [
 ].join("\n")
 
 const EXTRACTION_TIMEOUT_MS = 120_000
+const DAG_ASSISTANT_CHARS = MAX_ASSISTANT_CHARS * 2 // 8000 — preserve plan structure in long conversations
 
 /**
  * Extract DAG items (with dependencies) from a planning conversation.
@@ -63,7 +64,7 @@ export async function extractDagItems(
   directive?: string,
   profile?: ProviderProfile,
 ): Promise<DagExtractResult> {
-  const task = buildConversationText(conversation, directive)
+  const task = buildConversationText(conversation, directive, DAG_ASSISTANT_CHARS)
   log.debug({ messageCount: conversation.length }, "analyzing conversation for DAG items")
 
   const result = await retryClaudeExtraction(
@@ -88,7 +89,7 @@ export async function extractStackItems(
   directive?: string,
   profile?: ProviderProfile,
 ): Promise<DagExtractResult> {
-  const task = buildConversationText(conversation, directive)
+  const task = buildConversationText(conversation, directive, DAG_ASSISTANT_CHARS)
   log.debug({ messageCount: conversation.length }, "analyzing conversation for stack items")
 
   const result = await retryClaudeExtraction(
