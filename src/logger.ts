@@ -59,6 +59,7 @@ export const loggers = {
   github: createLogger({ component: "github" }),
   judgeExtract: createLogger({ component: "judge-extract" }),
   conversationSummarizer: createLogger({ component: "conversation-summarizer" }),
+  judgeOrchestrator: createLogger({ component: "judge-orchestrator" }),
 } as const
 
 /**
