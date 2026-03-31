@@ -504,6 +504,7 @@ export class Dispatcher {
       case "stack": return this.splitOrchestrator.handleStackCommand(topicSession!, routed.directive)
       case "dag": return this.handleDagCommand(topicSession!, routed.directive)
       case "judge": return this.judgeOrchestrator.handleJudgeCommand(topicSession!, routed.directive)
+      case "done": return this.handleDoneCommand(topicSession!)
       case "land": return this.landingManager.handleLandCommand(topicSession!)
       case "retry": return this.dagOrchestrator.handleRetryCommand(topicSession!, routed.nodeId)
       case "force": return this.dagOrchestrator.handleForceCommand(topicSession!, routed.nodeId)
@@ -1781,6 +1782,126 @@ export class Dispatcher {
 
     this.removeWorkspace(topicSession).catch((err) => {
       log.error({ err, slug: topicSession.slug }, "background cleanup failed")
+    })
+  }
+
+  private async handleDoneCommand(topicSession: TopicSession): Promise<void> {
+    const threadId = topicSession.threadId
+
+    // Short-circuit: DAG/stack children should be managed from the parent
+    if (topicSession.parentThreadId || topicSession.dagNodeId) {
+      await this.telegram.sendMessage(
+        `⚠️ <code>/done</code> is not available on child sessions. Use <code>/done</code> or <code>/land</code> from the parent thread.`,
+        threadId,
+      )
+      return
+    }
+
+    // Short-circuit: no PR found
+    const prUrl = topicSession.prUrl ?? this.extractPRFromConversation(topicSession)
+    if (!prUrl) {
+      await this.telegram.sendMessage(
+        `⚠️ No PR found for this session. Nothing to merge.`,
+        threadId,
+      )
+      return
+    }
+
+    // Short-circuit: CI not green
+    await this.refreshGitToken()
+    try {
+      const checksJson = execSync(`gh pr checks "${prUrl}" --json name,state,bucket`, {
+        cwd: topicSession.cwd,
+        timeout: 30_000,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      }).trim()
+
+      if (checksJson && checksJson !== "[]") {
+        const checks = JSON.parse(checksJson) as { name: string; state: string; bucket: string }[]
+        const pending = checks.filter((c) => c.bucket === "pending")
+        if (pending.length > 0) {
+          await this.telegram.sendMessage(
+            `⚠️ CI checks still running (${pending.length} pending). Wait for CI to finish before using <code>/done</code>.`,
+            threadId,
+          )
+          return
+        }
+        const failed = checks.filter((c) => c.bucket === "fail")
+        if (failed.length > 0) {
+          const names = failed.map((c) => `<code>${escapeHtml(c.name)}</code>`).join(", ")
+          await this.telegram.sendMessage(
+            `⚠️ CI is not green — ${failed.length} failed check(s): ${names}. Fix CI before using <code>/done</code>.`,
+            threadId,
+          )
+          return
+        }
+      }
+    } catch (err) {
+      const errMsg = String((err as Error).message ?? "")
+      if (!errMsg.includes("no checks reported")) {
+        await this.telegram.sendMessage(
+          `⚠️ Could not verify CI status: <code>${escapeHtml(errMsg.slice(0, 200))}</code>`,
+          threadId,
+        )
+        return
+      }
+      // "no checks reported" — treat as OK (no CI configured)
+    }
+
+    // Merge the PR
+    try {
+      execSync(`gh pr merge "${prUrl}" --squash --delete-branch`, {
+        cwd: topicSession.cwd,
+        timeout: 120_000,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      })
+    } catch (err) {
+      const errMsg = String((err as Error).message ?? "")
+      await this.telegram.sendMessage(
+        `⚠️ Failed to merge PR: <code>${escapeHtml(errMsg.slice(0, 300))}</code>`,
+        threadId,
+      )
+      return
+    }
+
+    await this.telegram.sendMessage(`✅ Merged and closed: ${prUrl}`, threadId)
+    log.info({ slug: topicSession.slug, threadId, prUrl }, "/done — merged PR")
+
+    // Close children, delete topic, wipe workspace
+    await this.closeChildSessions(topicSession)
+
+    if (topicSession.dagId) {
+      this.broadcastDagDeleted(topicSession.dagId)
+      this.dags.delete(topicSession.dagId)
+    }
+
+    this.topicSessions.delete(threadId)
+    this.broadcastSessionDeleted(topicSession.slug)
+    await this.persistTopicSessions()
+    this.pinnedMessages.updatePinnedSummary()
+    await this.telegram.deleteForumTopic(threadId)
+    log.info({ slug: topicSession.slug, threadId }, "/done — closed topic")
+
+    if (topicSession.activeSessionId) {
+      const activeSession = this.sessions.get(threadId)
+      this.sessions.delete(threadId)
+      if (activeSession) {
+        activeSession.handle.kill().then(
+          () => this.removeWorkspace(topicSession),
+          () => this.removeWorkspace(topicSession),
+        ).catch((err) => {
+          log.error({ err, slug: topicSession.slug }, "/done background cleanup failed")
+        })
+        return
+      }
+    }
+
+    this.removeWorkspace(topicSession).catch((err) => {
+      log.error({ err, slug: topicSession.slug }, "/done background cleanup failed")
     })
   }
 
