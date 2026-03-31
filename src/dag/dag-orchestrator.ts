@@ -515,8 +515,34 @@ export class DagOrchestrator {
   }
 
   async handleRetryCommand(topicSession: TopicSession, nodeId?: string): Promise<void> {
+    // Pre-DAG ship retry: re-trigger the current ship phase
+    if (!topicSession.dagId && topicSession.autoAdvance) {
+      const phase = topicSession.autoAdvance.phase
+      if (phase === "think" || phase === "plan") {
+        await this.ctx.telegram.sendMessage(
+          `🔄 Retrying ship <b>${phase}</b> phase…`,
+          topicSession.threadId,
+        )
+        const lastUserMessage = [...topicSession.conversation].reverse().find((m) => m.role === "user")
+        const retryTask = lastUserMessage?.text ?? topicSession.autoAdvance.featureDescription
+        await this.ctx.spawnTopicAgent(topicSession, retryTask)
+        return
+      }
+      if (phase === "dag") {
+        await this.ctx.telegram.sendMessage(
+          `🔄 Retrying DAG extraction…`,
+          topicSession.threadId,
+        )
+        await this.ctx.shipAdvanceToDag(topicSession)
+        return
+      }
+    }
+
     if (!topicSession.dagId) {
-      await this.ctx.telegram.sendMessage("⚠️ /retry only works in DAG parent threads.", topicSession.threadId)
+      await this.ctx.telegram.sendMessage(
+        "⚠️ /retry requires a ship pipeline or DAG parent thread.",
+        topicSession.threadId,
+      )
       return
     }
 

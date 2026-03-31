@@ -165,6 +165,7 @@ export class Dispatcher {
       shipAdvanceToVerification: (ts, g) => this.shipPipeline.shipAdvanceToVerification(ts, g),
       handleLandCommand: (ts) => this.landingManager.handleLandCommand(ts),
       handleShipAdvance: (ts) => this.shipPipeline.handleShipAdvance(ts),
+      shipAdvanceToDag: (ts) => this.shipPipeline.shipAdvanceToDag(ts),
       handleExecuteCommand: (ts, d) => this.handleExecuteCommand(ts, d),
       notifyParentOfChildComplete: (cs, s) => this.notifyParentOfChildComplete(cs, s),
       postSessionDigest: (ts, pr) => { this.postSessionDigest(ts, pr).catch(() => {}) },
@@ -1270,7 +1271,7 @@ export class Dispatcher {
         this.observer.onSessionComplete(m, state, durationMs).catch(() => {})
         const phase = topicSession.autoAdvance.phase
         this.telegram.sendMessage(
-          `⚠️ Ship pipeline paused: ${topicSession.mode} phase errored during <b>${phase}</b>.\n\nRecovery options:\n• /dag — retry DAG extraction\n• /execute — run as a single task\n• /split — split into parallel sub-tasks\n• /close — abandon this ship`,
+          `⚠️ Ship pipeline paused: ${topicSession.mode} phase errored during <b>${phase}</b>.\n\nRecovery options:\n• /retry — re-run the current phase\n• /dag — retry DAG extraction\n• /execute — run as a single task\n• /split — split into parallel sub-tasks\n• /close — abandon this ship`,
           topicSession.threadId,
         ).catch(() => {})
         writeSessionLog(topicSession, m, state, durationMs)

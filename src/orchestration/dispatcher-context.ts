@@ -152,6 +152,9 @@ export interface DispatcherContext {
   /** Advance to the next ship phase (used by session completion handler → ShipPipeline). */
   handleShipAdvance(topicSession: TopicSession): Promise<void>
 
+  /** Re-run DAG extraction (used by DagOrchestrator for /retry in dag phase). */
+  shipAdvanceToDag(topicSession: TopicSession): Promise<void>
+
   /** Handle the /execute command (used by SplitOrchestrator). */
   handleExecuteCommand(topicSession: TopicSession, directive?: string): Promise<void>
 
