@@ -183,7 +183,7 @@ export class TelegramClient {
       }
 
       if (res.status >= 500 && attempt < MAX_RETRIES - 1) {
-        const text = await res.text()
+        await res.text()
         const delay = TRANSIENT_RETRY_MS * Math.pow(2, attempt)
         log.warn({ method, status: res.status, attempt: attempt + 1, delayMs: delay }, "server error, retrying")
         await sleep(delay)
