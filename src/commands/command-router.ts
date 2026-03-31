@@ -108,7 +108,9 @@ export function routeCommand(
     if (text?.startsWith(FORCE_CMD + " ") || text === FORCE_CMD) {
       return { type: "force", threadId, nodeId: text!.slice(FORCE_CMD.length).trim() || undefined }
     }
-    if (text?.startsWith(REPLY_PREFIX + " ") || text?.startsWith(REPLY_SHORT + " ") || text === REPLY_PREFIX || text === REPLY_SHORT) {
+    if (text?.startsWith(REPLY_PREFIX + " ") || text?.startsWith(REPLY_PREFIX + "\n") ||
+        text?.startsWith(REPLY_SHORT + " ") || text?.startsWith(REPLY_SHORT + "\n") ||
+        text === REPLY_PREFIX || text === REPLY_SHORT) {
       const stripped = text.startsWith(REPLY_PREFIX)
         ? text.slice(REPLY_PREFIX.length).trim()
         : text.slice(REPLY_SHORT.length).trim()
