@@ -5,6 +5,7 @@ import type { DagGraph } from "../dag/dag.js"
 import { SessionHandle, type SessionConfig } from "../session/session.js"
 import { buildCompletenessReviewPrompt, parseCompletenessResult } from "../ci/verification.js"
 import { extractDagItems } from "../dag/dag-extract.js"
+import { buildConversationText } from "../claude-extract.js"
 import { JudgeOrchestrator } from "../judge/judge-orchestrator.js"
 import { esc, formatShipPhaseAdvance, formatShipComplete } from "../telegram/format.js"
 import { loggers } from "../logger.js"
@@ -56,20 +57,15 @@ export class ShipPipeline {
       topicSession.threadId,
     )
 
-    const MAX_CHARS = 4000
-    const researchFindings = topicSession.conversation
-      .filter((m) => m.role === "assistant")
-      .map((m) => m.text.length > MAX_CHARS ? m.text.slice(-MAX_CHARS) : m.text)
-      .join("\n\n")
+    const DAG_ASSISTANT_CHARS = 8000
+    const researchText = buildConversationText(topicSession.conversation, undefined, DAG_ASSISTANT_CHARS)
 
     const planTask = [
       "## Feature request",
       "",
       topicSession.autoAdvance!.featureDescription,
       "",
-      "## Research findings",
-      "",
-      researchFindings || "(no research output)",
+      researchText,
       "",
       "---",
       "",
