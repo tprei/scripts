@@ -81,6 +81,8 @@ function makeContext(overrides: Partial<DispatcherContext> = {}): DispatcherCont
     closeSingleChild: vi.fn().mockResolvedValue(undefined),
     startDag: vi.fn().mockResolvedValue(undefined),
     shipAdvanceToVerification: vi.fn().mockResolvedValue(undefined),
+    handleShipAdvance: vi.fn().mockResolvedValue(undefined),
+    shipAdvanceToDag: vi.fn().mockResolvedValue(undefined),
     handleExecuteCommand: vi.fn().mockResolvedValue(undefined),
     notifyParentOfChildComplete: vi.fn().mockResolvedValue(undefined),
     postSessionDigest: vi.fn(),
@@ -611,15 +613,82 @@ describe("DagOrchestrator", () => {
   })
 
   describe("handleRetryCommand", () => {
-    it("reports error when not in DAG thread", async () => {
+    it("reports error when not in DAG or ship thread", async () => {
       const session = makeSession({ dagId: undefined })
 
       await orchestrator.handleRetryCommand(session)
 
       expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
-        expect.stringContaining("/retry only works"),
+        expect.stringContaining("/retry requires a ship pipeline or DAG parent thread"),
         session.threadId,
       )
+    })
+
+    it("retries ship think phase by re-spawning agent", async () => {
+      const session = makeSession({
+        dagId: undefined,
+        mode: "ship-think",
+        autoAdvance: { phase: "think", featureDescription: "build a widget", autoLand: false },
+        conversation: [{ role: "user", text: "build a widget" }],
+      })
+
+      await orchestrator.handleRetryCommand(session)
+
+      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+        expect.stringContaining("Retrying ship <b>think</b> phase"),
+        session.threadId,
+      )
+      expect(ctx.spawnTopicAgent).toHaveBeenCalledWith(session, "build a widget")
+    })
+
+    it("retries ship plan phase by re-spawning agent", async () => {
+      const session = makeSession({
+        dagId: undefined,
+        mode: "ship-plan",
+        autoAdvance: { phase: "plan", featureDescription: "build a widget", autoLand: false },
+        conversation: [
+          { role: "user", text: "build a widget" },
+          { role: "assistant", text: "research findings" },
+          { role: "user", text: "plan the implementation" },
+        ],
+      })
+
+      await orchestrator.handleRetryCommand(session)
+
+      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+        expect.stringContaining("Retrying ship <b>plan</b> phase"),
+        session.threadId,
+      )
+      expect(ctx.spawnTopicAgent).toHaveBeenCalledWith(session, "plan the implementation")
+    })
+
+    it("retries ship dag phase by calling shipAdvanceToDag", async () => {
+      const session = makeSession({
+        dagId: undefined,
+        mode: "ship-plan",
+        autoAdvance: { phase: "dag", featureDescription: "build a widget", autoLand: false },
+      })
+
+      await orchestrator.handleRetryCommand(session)
+
+      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+        expect.stringContaining("Retrying DAG extraction"),
+        session.threadId,
+      )
+      expect(ctx.shipAdvanceToDag).toHaveBeenCalledWith(session)
+    })
+
+    it("falls back to featureDescription when no user message in conversation", async () => {
+      const session = makeSession({
+        dagId: undefined,
+        mode: "ship-think",
+        autoAdvance: { phase: "think", featureDescription: "build a widget", autoLand: false },
+        conversation: [],
+      })
+
+      await orchestrator.handleRetryCommand(session)
+
+      expect(ctx.spawnTopicAgent).toHaveBeenCalledWith(session, "build a widget")
     })
 
     it("reports when no failed nodes", async () => {
