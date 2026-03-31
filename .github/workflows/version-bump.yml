@@ -29,10 +29,19 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Pull latest master
+        run: git pull origin master --tags
+
       - name: Determine version bump
         id: bump
         run: |
-          COMMITS=$(git log $(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD --pretty=%s)
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
+          COMMITS=$(git log "${LAST_TAG}..HEAD" --pretty=%s)
+          if [ -z "$COMMITS" ]; then
+            echo "No commits since ${LAST_TAG} — nothing to bump"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if echo "$COMMITS" | grep -qiE '^feat(\(.+\))?!:|^BREAKING CHANGE:'; then
             echo "type=major" >> "$GITHUB_OUTPUT"
           elif echo "$COMMITS" | grep -qiE '^feat(\(.+\))?:'; then
@@ -42,6 +51,7 @@ jobs:
           fi
 
       - name: Bump version and tag
+        if: steps.bump.outputs.skip != 'true'
         run: |
           NEW_VERSION=$(npm version ${{ steps.bump.outputs.type }} --no-git-tag-version)
           if git rev-parse "${NEW_VERSION}" >/dev/null 2>&1; then
