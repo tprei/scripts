@@ -88,7 +88,7 @@ export function routeCommand(
     if (text === CLOSE_CMD) return { type: "close", threadId }
     if (text === STOP_CMD) return { type: "stop", threadId }
 
-    const isPlanLike = sessionMode === "plan" || sessionMode === "think"
+    const isPlanLike = sessionMode === "plan" || sessionMode === "think" || sessionMode === "ship-plan" || sessionMode === "ship-think"
     const isExecutable = isPlanLike || sessionMode === "review"
 
     if (isExecutable && (text === EXECUTE_CMD || text?.startsWith(EXECUTE_CMD + " "))) {
