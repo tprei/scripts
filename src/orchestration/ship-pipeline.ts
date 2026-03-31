@@ -163,7 +163,6 @@ export class ShipPipeline {
       return
     }
 
-    let passed = 0
     let failed = 0
     const nodeResults = new Map<string, boolean>()
     const verifyStartedAt = Date.now()
@@ -235,7 +234,6 @@ export class ShipPipeline {
             const result = parseCompletenessResult(output)
 
             if (result.passed) {
-              passed++
               nodeResults.set(node.id, true)
             } else {
               failed++
