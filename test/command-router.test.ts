@@ -188,6 +188,14 @@ describe("routeCommand", () => {
       expect(routeCommand("/land", 10, "plan", true)).toEqual({ type: "land", threadId: 10 })
     })
 
+    it("routes /done", () => {
+      expect(routeCommand("/done", 10, "task", true)).toEqual({ type: "done", threadId: 10 })
+    })
+
+    it("routes /done in plan mode", () => {
+      expect(routeCommand("/done", 10, "plan", true)).toEqual({ type: "done", threadId: 10 })
+    })
+
     it("routes /retry with no nodeId", () => {
       expect(routeCommand("/retry", 10, "plan", true)).toEqual({ type: "retry", threadId: 10, nodeId: undefined })
     })
@@ -222,6 +230,7 @@ describe("routeCommand", () => {
       expect(routeCommand("/close", 10, undefined, false)).toBeNull()
       expect(routeCommand("/stop", 10, undefined, false)).toBeNull()
       expect(routeCommand("/land", 10, undefined, false)).toBeNull()
+      expect(routeCommand("/done", 10, undefined, false)).toBeNull()
     })
   })
 
