@@ -29,6 +29,9 @@ import {
   formatQualityReportForContext,
   formatBudgetWarning,
   formatPinnedStatus,
+  formatQuotaSleep,
+  formatQuotaResume,
+  formatQuotaExhausted,
 } from "../telegram/format.js"
 import { runQualityGates } from "../ci/quality-gates.js"
 import { StatsTracker } from "../stats.js"
@@ -63,6 +66,7 @@ import { JudgeOrchestrator } from "../judge/judge-orchestrator.js"
 import { PinnedMessageManager } from "../telegram/pinned-message-manager.js"
 import { routeCommand } from "../commands/command-router.js"
 import { CommandHandler } from "../commands/command-handler.js"
+import { parseResetTime } from "../session/quota-detection.js"
 
 const log = loggers.dispatcher
 
@@ -86,6 +90,9 @@ export class Dispatcher {
   private running = false
   private cleanupTimer: ReturnType<typeof setInterval> | null = null
   private readonly stats: StatsTracker
+
+  private readonly quotaEvents = new Map<number, { resetAt?: number; rawMessage: string }>()
+  private readonly quotaSleepTimers = new Map<number, ReturnType<typeof setTimeout>>()
 
   private readonly ciBabysitter: CIBabysitter
   private readonly landingManager: LandingManager
@@ -226,6 +233,20 @@ export class Dispatcher {
     for (const [threadId, session] of active) {
       this.topicSessions.set(threadId, session)
 
+      if (session.quotaSleepUntil) {
+        const remaining = session.quotaSleepUntil - Date.now()
+        if (remaining > 0) {
+          log.info({ slug: session.slug, threadId, remainingMs: remaining }, "re-arming quota sleep timer")
+          this.scheduleQuotaResume(session, remaining)
+        } else {
+          log.info({ slug: session.slug, threadId }, "quota sleep expired during restart, resuming now")
+          this.resumeAfterQuotaSleep(session).catch((err) => {
+            log.error({ err, slug: session.slug }, "quota resume after restart failed")
+          })
+        }
+        continue
+      }
+
       if (session.interruptedAt) {
         log.info({ slug: session.slug, threadId }, "session was interrupted, notifying")
         this.telegram.sendMessage(
@@ -339,6 +360,10 @@ export class Dispatcher {
   stop(): void {
     this.running = false
     this.stopCleanupTimer()
+    for (const timer of this.quotaSleepTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.quotaSleepTimers.clear()
     for (const { handle } of this.sessions.values()) {
       handle.interrupt()
     }
@@ -893,6 +918,10 @@ export class Dispatcher {
         loggers.observer.error({ err, sessionId }, "onEvent error")
       })
 
+      if (event.type === "quota_exhausted") {
+        this.quotaEvents.set(topicSession.threadId, { resetAt: event.resetAt, rawMessage: event.rawMessage })
+      }
+
       if (event.type === "complete" && meta.totalTokens != null && meta.totalTokens > this.config.workspace.sessionTokenBudget) {
         log.warn({ sessionId, totalTokens: meta.totalTokens, budget: this.config.workspace.sessionTokenBudget }, "session exceeded token budget")
         this.telegram.sendMessage(
@@ -955,6 +984,17 @@ export class Dispatcher {
       totalTokens: m.totalTokens ?? 0,
       timestamp: Date.now(),
     }).catch(() => {})
+
+    // Quota exhaustion — sleep and retry
+    const quotaEvent = this.quotaEvents.get(topicSession.threadId)
+    if (quotaEvent && state === "errored") {
+      this.quotaEvents.delete(topicSession.threadId)
+      this.observer.onSessionComplete(m, state, durationMs).catch(() => {})
+      writeSessionLog(topicSession, m, state, durationMs)
+      this.handleQuotaSleep(topicSession, quotaEvent.rawMessage)
+      return
+    }
+    this.quotaEvents.delete(topicSession.threadId)
 
     // Ship auto-advance
     if (topicSession.autoAdvance && (topicSession.mode === "ship-think" || topicSession.mode === "ship-plan" || topicSession.mode === "ship-verify")) {
@@ -1108,6 +1148,104 @@ export class Dispatcher {
       this.handleTopicFeedback(topicSession, feedback).catch((err) => {
         log.error({ err }, "queued feedback error")
       })
+    }
+  }
+
+  private handleQuotaSleep(topicSession: TopicSession, rawMessage: string): void {
+    const retryCount = (topicSession.quotaRetryCount ?? 0) + 1
+    const { retryMax, defaultSleepMs } = this.config.quota
+
+    if (retryCount > retryMax) {
+      topicSession.lastState = "quota_exhausted"
+      topicSession.quotaRetryCount = retryCount
+      this.pinnedMessages.updateTopicTitle(topicSession, "💤").catch(() => {})
+      this.telegram.sendMessage(
+        formatQuotaExhausted(topicSession.slug, retryMax),
+        topicSession.threadId,
+      ).catch(() => {})
+      this.persistTopicSessions().catch(() => {})
+      this.cleanBuildArtifacts(topicSession.cwd)
+      return
+    }
+
+    const sleepMs = parseResetTime(rawMessage, new Date(), defaultSleepMs)
+    topicSession.quotaRetryCount = retryCount
+    topicSession.quotaSleepUntil = Date.now() + sleepMs
+    topicSession.lastState = "quota_exhausted"
+
+    log.info(
+      { slug: topicSession.slug, sleepMs, retryCount, retryMax, resetAt: new Date(topicSession.quotaSleepUntil).toISOString() },
+      "quota exhausted, scheduling sleep",
+    )
+
+    this.pinnedMessages.updateTopicTitle(topicSession, "💤").catch(() => {})
+    this.telegram.sendMessage(
+      formatQuotaSleep(topicSession.slug, sleepMs, retryCount, retryMax),
+      topicSession.threadId,
+    ).catch(() => {})
+    this.persistTopicSessions().catch(() => {})
+
+    this.scheduleQuotaResume(topicSession, sleepMs)
+  }
+
+  private scheduleQuotaResume(topicSession: TopicSession, sleepMs: number): void {
+    const timer = setTimeout(() => {
+      this.quotaSleepTimers.delete(topicSession.threadId)
+      this.resumeAfterQuotaSleep(topicSession).catch((err) => {
+        log.error({ err, slug: topicSession.slug }, "quota resume error")
+      })
+    }, sleepMs)
+
+    // Clear any existing timer for this thread
+    const existing = this.quotaSleepTimers.get(topicSession.threadId)
+    if (existing) clearTimeout(existing)
+
+    this.quotaSleepTimers.set(topicSession.threadId, timer)
+  }
+
+  private async resumeAfterQuotaSleep(topicSession: TopicSession): Promise<void> {
+    const retryCount = topicSession.quotaRetryCount ?? 1
+
+    // Clear sleep state
+    topicSession.quotaSleepUntil = undefined
+    topicSession.lastState = undefined
+
+    // Check if session still exists (might have been closed during sleep)
+    if (!this.topicSessions.has(topicSession.threadId)) {
+      log.info({ slug: topicSession.slug }, "session was closed during quota sleep, skipping resume")
+      return
+    }
+
+    // Check concurrent session limit
+    if (this.sessions.size >= this.config.workspace.maxConcurrentSessions) {
+      log.info({ slug: topicSession.slug }, "max sessions reached during quota resume, re-sleeping")
+      topicSession.quotaSleepUntil = Date.now() + 60_000
+      topicSession.lastState = "quota_exhausted"
+      this.persistTopicSessions().catch(() => {})
+      this.scheduleQuotaResume(topicSession, 60_000)
+      return
+    }
+
+    log.info({ slug: topicSession.slug, retryCount }, "resuming after quota sleep")
+
+    await this.telegram.sendMessage(
+      formatQuotaResume(topicSession.slug, retryCount),
+      topicSession.threadId,
+    )
+
+    // Re-spawn using the last conversation context
+    const lastUserMsg = [...topicSession.conversation].reverse().find((m) => m.role === "user")
+    const task = lastUserMsg?.text ?? "Continue the previous task."
+
+    await this.spawnTopicAgent(topicSession, task)
+    this.persistTopicSessions().catch(() => {})
+  }
+
+  private clearQuotaSleepTimer(threadId: number): void {
+    const timer = this.quotaSleepTimers.get(threadId)
+    if (timer) {
+      clearTimeout(timer)
+      this.quotaSleepTimers.delete(threadId)
     }
   }
 
@@ -1409,6 +1547,7 @@ export class Dispatcher {
 
   private async closeSingleChild(child: TopicSession): Promise<void> {
     this.replyQueues.delete(child.threadId)
+    this.clearQuotaSleepTimer(child.threadId)
     const childId = child.threadId
 
     if (child.activeSessionId) {
@@ -1426,6 +1565,7 @@ export class Dispatcher {
   private async handleCloseCommandInternal(topicSession: TopicSession): Promise<void> {
     const threadId = topicSession.threadId
     this.replyQueues.delete(threadId)
+    this.clearQuotaSleepTimer(threadId)
 
     await this.closeChildSessions(topicSession)
 
@@ -1462,6 +1602,18 @@ export class Dispatcher {
 
   private async handleStopCommandInternal(topicSession: TopicSession): Promise<void> {
     const threadId = topicSession.threadId
+    const wasQuotaSleeping = topicSession.quotaSleepUntil != null
+    this.clearQuotaSleepTimer(threadId)
+
+    if (wasQuotaSleeping) {
+      topicSession.quotaSleepUntil = undefined
+      topicSession.lastState = undefined
+      topicSession.pendingFeedback = []
+      this.persistTopicSessions()
+      await this.telegram.sendMessage(`⏹️ Quota sleep cancelled. Send <b>/reply</b> to continue.`, threadId)
+      log.info({ slug: topicSession.slug, threadId }, "cancelled quota sleep")
+      return
+    }
 
     if (!topicSession.activeSessionId) {
       await this.telegram.sendMessage(`⚠️ No active session to stop.`, threadId)
