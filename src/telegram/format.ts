@@ -442,7 +442,7 @@ export interface StatusTopicSession {
   conversation: { role: string; text: string }[]
   activeSessionId?: string
   prUrl?: string
-  lastState?: "completed" | "errored"
+  lastState?: "completed" | "errored" | "quota_exhausted"
   parentThreadId?: number
   childThreadIds?: number[]
   splitLabel?: string

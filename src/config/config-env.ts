@@ -126,6 +126,11 @@ export function configFromEnv(overrides?: Partial<MinionConfig>): MinionConfig {
       textFlushDebounceMs: optionalNumber("TEXT_FLUSH_DEBOUNCE_MS", 5000),
       activityEditDebounceMs: optionalNumber("ACTIVITY_EDIT_DEBOUNCE_MS", 5000),
     },
+    quota: {
+      retryMax: optionalNumber("QUOTA_RETRY_MAX", 3),
+      defaultSleepMs: optionalNumber("QUOTA_DEFAULT_SLEEP_MS", 3600_000),
+      sleepBufferMs: optionalNumber("QUOTA_SLEEP_BUFFER_MS", 60_000),
+    },
     sentry: {
       dsn: process.env["SENTRY_DSN"] ?? undefined,
     },

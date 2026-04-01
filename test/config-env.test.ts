@@ -276,6 +276,44 @@ describe("configFromEnv", () => {
     })
   })
 
+  describe("quota config", () => {
+    it("defaults retryMax to 3", () => {
+      const config = configFromEnv()
+      expect(config.quota.retryMax).toBe(3)
+    })
+
+    it("defaults defaultSleepMs to 3600000", () => {
+      const config = configFromEnv()
+      expect(config.quota.defaultSleepMs).toBe(3600_000)
+    })
+
+    it("defaults sleepBufferMs to 60000", () => {
+      const config = configFromEnv()
+      expect(config.quota.sleepBufferMs).toBe(60_000)
+    })
+
+    it("reads QUOTA_RETRY_MAX env var", () => {
+      process.env["QUOTA_RETRY_MAX"] = "5"
+      const config = configFromEnv()
+      expect(config.quota.retryMax).toBe(5)
+      delete process.env["QUOTA_RETRY_MAX"]
+    })
+
+    it("reads QUOTA_DEFAULT_SLEEP_MS env var", () => {
+      process.env["QUOTA_DEFAULT_SLEEP_MS"] = "7200000"
+      const config = configFromEnv()
+      expect(config.quota.defaultSleepMs).toBe(7200_000)
+      delete process.env["QUOTA_DEFAULT_SLEEP_MS"]
+    })
+
+    it("reads QUOTA_SLEEP_BUFFER_MS env var", () => {
+      process.env["QUOTA_SLEEP_BUFFER_MS"] = "30000"
+      const config = configFromEnv()
+      expect(config.quota.sleepBufferMs).toBe(30_000)
+      delete process.env["QUOTA_SLEEP_BUFFER_MS"]
+    })
+  })
+
   describe("claude config", () => {
     it("defaults reviewModel to opus", () => {
       const config = configFromEnv()

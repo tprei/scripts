@@ -109,6 +109,7 @@ export type GooseStreamEvent =
   | { type: "notification"; extensionId: string; message?: string; progress?: number; total?: number | null }
   | { type: "error"; error: string }
   | { type: "complete"; total_tokens: number | null }
+  | { type: "quota_exhausted"; resetAt?: number; rawMessage: string }
 
 // Session types
 
@@ -196,13 +197,15 @@ export interface TopicSession {
   interruptedAt?: number
   branch?: string
   prUrl?: string
-  lastState?: "completed" | "errored"
+  lastState?: "completed" | "errored" | "quota_exhausted"
   dagId?: string
   dagNodeId?: string
   pendingSplitItems?: { title: string; description: string }[]
   allSplitItems?: { title: string; description: string }[]
   pinnedMessageId?: number
   pendingDagItems?: PendingDagItem[]
+  quotaRetryCount?: number
+  quotaSleepUntil?: number
   autoAdvance?: AutoAdvance
   verificationState?: VerificationState
 }
