@@ -1,0 +1,20 @@
+{
+  "steps": [
+    {
+      "event": {
+        "type": "message",
+        "message": {
+          "role": "assistant",
+          "created": 1700000000,
+          "content": [{ "type": "text", "text": "Starting work..." }]
+        }
+      }
+    },
+    {
+      "delay": 10,
+      "event": { "type": "error", "error": "Rate limit exceeded" }
+    }
+  ],
+  "exitCode": 1,
+  "stderr": ["Error: rate limit exceeded for model claude-opus-4-6"]
+}

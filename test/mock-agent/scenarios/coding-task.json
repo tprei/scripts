@@ -1,0 +1,98 @@
+{
+  "steps": [
+    {
+      "event": {
+        "type": "message",
+        "message": {
+          "role": "assistant",
+          "created": 1700000000,
+          "content": [{ "type": "text", "text": "I'll implement this feature." }]
+        }
+      }
+    },
+    {
+      "delay": 10,
+      "event": {
+        "type": "message",
+        "message": {
+          "role": "assistant",
+          "created": 1700000001,
+          "content": [{
+            "type": "toolRequest",
+            "id": "write_1",
+            "toolCall": {
+              "name": "Write",
+              "arguments": {
+                "file_path": "src/feature.ts",
+                "content": "export function feature() { return true }"
+              }
+            }
+          }]
+        }
+      }
+    },
+    {
+      "delay": 10,
+      "event": {
+        "type": "message",
+        "message": {
+          "role": "user",
+          "created": 1700000002,
+          "content": [{
+            "type": "toolResponse",
+            "id": "write_1",
+            "toolResult": { "success": true }
+          }]
+        }
+      }
+    },
+    {
+      "delay": 10,
+      "event": {
+        "type": "message",
+        "message": {
+          "role": "assistant",
+          "created": 1700000003,
+          "content": [{
+            "type": "toolRequest",
+            "id": "bash_1",
+            "toolCall": {
+              "name": "Bash",
+              "arguments": { "command": "git add . && git commit -m 'feat: add feature'" }
+            }
+          }]
+        }
+      }
+    },
+    {
+      "delay": 10,
+      "event": {
+        "type": "message",
+        "message": {
+          "role": "user",
+          "created": 1700000004,
+          "content": [{
+            "type": "toolResponse",
+            "id": "bash_1",
+            "toolResult": { "stdout": "[main abc1234] feat: add feature" }
+          }]
+        }
+      }
+    },
+    {
+      "delay": 10,
+      "event": {
+        "type": "message",
+        "message": {
+          "role": "assistant",
+          "created": 1700000005,
+          "content": [{ "type": "text", "text": "Feature implemented and committed." }]
+        }
+      }
+    },
+    {
+      "event": { "type": "complete", "total_tokens": 3000 }
+    }
+  ],
+  "exitCode": 0
+}
