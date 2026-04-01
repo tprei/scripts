@@ -92,6 +92,8 @@ export class LandingManager {
       return
     }
 
+    this.removeChildWorktrees(topicSession, graph)
+
     const repo = prNodes.find((n) => n.prUrl)?.prUrl ? repoFromPrUrl(prNodes.find((n) => n.prUrl)!.prUrl!) : undefined
 
     await this.ctx.telegram.sendMessage(
@@ -190,7 +192,7 @@ export class LandingManager {
           try {
             const newBase = `origin/${baseBranch}`
 
-            gitSync(["fetch", "origin"], { cwd: restackCwd })
+            gitSync(["fetch", "origin", baseBranch], { cwd: restackCwd })
             if (!useOwnWorktree) {
               gitSync(["checkout", downstream.branch], { cwd: restackCwd })
             }
@@ -372,6 +374,24 @@ export class LandingManager {
         const state = ghSync(["pr", "view", prNumber, ...repoFlag, "--json", "mergeable", "--jq", ".mergeable"])
         if (state === "MERGEABLE") return
       } catch { /* continue polling */ }
+    }
+  }
+
+  private removeChildWorktrees(topicSession: TopicSession, graph: DagGraph): void {
+    const mainCwd = topicSession.cwd
+    if (!mainCwd) return
+
+    for (const node of graph.nodes) {
+      if (node.status === "running" || node.status === "pending" || node.status === "ready") continue
+      const worktreePath = this.findWorktreePathForBranch(node)
+      if (worktreePath && existsSync(worktreePath)) {
+        try {
+          gitSync(["worktree", "remove", "--force", worktreePath], { cwd: mainCwd })
+          log.info({ nodeId: node.id, worktreePath }, "removed worktree before landing")
+        } catch (err) {
+          log.warn({ nodeId: node.id, worktreePath, err }, "failed to remove worktree before landing")
+        }
+      }
     }
   }
 
