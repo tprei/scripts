@@ -18,6 +18,7 @@ import type { MinionConfig, McpConfig } from "../config/config-types.js"
 import type { DagGraph, DagNode, DagInput } from "../dag/dag.js"
 import type { QualityReport } from "../ci/quality-gates.js"
 import type { ActiveSession, MergeResult, PendingTask } from "../session/session-manager.js"
+import type { PendingBabysitEntry } from "../ci/ci-babysitter.js"
 import type { StatsTracker } from "../stats.js"
 import type { ProfileStore } from "../profile-store.js"
 import type { StateBroadcaster } from "../api-server.js"
@@ -81,7 +82,7 @@ export interface DispatcherContext {
   mergeUpstreamBranches(workDir: string, additionalBranches: string[]): MergeResult
 
   /** Download photos from Telegram. */
-  downloadPhotos(photos: TelegramPhotoSize[] | undefined, cwd: string): Promise<string[]>
+  downloadPhotos(photos: TelegramPhotoSize[] | undefined): Promise<string[]>
 
   // ── Conversation management ────────────────────────────────────────
 
@@ -173,11 +174,17 @@ export interface DispatcherContext {
   /** Notify parent when a child session completes (used by session completion handler). */
   notifyParentOfChildComplete(childSession: TopicSession, state: string): Promise<void>
 
+  /** Handle topic feedback (re-spawn agent with queued user replies). */
+  handleTopicFeedback(topicSession: TopicSession, feedback: string): Promise<void>
+
   /** Post a session digest comment to a PR. */
   postSessionDigest(topicSession: TopicSession, prUrl: string): void
 
   /** Run deferred CI babysitting for a parent's children. */
   runDeferredBabysit(parentThreadId: number): Promise<void>
+
+  /** Queue a deferred CI babysit for a parent's child session. */
+  queueDeferredBabysit(parentThreadId: number, entry: PendingBabysitEntry): void
 
   /** Babysit a PR's CI checks (used by CIBabysitter). */
   babysitPR(topicSession: TopicSession, prUrl: string, initialQualityReport?: QualityReport): Promise<void>

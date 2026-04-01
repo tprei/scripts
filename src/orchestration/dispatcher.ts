@@ -4,44 +4,32 @@ import fs from "node:fs"
 import crypto from "node:crypto"
 import type { TelegramClient } from "../telegram/telegram.js"
 import { captureException } from "../sentry.js"
-import { SessionHandle, type SessionConfig } from "../session/session.js"
+import { SessionHandle } from "../session/session.js"
 import { Observer } from "../telegram/observer.js"
 import type { TelegramUpdate, TelegramCallbackQuery, TelegramPhotoSize, SessionMeta, TopicSession, SessionMode, SessionState, TopicMessage, AutoAdvance } from "../types.js"
 import { generateSlug, taskToLabel } from "../slugs.js"
 import type { MinionConfig, McpConfig } from "../config/config-types.js"
 import type { GitHubTokenProvider } from "../github/index.js"
-import { DEFAULT_PROMPTS } from "../config/prompts.js"
 import { SessionStore } from "../store.js"
 import { DagStore } from "../dag-store.js"
 import { ProfileStore } from "../profile-store.js"
 import {
   formatPlanIteration,
-  formatPlanComplete,
   formatThinkIteration,
-  formatThinkComplete,
   formatReviewIteration,
-  formatReviewComplete,
-  formatTaskComplete,
   formatFollowUpIteration,
-  formatQualityReport,
-  formatQualityReportForContext,
-  formatBudgetWarning,
-  formatPinnedStatus,
 } from "../telegram/format.js"
-import { runQualityGates } from "../ci/quality-gates.js"
 import { StatsTracker } from "../stats.js"
-import { writeSessionLog } from "../session/session-log.js"
 import { extractPRUrl } from "../ci/ci-babysit.js"
 import { buildConversationDigest, buildChildSessionDigest } from "../conversation-digest.js"
 import { truncateConversation } from "../conversation-limits.js"
-import { DEFAULT_CI_FIX_PROMPT } from "../config/prompts.js"
 import { StateBroadcaster, topicSessionToApi, dagToApi } from "../api-server.js"
 import { loggers } from "../logger.js"
 import { SessionNotFoundError } from "../errors.js"
 import {
   parseTaskArgs, buildReviewAllTask,
   buildRepoKeyboard, buildProfileKeyboard,
-  escapeHtml, extractRepoName, appendImageContext,
+  escapeHtml, appendImageContext,
 } from "../commands/command-parser.js"
 import {
   type ActiveSession, type PendingTask,
@@ -56,6 +44,7 @@ import { CIBabysitter } from "../ci/ci-babysitter.js"
 import { LandingManager } from "../dag/landing-manager.js"
 import { DagOrchestrator } from "../dag/dag-orchestrator.js"
 import { ShipPipeline } from "./ship-pipeline.js"
+import { SessionLifecycle } from "./session-lifecycle.js"
 import { SplitOrchestrator } from "./split-orchestrator.js"
 import { JudgeOrchestrator } from "../judge/judge-orchestrator.js"
 import { PinnedMessageManager } from "../telegram/pinned-message-manager.js"
@@ -85,6 +74,7 @@ export class Dispatcher {
   private readonly landingManager: LandingManager
   private readonly dagOrchestrator: DagOrchestrator
   private readonly shipPipeline: ShipPipeline
+  private readonly sessionLifecycle: SessionLifecycle
   private readonly splitOrchestrator: SplitOrchestrator
   private readonly judgeOrchestrator: JudgeOrchestrator
   private readonly commandHandler: CommandHandler
@@ -108,6 +98,7 @@ export class Dispatcher {
     this.landingManager = new LandingManager(ctx)
     this.dagOrchestrator = new DagOrchestrator(ctx)
     this.shipPipeline = new ShipPipeline(ctx)
+    this.sessionLifecycle = new SessionLifecycle(ctx)
     this.splitOrchestrator = new SplitOrchestrator(ctx)
     this.judgeOrchestrator = new JudgeOrchestrator(ctx)
     this.commandHandler = new CommandHandler(ctx)
@@ -132,14 +123,14 @@ export class Dispatcher {
       dags: this.dags,
       pendingTasks: this.pendingTasks,
       refreshGitToken: () => this.refreshGitToken(),
-      spawnTopicAgent: (ts, task, mcp, sp) => this.spawnTopicAgent(ts, task, mcp, sp),
-      spawnCIFixAgent: (ts, task, cb) => this.spawnCIFixAgent(ts, task, cb),
+      spawnTopicAgent: (ts, task, mcp, sp) => this.sessionLifecycle.spawnTopicAgent(ts, task, mcp, sp),
+      spawnCIFixAgent: (ts, task, cb) => this.sessionLifecycle.spawnCIFixAgent(ts, task, cb),
       prepareWorkspace: (slug, repo, branch) => this.prepareWorkspace(slug, repo, branch),
       removeWorkspace: (ts) => this.removeWorkspace(ts),
       cleanBuildArtifacts: (cwd) => this.cleanBuildArtifacts(cwd),
       prepareFanInBranch: (slug, repo, branches) => this.prepareFanInBranch(slug, repo, branches),
       mergeUpstreamBranches: (dir, branches) => this.mergeUpstreamBranches(dir, branches),
-      downloadPhotos: (photos, cwd) => this.downloadPhotos(photos, cwd),
+      downloadPhotos: (photos) => this.downloadPhotos(photos),
       pushToConversation: (s, m) => this.pushToConversation(s, m),
       extractPRFromConversation: (ts) => this.extractPRFromConversation(ts),
       persistTopicSessions: (mark) => this.persistTopicSessions(mark),
@@ -164,8 +155,10 @@ export class Dispatcher {
       shipAdvanceToDag: (ts) => this.shipPipeline.shipAdvanceToDag(ts),
       handleExecuteCommand: (ts, d) => this.commandHandler.handleExecuteCommand(ts, d),
       notifyParentOfChildComplete: (cs, s) => this.notifyParentOfChildComplete(cs, s),
+      handleTopicFeedback: (ts, fb) => this.handleTopicFeedback(ts, fb),
       postSessionDigest: (ts, pr) => { this.postSessionDigest(ts, pr).catch(() => {}) },
       runDeferredBabysit: (id) => this.ciBabysitter.runDeferredBabysit(id),
+      queueDeferredBabysit: (id, entry) => this.ciBabysitter.queueDeferredBabysit(id, entry),
       babysitPR: (ts, pr, qr) => this.ciBabysitter.babysitPR(ts, pr, qr),
       babysitDagChildCI: (cs, pr) => this.ciBabysitter.babysitDagChildCI(cs, pr),
       updateDagPRDescriptions: (g, cwd) => this.dagOrchestrator.updateDagPRDescriptions(g, cwd),
@@ -752,64 +745,7 @@ export class Dispatcher {
     profileId?: string,
     autoAdvance?: AutoAdvance,
   ): Promise<void> {
-    const sessionId = crypto.randomUUID()
-    const slug = generateSlug(sessionId)
-    const repo = repoUrl ? extractRepoName(repoUrl) : "local"
-    const label = taskToLabel(task)
-    const topicHandle = `${slug}/${label}`
-    const emoji = autoAdvance
-      ? "🚢"
-      : mode === "think"
-      ? "🧠"
-      : mode === "plan"
-      ? "📋"
-      : mode === "review"
-      ? "👀"
-      : ""
-    const topicName = emoji ? `${emoji} ${topicHandle}` : topicHandle
-
-    let topic: { message_thread_id: number }
-    try {
-      topic = await this.telegram.createForumTopic(topicName)
-    } catch (err) {
-      log.error({ err, topicName }, "failed to create topic")
-      captureException(err, { operation: "createForumTopic" })
-      return
-    }
-
-    const threadId = topic.message_thread_id
-
-    const cwd = await this.prepareWorkspace(slug, repoUrl)
-    if (!cwd) {
-      await this.telegram.sendMessage(`❌ Failed to prepare workspace.`, threadId)
-      await this.telegram.deleteForumTopic(threadId)
-      return
-    }
-
-    const imagePaths = await this.downloadPhotos(photos, cwd)
-    const fullTask = appendImageContext(task, imagePaths)
-
-    const topicSession: TopicSession = {
-      threadId,
-      repo,
-      repoUrl,
-      cwd,
-      slug,
-      topicHandle,
-      conversation: [{ role: "user", text: fullTask, images: imagePaths.length > 0 ? imagePaths : undefined }],
-      pendingFeedback: [],
-      mode,
-      lastActivityAt: Date.now(),
-      profileId,
-      branch: repoUrl ? `minion/${slug}` : undefined,
-      autoAdvance,
-    }
-
-    this.topicSessions.set(threadId, topicSession)
-    this.broadcastSession(topicSession, "session_created")
-    this.pinnedMessages.updatePinnedSummary()
-
-    await this.spawnTopicAgent(topicSession, fullTask)
+    return this.sessionLifecycle.startTopicSession(repoUrl, task, mode, photos, profileId, autoAdvance)
   }
 
   private async updateTopicTitle(topicSession: TopicSession, stateEmoji: string): Promise<void> {
@@ -821,246 +757,7 @@ export class Dispatcher {
   // ── Agent spawning ────────────────────────────────────────────────────
 
   private async spawnTopicAgent(topicSession: TopicSession, task: string, mcpOverrides?: Partial<McpConfig>, systemPromptOverride?: string): Promise<void> {
-    await this.tokenProvider?.refreshEnv()
-    if (this.sessions.size >= this.config.workspace.maxConcurrentSessions) {
-      await this.telegram.sendMessage(
-        `⚠️ Max concurrent sessions reached. Try again later.`,
-        topicSession.threadId,
-      )
-      return
-    }
-
-    const sessionId = crypto.randomUUID()
-    topicSession.activeSessionId = sessionId
-    this.broadcastSession(topicSession, "session_updated")
-
-    const meta: SessionMeta = {
-      sessionId,
-      threadId: topicSession.threadId,
-      topicName: topicSession.topicHandle ?? topicSession.slug,
-      repo: topicSession.repo,
-      cwd: topicSession.cwd,
-      startedAt: Date.now(),
-      mode: topicSession.mode,
-    }
-
-    const onTextCapture = (_sid: string, text: string) => {
-      this.pushToConversation(topicSession, { role: "assistant", text })
-    }
-
-    const prompts = { ...DEFAULT_PROMPTS, ...this.config.prompts }
-    const profile = topicSession.profileId ? this.profileStore.get(topicSession.profileId) : undefined
-    const sessionConfig: SessionConfig = {
-      goose: this.config.goose,
-      claude: this.config.claude,
-      mcp: mcpOverrides ? { ...this.config.mcp, ...mcpOverrides } : this.config.mcp,
-      profile,
-      sessionEnvPassthrough: this.config.sessionEnvPassthrough,
-      agentDefs: this.config.agentDefs,
-    }
-
-    const handle = new SessionHandle(
-      meta,
-      (event) => {
-        this.observer.onEvent(meta, event).catch((err) => {
-          loggers.observer.error({ err, sessionId }, "onEvent error")
-        })
-
-        if (event.type === "complete" && meta.totalTokens != null && meta.totalTokens > this.config.workspace.sessionTokenBudget) {
-          log.warn({ sessionId, totalTokens: meta.totalTokens, budget: this.config.workspace.sessionTokenBudget }, "session exceeded token budget")
-          this.telegram.sendMessage(
-            formatBudgetWarning(topicSession.slug, meta.totalTokens, this.config.workspace.sessionTokenBudget),
-            topicSession.threadId,
-          ).catch(() => {})
-          handle.interrupt()
-        }
-      },
-      (m, state) => this.handleSessionComplete(topicSession, m, state, sessionId),
-      this.config.workspace.sessionTimeoutMs,
-      this.config.workspace.sessionInactivityTimeoutMs,
-      sessionConfig,
-    )
-
-    this.sessions.set(topicSession.threadId, { handle, meta, task })
-
-    await this.pinnedMessages.updateTopicTitle(topicSession, "⚡")
-    this.pinnedMessages.updatePinnedSummary()
-    const onDeadThread = () => {
-      log.warn({ threadId: meta.threadId, slug: topicSession.slug }, "thread not found, removing session from store")
-      this.topicSessions.delete(meta.threadId)
-      this.persistTopicSessions().catch(() => {})
-    }
-    await this.observer.onSessionStart(meta, task, onTextCapture, onDeadThread)
-    const systemPrompt = systemPromptOverride ?? (topicSession.mode === "task" ? prompts.task : undefined)
-    handle.start(task, systemPrompt)
-  }
-
-  private handleSessionComplete(topicSession: TopicSession, m: SessionMeta, state: "completed" | "errored", sessionId: string): void {
-    if (topicSession.activeSessionId !== m.sessionId) return
-
-    const durationMs = Date.now() - m.startedAt
-    this.sessions.delete(topicSession.threadId)
-    topicSession.activeSessionId = undefined
-    topicSession.lastActivityAt = Date.now()
-    this.broadcastSession(topicSession, "session_updated", state as "completed" | "errored")
-    this.pinnedMessages.updatePinnedSummary()
-
-    this.stats.record({
-      slug: topicSession.slug,
-      repo: topicSession.repo,
-      mode: topicSession.mode,
-      state,
-      durationMs,
-      totalTokens: m.totalTokens ?? 0,
-      timestamp: Date.now(),
-    }).catch(() => {})
-
-    // Ship auto-advance
-    if (topicSession.autoAdvance && (topicSession.mode === "ship-think" || topicSession.mode === "ship-plan" || topicSession.mode === "ship-verify")) {
-      if (state === "completed") {
-        this.observer.flushAndComplete(m, state, durationMs).then(() => {
-          writeSessionLog(topicSession, m, state, durationMs)
-          this.shipPipeline.handleShipAdvance(topicSession).catch((err) => {
-            loggers.ship.error({ err, slug: topicSession.slug }, "ship advance error")
-            this.telegram.sendMessage(
-              `❌ Ship pipeline error during ${topicSession.autoAdvance!.phase} phase: ${err instanceof Error ? err.message : String(err)}`,
-              topicSession.threadId,
-            ).catch(() => {})
-          })
-        }).catch((err) => {
-          loggers.ship.error({ err }, "flushAndComplete error in ship phase")
-        })
-      } else {
-        // Keep phase unchanged so the user can retry — don't set to "done"
-        this.pinnedMessages.updateTopicTitle(topicSession, "⚠️").catch(() => {})
-        this.observer.onSessionComplete(m, state, durationMs).catch(() => {})
-        const phase = topicSession.autoAdvance.phase
-        this.telegram.sendMessage(
-          `⚠️ Ship pipeline paused: ${topicSession.mode} phase errored during <b>${phase}</b>.\n\nRecovery options:\n• /retry — re-run the current phase\n• /dag — retry DAG extraction\n• /execute — run as a single task\n• /split — split into parallel sub-tasks\n• /close — abandon this ship`,
-          topicSession.threadId,
-        ).catch(() => {})
-        writeSessionLog(topicSession, m, state, durationMs)
-      }
-      this.persistTopicSessions().catch(() => {})
-      this.cleanBuildArtifacts(topicSession.cwd)
-      return
-    }
-
-    if (topicSession.mode === "think") {
-      this.pinnedMessages.updateTopicTitle(topicSession, "💬").catch(() => {})
-      this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
-        loggers.observer.error({ err, sessionId }, "onSessionComplete error")
-      })
-      this.telegram.sendMessage(
-        formatThinkComplete(topicSession.slug),
-        topicSession.threadId,
-      ).catch(() => {})
-      writeSessionLog(topicSession, m, state, durationMs)
-    } else if (topicSession.mode === "review") {
-      this.pinnedMessages.updateTopicTitle(topicSession, "💬").catch(() => {})
-      this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
-        loggers.observer.error({ err, sessionId }, "onSessionComplete error")
-      })
-      this.telegram.sendMessage(
-        formatReviewComplete(topicSession.slug),
-        topicSession.threadId,
-      ).catch(() => {})
-      writeSessionLog(topicSession, m, state, durationMs)
-    } else if (topicSession.mode === "plan") {
-      this.pinnedMessages.updateTopicTitle(topicSession, "💬").catch(() => {})
-      this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
-        loggers.observer.error({ err, sessionId }, "onSessionComplete error")
-      })
-      this.telegram.sendMessage(
-        formatPlanComplete(topicSession.slug),
-        topicSession.threadId,
-      ).catch(() => {})
-      writeSessionLog(topicSession, m, state, durationMs)
-    } else if (state === "errored") {
-      topicSession.lastState = "errored"
-      this.pinnedMessages.updateTopicTitle(topicSession, "❌").catch(() => {})
-      this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
-        loggers.observer.error({ err, sessionId }, "onSessionComplete error")
-      })
-      writeSessionLog(topicSession, m, state, durationMs)
-    } else {
-      topicSession.lastState = "completed"
-      this.pinnedMessages.updateTopicTitle(topicSession, "✅").catch(() => {})
-      this.observer.flushAndComplete(m, state, durationMs).then(async () => {
-        await this.telegram.sendMessage(
-          formatTaskComplete(topicSession.slug, durationMs, m.totalTokens),
-          topicSession.threadId,
-        )
-
-        let qualityReport
-        try {
-          qualityReport = runQualityGates(topicSession.cwd)
-          if (qualityReport.results.length > 0) {
-            await this.telegram.sendMessage(
-              formatQualityReport(qualityReport.results),
-              topicSession.threadId,
-            )
-          }
-          if (qualityReport && !qualityReport.allPassed) {
-            this.pushToConversation(topicSession, {
-              role: "user",
-              text: formatQualityReportForContext(qualityReport.results),
-            })
-          }
-        } catch (err) {
-          log.error({ err, sessionId }, "quality gates error")
-          captureException(err, { operation: "qualityGates" })
-        }
-
-        writeSessionLog(topicSession, m, state, durationMs, qualityReport)
-
-        if (topicSession.mode === "task") {
-          const prUrl = this.extractPRFromConversation(topicSession)
-          if (prUrl) {
-            topicSession.prUrl = prUrl
-            await this.postSessionDigest(topicSession, prUrl)
-            await this.pinnedMessages.pinThreadMessage(
-              topicSession,
-              formatPinnedStatus(topicSession.slug, topicSession.repo, "completed", prUrl),
-            )
-            if (this.config.ci.babysitEnabled) {
-              if (topicSession.dagId) {
-                // DAG children: CI is handled inline in onDagChildComplete
-              } else if (topicSession.parentThreadId) {
-                this.ciBabysitter.queueDeferredBabysit(topicSession.parentThreadId, { childSession: topicSession, prUrl, qualityReport })
-              } else {
-                this.ciBabysitter.babysitPR(topicSession, prUrl, qualityReport).catch((err) => {
-                  log.error({ err, prUrl }, "babysitPR error")
-                  captureException(err, { operation: "babysitPR", prUrl })
-                })
-              }
-            }
-          } else {
-            await this.pinnedMessages.pinThreadMessage(
-              topicSession,
-              formatPinnedStatus(topicSession.slug, topicSession.repo, "completed"),
-            )
-          }
-        }
-      }).catch((err) => {
-        loggers.observer.error({ err, sessionId }, "flushAndComplete error")
-      })
-    }
-
-    this.persistTopicSessions().catch(() => {})
-    this.cleanBuildArtifacts(topicSession.cwd)
-
-    this.notifyParentOfChildComplete(topicSession, state).catch((err) => {
-      log.warn({ err, slug: topicSession.slug }, "parent notify error")
-    })
-
-    if (topicSession.pendingFeedback.length > 0) {
-      const feedback = topicSession.pendingFeedback.join("\n\n")
-      topicSession.pendingFeedback = []
-      this.handleTopicFeedback(topicSession, feedback).catch((err) => {
-        log.error({ err }, "queued feedback error")
-      })
-    }
+    return this.sessionLifecycle.spawnTopicAgent(topicSession, task, mcpOverrides, systemPromptOverride)
   }
 
   private async spawnCIFixAgent(
@@ -1068,79 +765,7 @@ export class Dispatcher {
     task: string,
     onComplete: () => void,
   ): Promise<void> {
-    if (this.sessions.size >= this.config.workspace.maxConcurrentSessions) {
-      log.warn("no session slots for CI fix, skipping")
-      onComplete()
-      return
-    }
-
-    const sessionId = crypto.randomUUID()
-    topicSession.activeSessionId = sessionId
-
-    const meta: SessionMeta = {
-      sessionId,
-      threadId: topicSession.threadId,
-      topicName: topicSession.topicHandle ?? topicSession.slug,
-      repo: topicSession.repo,
-      cwd: topicSession.cwd,
-      startedAt: Date.now(),
-      mode: "ci-fix",
-    }
-
-    const sessionConfig: SessionConfig = {
-      goose: this.config.goose,
-      claude: this.config.claude,
-      mcp: this.config.mcp,
-      sessionEnvPassthrough: this.config.sessionEnvPassthrough,
-      agentDefs: this.config.agentDefs,
-    }
-
-    const handle = new SessionHandle(
-      meta,
-      (event) => {
-        this.observer.onEvent(meta, event).catch((err) => {
-          log.error({ err }, "CI fix onEvent error")
-        })
-      },
-      (m, state) => {
-        if (topicSession.activeSessionId !== m.sessionId) return
-
-        const durationMs = Date.now() - m.startedAt
-        this.sessions.delete(topicSession.threadId)
-        topicSession.activeSessionId = undefined
-        topicSession.lastActivityAt = Date.now()
-
-        this.stats.record({
-          slug: topicSession.slug,
-          repo: topicSession.repo,
-          mode: "ci-fix",
-          state,
-          durationMs,
-          totalTokens: m.totalTokens ?? 0,
-          timestamp: Date.now(),
-        }).catch(() => {})
-
-        this.observer.flushAndComplete(m, state, durationMs).then(() => {
-          writeSessionLog(topicSession, m, state, durationMs)
-          onComplete()
-        }).catch(() => {
-          onComplete()
-        })
-      },
-      this.config.workspace.sessionTimeoutMs,
-      this.config.workspace.sessionInactivityTimeoutMs,
-      sessionConfig,
-    )
-
-    this.sessions.set(topicSession.threadId, { handle, meta, task })
-
-    const onDeadThread = () => {
-      log.warn({ threadId: meta.threadId, slug: topicSession.slug }, "thread not found, removing session from store")
-      this.topicSessions.delete(meta.threadId)
-      this.persistTopicSessions().catch(() => {})
-    }
-    await this.observer.onSessionStart(meta, task, undefined, onDeadThread)
-    handle.start(task, DEFAULT_CI_FIX_PROMPT)
+    return this.sessionLifecycle.spawnCIFixAgent(topicSession, task, onComplete)
   }
 
   // ── Feedback & commands that stay in Dispatcher ───────────────────────
@@ -1155,7 +780,7 @@ export class Dispatcher {
       return
     }
 
-    const imagePaths = await this.downloadPhotos(photos, topicSession.cwd)
+    const imagePaths = await this.downloadPhotos(photos)
     const fullFeedback = appendImageContext(feedback, imagePaths)
 
     this.pushToConversation(topicSession, {
@@ -1429,7 +1054,7 @@ export class Dispatcher {
     return prepareFanInBranch(slug, repoUrl, upstreamBranches, this.config.workspace.root)
   }
 
-  private async downloadPhotos(photos: TelegramPhotoSize[] | undefined, _cwd: string): Promise<string[]> {
+  private async downloadPhotos(photos: TelegramPhotoSize[] | undefined): Promise<string[]> {
     return downloadPhotos(photos, this.telegram)
   }
 
