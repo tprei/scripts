@@ -13,6 +13,7 @@ import type {
   ProviderProfile,
   TelegramQueueConfig,
   GitHubAppConfig,
+  QuotaConfig,
 } from "./config-types.js"
 
 export class ConfigValidationError extends Error {
@@ -458,6 +459,26 @@ export function validateProviderProfile(profile: unknown, path = "profile"): Val
   return { valid: errors.length === 0, errors }
 }
 
+export function validateQuotaConfig(config: unknown, path = "quota"): ValidationResult {
+  const errors: ConfigValidationError[] = []
+  if (!config || typeof config !== "object") {
+    errors.push(error(path, "expected object"))
+    return { valid: false, errors }
+  }
+  const c = config as Partial<QuotaConfig>
+
+  const retryMaxErr = validateNumber(c.retryMax, `${path}.retryMax`, { min: 0, max: 20, integer: true })
+  if (retryMaxErr) errors.push(retryMaxErr)
+
+  const defaultSleepErr = validateNumber(c.defaultSleepMs, `${path}.defaultSleepMs`, { min: 1000 })
+  if (defaultSleepErr) errors.push(defaultSleepErr)
+
+  const bufferErr = validateNumber(c.sleepBufferMs, `${path}.sleepBufferMs`, { min: 0 })
+  if (bufferErr) errors.push(bufferErr)
+
+  return { valid: errors.length === 0, errors }
+}
+
 export function validateMinionConfig(config: unknown): ValidationResult {
   const errors: ConfigValidationError[] = []
 
@@ -491,6 +512,9 @@ export function validateMinionConfig(config: unknown): ValidationResult {
 
   const observerResult = validateObserverConfig(c.observer)
   errors.push(...observerResult.errors)
+
+  const quotaResult = validateQuotaConfig(c.quota)
+  errors.push(...quotaResult.errors)
 
   // Optional configs
   const sentryResult = validateSentryConfig(c.sentry)
