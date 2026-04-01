@@ -1,0 +1,62 @@
+{
+  "steps": [
+    {
+      "event": {
+        "type": "message",
+        "message": {
+          "role": "assistant",
+          "created": 1700000000,
+          "content": [{ "type": "text", "text": "I'll read the file." }]
+        }
+      }
+    },
+    {
+      "delay": 10,
+      "event": {
+        "type": "message",
+        "message": {
+          "role": "assistant",
+          "created": 1700000001,
+          "content": [{
+            "type": "toolRequest",
+            "id": "tool_1",
+            "toolCall": {
+              "name": "Read",
+              "arguments": { "file_path": "src/main.ts" }
+            }
+          }]
+        }
+      }
+    },
+    {
+      "delay": 10,
+      "event": {
+        "type": "message",
+        "message": {
+          "role": "user",
+          "created": 1700000002,
+          "content": [{
+            "type": "toolResponse",
+            "id": "tool_1",
+            "toolResult": "export function main() { console.log('hello') }"
+          }]
+        }
+      }
+    },
+    {
+      "delay": 10,
+      "event": {
+        "type": "message",
+        "message": {
+          "role": "assistant",
+          "created": 1700000003,
+          "content": [{ "type": "text", "text": "The file contains a main function that logs 'hello'." }]
+        }
+      }
+    },
+    {
+      "event": { "type": "complete", "total_tokens": 1200 }
+    }
+  ],
+  "exitCode": 0
+}

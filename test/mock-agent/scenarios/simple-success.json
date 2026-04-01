@@ -1,0 +1,18 @@
+{
+  "steps": [
+    {
+      "event": {
+        "type": "message",
+        "message": {
+          "role": "assistant",
+          "created": 1700000000,
+          "content": [{ "type": "text", "text": "Task completed successfully." }]
+        }
+      }
+    },
+    {
+      "event": { "type": "complete", "total_tokens": 500 }
+    }
+  ],
+  "exitCode": 0
+}
