@@ -255,13 +255,14 @@ describe("Dispatcher module wiring", () => {
     topicSessions.set(300, session)
 
     const d = dispatcher as unknown as {
-      handleExecuteCommand(ts: TopicSession, directive?: string): Promise<void>
+      commandHandler: { handleExecuteCommand(ts: TopicSession, directive?: string): Promise<void>; ctx: { spawnTopicAgent: unknown } }
       spawnTopicAgent(ts: TopicSession, task: string): Promise<void>
     }
     // Stub spawnTopicAgent so it doesn't actually spawn a process
     d.spawnTopicAgent = vi.fn().mockResolvedValue(undefined)
+    d.commandHandler.ctx.spawnTopicAgent = vi.fn().mockResolvedValue(undefined)
 
-    await d.handleExecuteCommand(session)
+    await d.commandHandler.handleExecuteCommand(session)
 
     expect(session.mode).toBe("task")
     expect(session.autoAdvance).toBeUndefined()

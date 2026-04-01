@@ -17,7 +17,7 @@ import type {
 import type { MinionConfig, McpConfig } from "../config/config-types.js"
 import type { DagGraph, DagNode, DagInput } from "../dag/dag.js"
 import type { QualityReport } from "../ci/quality-gates.js"
-import type { ActiveSession, MergeResult } from "../session/session-manager.js"
+import type { ActiveSession, MergeResult, PendingTask } from "../session/session-manager.js"
 import type { StatsTracker } from "../stats.js"
 import type { ProfileStore } from "../profile-store.js"
 import type { StateBroadcaster } from "../api-server.js"
@@ -38,6 +38,8 @@ export interface DispatcherContext {
   readonly topicSessions: Map<number, TopicSession>
   /** DAG graphs keyed by dagId. */
   readonly dags: Map<string, DagGraph>
+  /** Pending task selections waiting for repo/profile keyboard callbacks. */
+  readonly pendingTasks: Map<number, PendingTask>
 
   // ── Token management ───────────────────────────────────────────────
 
@@ -139,6 +141,16 @@ export interface DispatcherContext {
   // ── Cross-module callbacks ─────────────────────────────────────────
   // These allow modules to call into each other through the context,
   // breaking circular dependencies.
+
+  /** Start a session with profile selection UI. */
+  startWithProfileSelection(
+    repoUrl: string | undefined,
+    task: string,
+    mode: "task" | "plan" | "think" | "review" | "ship-think",
+    replyThreadId?: number,
+    photos?: TelegramPhotoSize[],
+    autoAdvance?: import("../types.js").AutoAdvance,
+  ): Promise<void>
 
   /** Start a DAG from extracted items (used by ShipPipeline → DagOrchestrator). */
   startDag(topicSession: TopicSession, items: DagInput[], isStack: boolean): Promise<void>

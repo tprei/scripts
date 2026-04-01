@@ -16,29 +16,20 @@ import { DagStore } from "../dag-store.js"
 import { ProfileStore } from "../profile-store.js"
 import {
   formatPlanIteration,
-  formatPlanExecuting,
   formatPlanComplete,
   formatThinkIteration,
   formatThinkComplete,
   formatReviewIteration,
   formatReviewComplete,
-  formatStatus,
   formatTaskComplete,
   formatFollowUpIteration,
-  formatHelp,
   formatQualityReport,
   formatQualityReportForContext,
   formatBudgetWarning,
-  formatStats,
-  formatUsage,
-  formatProfileList,
-  formatConfigHelp,
-  formatDagAnalyzing,
   formatPinnedStatus,
 } from "../telegram/format.js"
 import { runQualityGates } from "../ci/quality-gates.js"
 import { StatsTracker } from "../stats.js"
-import { fetchClaudeUsage } from "../claude-usage.js"
 import { writeSessionLog } from "../session/session-log.js"
 import { extractPRUrl } from "../ci/ci-babysit.js"
 import { buildConversationDigest, buildChildSessionDigest } from "../conversation-digest.js"
@@ -48,17 +39,16 @@ import { StateBroadcaster, topicSessionToApi, dagToApi } from "../api-server.js"
 import { loggers } from "../logger.js"
 import { SessionNotFoundError } from "../errors.js"
 import {
-  parseTaskArgs, parseReviewArgs, buildReviewAllTask,
+  parseTaskArgs, buildReviewAllTask,
   buildRepoKeyboard, buildProfileKeyboard,
   escapeHtml, extractRepoName, appendImageContext,
 } from "../commands/command-parser.js"
 import {
   type ActiveSession, type PendingTask,
-  buildContextPrompt, buildExecutionPrompt,
-  prepareWorkspace, removeWorkspace, cleanBuildArtifacts, dirSizeBytes,
+  buildContextPrompt,
+  prepareWorkspace, removeWorkspace, cleanBuildArtifacts,
   downloadPhotos, prepareFanInBranch, mergeUpstreamBranches,
 } from "../session/session-manager.js"
-import { extractDagItems } from "../dag/dag-extract.js"
 import { buildSplitChildPrompt } from "./split.js"
 import { advanceDag, failNode, renderDagStatus, type DagGraph } from "../dag/dag.js"
 import type { DispatcherContext } from "./dispatcher-context.js"
@@ -70,6 +60,7 @@ import { SplitOrchestrator } from "./split-orchestrator.js"
 import { JudgeOrchestrator } from "../judge/judge-orchestrator.js"
 import { PinnedMessageManager } from "../telegram/pinned-message-manager.js"
 import { routeCommand } from "../commands/command-router.js"
+import { CommandHandler } from "../commands/command-handler.js"
 
 const log = loggers.dispatcher
 
@@ -96,6 +87,7 @@ export class Dispatcher {
   private readonly shipPipeline: ShipPipeline
   private readonly splitOrchestrator: SplitOrchestrator
   private readonly judgeOrchestrator: JudgeOrchestrator
+  private readonly commandHandler: CommandHandler
   private readonly pinnedMessages: PinnedMessageManager
 
   constructor(
@@ -118,6 +110,7 @@ export class Dispatcher {
     this.shipPipeline = new ShipPipeline(ctx)
     this.splitOrchestrator = new SplitOrchestrator(ctx)
     this.judgeOrchestrator = new JudgeOrchestrator(ctx)
+    this.commandHandler = new CommandHandler(ctx)
     this.pinnedMessages = new PinnedMessageManager({
       telegram: this.telegram,
       topicSessions: this.topicSessions,
@@ -137,6 +130,7 @@ export class Dispatcher {
       sessions: this.sessions,
       topicSessions: this.topicSessions,
       dags: this.dags,
+      pendingTasks: this.pendingTasks,
       refreshGitToken: () => this.refreshGitToken(),
       spawnTopicAgent: (ts, task, mcp, sp) => this.spawnTopicAgent(ts, task, mcp, sp),
       spawnCIFixAgent: (ts, task, cb) => this.spawnCIFixAgent(ts, task, cb),
@@ -161,12 +155,14 @@ export class Dispatcher {
       broadcastDagDeleted: (id) => this.broadcastDagDeleted(id),
       closeChildSessions: (p) => this.closeChildSessions(p),
       closeSingleChild: (c) => this.closeSingleChild(c),
+      startWithProfileSelection: (repo, task, mode, threadId, photos, autoAdv) =>
+        this.startWithProfileSelection(repo, task, mode, threadId, photos, autoAdv),
       startDag: (ts, items, isStack) => this.dagOrchestrator.startDag(ts, items, isStack),
       shipAdvanceToVerification: (ts, g) => this.shipPipeline.shipAdvanceToVerification(ts, g),
       handleLandCommand: (ts) => this.landingManager.handleLandCommand(ts),
       handleShipAdvance: (ts) => this.shipPipeline.handleShipAdvance(ts),
       shipAdvanceToDag: (ts) => this.shipPipeline.shipAdvanceToDag(ts),
-      handleExecuteCommand: (ts, d) => this.handleExecuteCommand(ts, d),
+      handleExecuteCommand: (ts, d) => this.commandHandler.handleExecuteCommand(ts, d),
       notifyParentOfChildComplete: (cs, s) => this.notifyParentOfChildComplete(cs, s),
       postSessionDigest: (ts, pr) => { this.postSessionDigest(ts, pr).catch(() => {}) },
       runDeferredBabysit: (id) => this.ciBabysitter.runDeferredBabysit(id),
@@ -487,25 +483,25 @@ export class Dispatcher {
     }
 
     switch (routed.type) {
-      case "status": return this.handleStatusCommand()
-      case "stats": return this.handleStatsCommand()
-      case "usage": return this.handleUsageCommand()
-      case "clean": return this.handleCleanCommand()
-      case "help": return this.handleHelpCommand()
-      case "config": return this.handleConfigCommand(routed.args)
-      case "task": return this.handleTaskCommand(routed.args, routed.threadId, routed.photos)
+      case "status": return this.commandHandler.handleStatusCommand()
+      case "stats": return this.commandHandler.handleStatsCommand()
+      case "usage": return this.commandHandler.handleUsageCommand()
+      case "clean": return this.commandHandler.handleCleanCommand()
+      case "help": return this.commandHandler.handleHelpCommand()
+      case "config": return this.commandHandler.handleConfigCommand(routed.args)
+      case "task": return this.commandHandler.handleTaskCommand(routed.args, routed.threadId, routed.photos)
       case "plan": return this.handlePlanCommand(routed.args, routed.threadId, routed.photos)
       case "think": return this.handleThinkCommand(routed.args, routed.threadId, routed.photos)
-      case "review": return this.handleReviewCommand(routed.args, routed.threadId)
+      case "review": return this.commandHandler.handleReviewCommand(routed.args, routed.threadId)
       case "ship": return this.handleShipCommand(routed.args, routed.threadId)
       case "close": return this.handleCloseCommandInternal(topicSession!)
       case "stop": return this.handleStopCommandInternal(topicSession!)
-      case "execute": return this.handleExecuteCommand(topicSession!, routed.directive)
+      case "execute": return this.commandHandler.handleExecuteCommand(topicSession!, routed.directive)
       case "split": return this.splitOrchestrator.handleSplitCommand(topicSession!, routed.directive)
       case "stack": return this.splitOrchestrator.handleStackCommand(topicSession!, routed.directive)
-      case "dag": return this.handleDagCommand(topicSession!, routed.directive)
+      case "dag": return this.commandHandler.handleDagCommand(topicSession!, routed.directive)
       case "judge": return this.judgeOrchestrator.handleJudgeCommand(topicSession!, routed.directive)
-      case "done": return this.handleDoneCommand(topicSession!)
+      case "done": return this.commandHandler.handleDoneCommand(topicSession!)
       case "land": return this.landingManager.handleLandCommand(topicSession!)
       case "retry": return this.dagOrchestrator.handleRetryCommand(topicSession!, routed.nodeId)
       case "force": return this.dagOrchestrator.handleForceCommand(topicSession!, routed.nodeId)
@@ -620,278 +616,7 @@ export class Dispatcher {
     await this.telegram.answerCallbackQuery(query.id)
   }
 
-  // ── Global commands ───────────────────────────────────────────────────
-
-  private async handleStatusCommand(): Promise<void> {
-    const taskSessions = [...this.sessions.values()]
-    const topicSessionList = [...this.topicSessions.values()]
-    const msg = formatStatus(taskSessions, topicSessionList, this.config.workspace.maxConcurrentSessions, this.config.telegram.chatId)
-    await this.telegram.sendMessage(msg)
-  }
-
-  private async handleStatsCommand(): Promise<void> {
-    const agg = await this.stats.aggregate(7)
-    await this.telegram.sendMessage(formatStats(agg))
-  }
-
-  private async handleUsageCommand(): Promise<void> {
-    const [acpUsage, agg, breakdown, recent] = await Promise.all([
-      fetchClaudeUsage(),
-      this.stats.aggregate(7),
-      this.stats.breakdownByMode(7),
-      this.stats.recentSessions(5),
-    ])
-    await this.telegram.sendMessage(formatUsage(acpUsage, agg, breakdown, recent))
-  }
-
-  private async handleHelpCommand(): Promise<void> {
-    await this.telegram.sendMessage(formatHelp())
-  }
-
-  private async handleConfigCommand(args: string): Promise<void> {
-    if (!args) {
-      const profiles = this.profileStore.list()
-      const defaultId = this.profileStore.getDefaultId()
-      await this.telegram.sendMessage(formatProfileList(profiles, defaultId))
-      return
-    }
-
-    const parts = args.split(/\s+/)
-    const subcommand = parts[0]
-
-    if (subcommand === "add" && parts.length >= 3) {
-      const id = parts[1]
-      const name = parts.slice(2).join(" ")
-      const added = this.profileStore.add({ id, name })
-      if (added) {
-        await this.telegram.sendMessage(`✅ Added profile <code>${escapeHtml(id)}</code>`)
-      } else {
-        await this.telegram.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> already exists`)
-      }
-      return
-    }
-
-    if (subcommand === "set" && parts.length >= 4) {
-      const id = parts[1]
-      const field = parts[2]
-      const value = parts.slice(3).join(" ")
-      const validFields = ["name", "baseUrl", "authToken", "opusModel", "sonnetModel", "haikuModel"]
-      if (!validFields.includes(field)) {
-        await this.telegram.sendMessage(`❌ Invalid field. Valid: ${validFields.join(", ")}`)
-        return
-      }
-      const updated = this.profileStore.update(id, { [field]: value })
-      if (updated) {
-        await this.telegram.sendMessage(`✅ Updated <code>${escapeHtml(id)}.${escapeHtml(field)}</code>`)
-      } else {
-        await this.telegram.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> not found`)
-      }
-      return
-    }
-
-    if (subcommand === "remove" && parts.length >= 2) {
-      const id = parts[1]
-      const removed = this.profileStore.remove(id)
-      if (removed) {
-        await this.telegram.sendMessage(`✅ Removed profile <code>${escapeHtml(id)}</code>`)
-      } else {
-        await this.telegram.sendMessage(`❌ Cannot remove <code>${escapeHtml(id)}</code> (not found or is default)`)
-      }
-      return
-    }
-
-    if (subcommand === "default") {
-      if (parts.length === 1) {
-        this.profileStore.clearDefault()
-        await this.telegram.sendMessage(`✅ Cleared default profile`)
-        return
-      }
-      const id = parts[1]
-      if (id === "clear") {
-        this.profileStore.clearDefault()
-        await this.telegram.sendMessage(`✅ Cleared default profile`)
-        return
-      }
-      const set = this.profileStore.setDefaultId(id)
-      if (set) {
-        const p = this.profileStore.get(id)
-        await this.telegram.sendMessage(`✅ Default profile set to <code>${escapeHtml(id)}</code> (${escapeHtml(p?.name ?? id)})`)
-      } else {
-        await this.telegram.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> not found`)
-      }
-      return
-    }
-
-    await this.telegram.sendMessage(formatConfigHelp())
-  }
-
-  private async handleCleanCommand(): Promise<void> {
-    const root = this.config.workspace.root
-    let freedBytes = 0
-    let removedSessions = 0
-    let removedOrphans = 0
-    let removedRepos = 0
-
-    const now = Date.now()
-    const staleTtlMs = this.config.workspace.staleTtlMs
-    const idle: [number, TopicSession][] = []
-    for (const [threadId, session] of this.topicSessions) {
-      if (session.activeSessionId) continue
-      const staleTime = session.interruptedAt ?? session.lastActivityAt
-      if (now - staleTime > staleTtlMs) {
-        idle.push([threadId, session])
-      }
-    }
-
-    for (const [threadId, session] of idle) {
-      if (session.cwd && fs.existsSync(session.cwd)) {
-        freedBytes += dirSizeBytes(session.cwd)
-      }
-      await this.telegram.deleteForumTopic(threadId)
-      await this.removeWorkspace(session)
-      this.topicSessions.delete(threadId)
-      removedSessions++
-    }
-
-    const activeCwds = new Set<string>()
-    for (const session of this.topicSessions.values()) {
-      if (session.cwd) activeCwds.add(session.cwd)
-    }
-
-    const parentHome = process.env["HOME"] ?? ""
-    const entries = fs.readdirSync(root, { withFileTypes: true })
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue
-      if (entry.name.startsWith(".")) continue
-      const entryPath = path.join(root, entry.name)
-      if (entryPath === parentHome) continue
-      if (activeCwds.has(entryPath)) continue
-      if (this.sessions.has(Number(entry.name))) continue
-
-      freedBytes += dirSizeBytes(entryPath)
-      try {
-        fs.rmSync(entryPath, { recursive: true, force: true })
-        removedOrphans++
-        log.info({ path: entryPath }, "removed orphan workspace")
-      } catch (err) {
-        log.warn({ err, path: entryPath }, "failed to remove orphan")
-      }
-    }
-
-    const activeRepos = new Set<string>()
-    for (const session of this.topicSessions.values()) {
-      if (session.repoUrl) {
-        activeRepos.add(extractRepoName(session.repoUrl))
-      }
-    }
-
-    const isActiveCache = (key: string) =>
-      [...activeRepos].some((r) => key === r || key.startsWith(`${r}-`))
-
-    const reposDir = path.join(root, ".repos")
-    if (fs.existsSync(reposDir)) {
-      const repoEntries = fs.readdirSync(reposDir, { withFileTypes: true })
-      for (const entry of repoEntries) {
-        const entryPath = path.join(reposDir, entry.name)
-
-        if (entry.isDirectory() && entry.name.endsWith(".git")) {
-          const repoName = entry.name.replace(/\.git$/, "")
-          if (activeRepos.has(repoName)) continue
-          freedBytes += dirSizeBytes(entryPath)
-          try {
-            fs.rmSync(entryPath, { recursive: true, force: true })
-            removedRepos++
-            log.info({ path: entryPath }, "removed bare repo")
-          } catch (err) {
-            log.warn({ err, path: entryPath }, "failed to remove bare repo")
-          }
-        } else if (entry.isDirectory() && entry.name.endsWith("-node_modules")) {
-          const cacheKey = entry.name.replace(/-node_modules$/, "")
-          if (isActiveCache(cacheKey)) continue
-          freedBytes += dirSizeBytes(entryPath)
-          try {
-            fs.rmSync(entryPath, { recursive: true, force: true })
-            removedRepos++
-            log.info({ path: entryPath }, "removed cached node_modules")
-          } catch (err) {
-            log.warn({ err, path: entryPath }, "failed to remove cached node_modules")
-          }
-        } else if (!entry.isDirectory() && entry.name.endsWith("-lock.hash")) {
-          const cacheKey = entry.name.replace(/-lock\.hash$/, "")
-          if (isActiveCache(cacheKey)) continue
-          try {
-            fs.rmSync(entryPath)
-            log.info({ path: entryPath }, "removed cached lock hash")
-          } catch (err) {
-            log.warn({ err, path: entryPath }, "failed to remove cached lock hash")
-          }
-        }
-      }
-    }
-
-    await this.persistTopicSessions()
-    this.pinnedMessages.updatePinnedSummary()
-
-    const totalItems = removedSessions + removedOrphans + removedRepos
-    if (totalItems === 0) {
-      await this.telegram.sendMessage("🧹 Nothing to clean up — disk is tidy.")
-      return
-    }
-
-    const itemParts: string[] = []
-    if (removedSessions > 0) itemParts.push(`${removedSessions} idle session(s)`)
-    if (removedOrphans > 0) itemParts.push(`${removedOrphans} orphaned workspace(s)`)
-    if (removedRepos > 0) itemParts.push(`${removedRepos} cached repo(s)`)
-
-    const freedMB = (freedBytes / (1024 * 1024)).toFixed(1)
-    await this.telegram.sendMessage(`🧹 Cleaned ${itemParts.join(", ")} — freed ~${freedMB} MB.`)
-  }
-
   // ── Session-creating commands ─────────────────────────────────────────
-
-  private async handleTaskCommand(args: string, replyThreadId?: number, photos?: TelegramPhotoSize[]): Promise<void> {
-    if (this.sessions.size >= this.config.workspace.maxConcurrentSessions) {
-      if (replyThreadId !== undefined) {
-        await this.telegram.sendMessage(
-          `⚠️ Max concurrent sessions (${this.config.workspace.maxConcurrentSessions}) reached. Wait for one to finish.`,
-          replyThreadId,
-        )
-      }
-      return
-    }
-
-    const { repoUrl, task } = parseTaskArgs(this.config.repos, args)
-
-    if (!task) {
-      if (replyThreadId !== undefined) {
-        await this.telegram.sendMessage(
-          `Usage: <code>/task [repo] description of the task</code> (alias: <code>/w</code>)\n` +
-          `Repos: ${Object.keys(this.config.repos).map((s) => `<code>${s}</code>`).join(", ")}\n` +
-          `Or use a full URL or omit repo entirely.`,
-          replyThreadId,
-        )
-      }
-      return
-    }
-
-    if (!repoUrl) {
-      const repoKeys = Object.keys(this.config.repos)
-      if (repoKeys.length > 0) {
-        const keyboard = buildRepoKeyboard(repoKeys)
-        const msgId = await this.telegram.sendMessageWithKeyboard(
-          `Pick a repo for: <i>${escapeHtml(task)}</i>`,
-          keyboard,
-          replyThreadId,
-        )
-        if (msgId) {
-          this.pendingTasks.set(msgId, { task, threadId: replyThreadId, mode: "task" })
-        }
-        return
-      }
-    }
-
-    await this.startWithProfileSelection(repoUrl, task, "task", replyThreadId, photos)
-  }
 
   private async handlePlanCommand(args: string, replyThreadId?: number, photos?: TelegramPhotoSize[]): Promise<void> {
     const { repoUrl, task } = parseTaskArgs(this.config.repos, args)
@@ -949,66 +674,6 @@ export class Dispatcher {
     }
 
     await this.startWithProfileSelection(repoUrl, task, "think", replyThreadId, photos)
-  }
-
-  private async handleReviewCommand(args: string, replyThreadId?: number): Promise<void> {
-    const parsed = parseReviewArgs(this.config.repos, args)
-
-    if (!parsed.repoUrl && !parsed.task) {
-      const repoKeys = Object.keys(this.config.repos)
-      if (repoKeys.length === 0) {
-        if (replyThreadId !== undefined) {
-          await this.telegram.sendMessage(
-            `Usage: <code>/review [repo] [PR#]</code>\nNo repos configured.`,
-            replyThreadId,
-          )
-        }
-        return
-      }
-      if (repoKeys.length === 1) {
-        const repoUrl = this.config.repos[repoKeys[0]]
-        const task = buildReviewAllTask(repoUrl)
-        await this.startWithProfileSelection(repoUrl, task, "review", replyThreadId)
-        return
-      }
-      const keyboard = buildRepoKeyboard(repoKeys, "review")
-      const msgId = await this.telegram.sendMessageWithKeyboard(
-        `Pick a repo to review all unreviewed PRs:`,
-        keyboard,
-        replyThreadId,
-      )
-      if (msgId) {
-        this.pendingTasks.set(msgId, { task: "", threadId: replyThreadId, mode: "review" })
-      }
-      return
-    }
-
-    if (parsed.repoUrl && !parsed.task) {
-      const task = buildReviewAllTask(parsed.repoUrl)
-      await this.startWithProfileSelection(parsed.repoUrl, task, "review", replyThreadId)
-      return
-    }
-
-    if (!parsed.repoUrl && parsed.task) {
-      const repoKeys = Object.keys(this.config.repos)
-      if (repoKeys.length > 0) {
-        const keyboard = buildRepoKeyboard(repoKeys, "review")
-        const msgId = await this.telegram.sendMessageWithKeyboard(
-          `Pick a repo for review: <i>${escapeHtml(parsed.task)}</i>`,
-          keyboard,
-          replyThreadId,
-        )
-        if (msgId) {
-          this.pendingTasks.set(msgId, { task: parsed.task, threadId: replyThreadId, mode: "review" })
-        }
-        return
-      }
-    }
-
-    if (parsed.repoUrl && parsed.task) {
-      await this.startWithProfileSelection(parsed.repoUrl, parsed.task, "review", replyThreadId)
-      return
-    }
   }
 
   private async handleShipCommand(args: string, replyThreadId?: number): Promise<void> {
@@ -1515,78 +1180,6 @@ export class Dispatcher {
     await this.spawnTopicAgent(topicSession, contextTask)
   }
 
-  private async handleExecuteCommand(topicSession: TopicSession, directive?: string): Promise<void> {
-    if (topicSession.activeSessionId) {
-      const activeSession = this.sessions.get(topicSession.threadId)
-      if (activeSession) {
-        await activeSession.handle.kill()
-      }
-      this.sessions.delete(topicSession.threadId)
-    }
-
-    const executionTask = buildExecutionPrompt(topicSession, directive)
-
-    await this.telegram.sendMessage(
-      formatPlanExecuting(topicSession.slug, "starting…"),
-      topicSession.threadId,
-    )
-
-    topicSession.mode = "task"
-    topicSession.activeSessionId = undefined
-    topicSession.pendingFeedback = []
-    topicSession.autoAdvance = undefined
-
-    await this.spawnTopicAgent(topicSession, executionTask)
-  }
-
-  private async handleDagCommand(topicSession: TopicSession, directive?: string): Promise<void> {
-    if (topicSession.activeSessionId) {
-      const activeSession = this.sessions.get(topicSession.threadId)
-      if (activeSession) await activeSession.handle.kill()
-      this.sessions.delete(topicSession.threadId)
-      topicSession.activeSessionId = undefined
-    }
-
-    await this.telegram.sendMessage(
-      formatDagAnalyzing(topicSession.slug),
-      topicSession.threadId,
-    )
-
-    const GRACE_PERIOD_MS = 2000
-    await new Promise((resolve) => setTimeout(resolve, GRACE_PERIOD_MS))
-
-    const profile = topicSession.profileId ? this.profileStore.get(topicSession.profileId) : undefined
-    const result = await extractDagItems(topicSession.conversation, directive, profile)
-
-    if (result.error === "system") {
-      await this.telegram.sendMessage(
-        `⚠️ <b>System error</b> during extraction: <code>${result.errorMessage ?? "Unknown error"}</code>\n\n` +
-        `Try <code>/dag</code> again, or use <code>/split</code> for parallel tasks.`,
-        topicSession.threadId,
-      )
-      return
-    }
-
-    if (result.items.length === 0) {
-      await this.telegram.sendMessage(
-        `⚠️ Could not extract work items with dependencies. Try <code>/split</code> or <code>/execute</code> instead.`,
-        topicSession.threadId,
-      )
-      return
-    }
-
-    if (result.items.length === 1) {
-      await this.telegram.sendMessage(
-        `Only 1 item found — using <code>/execute</code> instead.`,
-        topicSession.threadId,
-      )
-      await this.handleExecuteCommand(topicSession, result.items[0].description)
-      return
-    }
-
-    await this.dagOrchestrator.startDag(topicSession, result.items, false)
-  }
-
   // ── Parent/child notification ─────────────────────────────────────────
 
   private async notifyParentOfChildComplete(
@@ -1785,126 +1378,6 @@ export class Dispatcher {
 
     this.removeWorkspace(topicSession).catch((err) => {
       log.error({ err, slug: topicSession.slug }, "background cleanup failed")
-    })
-  }
-
-  private async handleDoneCommand(topicSession: TopicSession): Promise<void> {
-    const threadId = topicSession.threadId
-
-    // Short-circuit: DAG/stack children should be managed from the parent
-    if (topicSession.parentThreadId || topicSession.dagNodeId) {
-      await this.telegram.sendMessage(
-        `⚠️ <code>/done</code> is not available on child sessions. Use <code>/done</code> or <code>/land</code> from the parent thread.`,
-        threadId,
-      )
-      return
-    }
-
-    // Short-circuit: no PR found
-    const prUrl = topicSession.prUrl ?? this.extractPRFromConversation(topicSession)
-    if (!prUrl) {
-      await this.telegram.sendMessage(
-        `⚠️ No PR found for this session. Nothing to merge.`,
-        threadId,
-      )
-      return
-    }
-
-    // Short-circuit: CI not green
-    await this.refreshGitToken()
-    try {
-      const checksJson = execSync(`gh pr checks "${prUrl}" --json name,state,bucket`, {
-        cwd: topicSession.cwd,
-        timeout: 30_000,
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-      }).trim()
-
-      if (checksJson && checksJson !== "[]") {
-        const checks = JSON.parse(checksJson) as { name: string; state: string; bucket: string }[]
-        const pending = checks.filter((c) => c.bucket === "pending")
-        if (pending.length > 0) {
-          await this.telegram.sendMessage(
-            `⚠️ CI checks still running (${pending.length} pending). Wait for CI to finish before using <code>/done</code>.`,
-            threadId,
-          )
-          return
-        }
-        const failed = checks.filter((c) => c.bucket === "fail")
-        if (failed.length > 0) {
-          const names = failed.map((c) => `<code>${escapeHtml(c.name)}</code>`).join(", ")
-          await this.telegram.sendMessage(
-            `⚠️ CI is not green — ${failed.length} failed check(s): ${names}. Fix CI before using <code>/done</code>.`,
-            threadId,
-          )
-          return
-        }
-      }
-    } catch (err) {
-      const errMsg = String((err as Error).message ?? "")
-      if (!errMsg.includes("no checks reported")) {
-        await this.telegram.sendMessage(
-          `⚠️ Could not verify CI status: <code>${escapeHtml(errMsg.slice(0, 200))}</code>`,
-          threadId,
-        )
-        return
-      }
-      // "no checks reported" — treat as OK (no CI configured)
-    }
-
-    // Merge the PR
-    try {
-      execSync(`gh pr merge "${prUrl}" --squash --delete-branch`, {
-        cwd: topicSession.cwd,
-        timeout: 120_000,
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-      })
-    } catch (err) {
-      const errMsg = String((err as Error).message ?? "")
-      await this.telegram.sendMessage(
-        `⚠️ Failed to merge PR: <code>${escapeHtml(errMsg.slice(0, 300))}</code>`,
-        threadId,
-      )
-      return
-    }
-
-    await this.telegram.sendMessage(`✅ Merged and closed: ${prUrl}`, threadId)
-    log.info({ slug: topicSession.slug, threadId, prUrl }, "/done — merged PR")
-
-    // Close children, delete topic, wipe workspace
-    await this.closeChildSessions(topicSession)
-
-    if (topicSession.dagId) {
-      this.broadcastDagDeleted(topicSession.dagId)
-      this.dags.delete(topicSession.dagId)
-    }
-
-    this.topicSessions.delete(threadId)
-    this.broadcastSessionDeleted(topicSession.slug)
-    await this.persistTopicSessions()
-    this.pinnedMessages.updatePinnedSummary()
-    await this.telegram.deleteForumTopic(threadId)
-    log.info({ slug: topicSession.slug, threadId }, "/done — closed topic")
-
-    if (topicSession.activeSessionId) {
-      const activeSession = this.sessions.get(threadId)
-      this.sessions.delete(threadId)
-      if (activeSession) {
-        activeSession.handle.kill().then(
-          () => this.removeWorkspace(topicSession),
-          () => this.removeWorkspace(topicSession),
-        ).catch((err) => {
-          log.error({ err, slug: topicSession.slug }, "/done background cleanup failed")
-        })
-        return
-      }
-    }
-
-    this.removeWorkspace(topicSession).catch((err) => {
-      log.error({ err, slug: topicSession.slug }, "/done background cleanup failed")
     })
   }
 
