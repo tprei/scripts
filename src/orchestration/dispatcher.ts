@@ -6,7 +6,7 @@ import type { TelegramClient } from "../telegram/telegram.js"
 import { captureException } from "../sentry.js"
 import { SessionHandle, type SessionConfig } from "../session/session.js"
 import { Observer } from "../telegram/observer.js"
-import type { TelegramUpdate, TelegramCallbackQuery, TelegramPhotoSize, SessionMeta, TopicSession, SessionMode, SessionState, TopicMessage, AutoAdvance } from "../types.js"
+import type { TelegramUpdate, TelegramPhotoSize, SessionMeta, TopicSession, SessionMode, SessionState, TopicMessage, AutoAdvance } from "../types.js"
 import { generateSlug, taskToLabel } from "../slugs.js"
 import type { MinionConfig, McpConfig } from "../config/config-types.js"
 import type { GitHubTokenProvider } from "../github/index.js"
@@ -70,6 +70,7 @@ import { SplitOrchestrator } from "./split-orchestrator.js"
 import { JudgeOrchestrator } from "../judge/judge-orchestrator.js"
 import { PinnedMessageManager } from "../telegram/pinned-message-manager.js"
 import { routeCommand } from "../commands/command-router.js"
+import { CallbackQueryHandler } from "../commands/callback-handler.js"
 
 const log = loggers.dispatcher
 
@@ -97,6 +98,7 @@ export class Dispatcher {
   private readonly splitOrchestrator: SplitOrchestrator
   private readonly judgeOrchestrator: JudgeOrchestrator
   private readonly pinnedMessages: PinnedMessageManager
+  private readonly callbackHandler: CallbackQueryHandler
 
   constructor(
     private readonly telegram: TelegramClient,
@@ -118,6 +120,7 @@ export class Dispatcher {
     this.shipPipeline = new ShipPipeline(ctx)
     this.splitOrchestrator = new SplitOrchestrator(ctx)
     this.judgeOrchestrator = new JudgeOrchestrator(ctx)
+    this.callbackHandler = new CallbackQueryHandler(ctx)
     this.pinnedMessages = new PinnedMessageManager({
       telegram: this.telegram,
       topicSessions: this.topicSessions,
@@ -137,7 +140,10 @@ export class Dispatcher {
       sessions: this.sessions,
       topicSessions: this.topicSessions,
       dags: this.dags,
+      pendingTasks: this.pendingTasks,
+      pendingProfiles: this.pendingProfiles,
       refreshGitToken: () => this.refreshGitToken(),
+      startTopicSession: (repo, task, mode, photos, profileId, autoAdvance) => this.startTopicSession(repo, task, mode, photos, profileId, autoAdvance),
       spawnTopicAgent: (ts, task, mcp, sp) => this.spawnTopicAgent(ts, task, mcp, sp),
       spawnCIFixAgent: (ts, task, cb) => this.spawnCIFixAgent(ts, task, cb),
       prepareWorkspace: (slug, repo, branch) => this.prepareWorkspace(slug, repo, branch),
@@ -456,7 +462,7 @@ export class Dispatcher {
 
   private async handleUpdate(update: TelegramUpdate): Promise<void> {
     if (update.callback_query) {
-      await this.handleCallbackQuery(update.callback_query)
+      await this.callbackHandler.handleCallbackQuery(update.callback_query)
       return
     }
 
@@ -511,113 +517,6 @@ export class Dispatcher {
       case "force": return this.dagOrchestrator.handleForceCommand(topicSession!, routed.nodeId)
       case "reply": return this.handleTopicFeedback(topicSession!, routed.text, routed.photos)
     }
-  }
-
-  // ── Callback queries ──────────────────────────────────────────────────
-
-  private async handleCallbackQuery(query: TelegramCallbackQuery): Promise<void> {
-    if (!this.config.telegram.allowedUserIds.includes(query.from.id)) {
-      await this.telegram.answerCallbackQuery(query.id, "Not authorized")
-      return
-    }
-
-    const data = query.data
-    if (!data) {
-      await this.telegram.answerCallbackQuery(query.id)
-      return
-    }
-
-    if (data.startsWith("profile:")) {
-      await this.handleProfileCallback(query, data.slice("profile:".length))
-      return
-    }
-
-    if (!data.startsWith("repo:") && !data.startsWith("plan-repo:") && !data.startsWith("think-repo:") && !data.startsWith("review-repo:") && !data.startsWith("ship-repo:")) {
-      await this.telegram.answerCallbackQuery(query.id)
-      return
-    }
-
-    const isThink = data.startsWith("think-repo:")
-    const isPlan = data.startsWith("plan-repo:")
-    const isReview = data.startsWith("review-repo:")
-    const isShip = data.startsWith("ship-repo:")
-    const repoSlug = isThink
-      ? data.slice("think-repo:".length)
-      : isPlan
-      ? data.slice("plan-repo:".length)
-      : isReview
-      ? data.slice("review-repo:".length)
-      : isShip
-      ? data.slice("ship-repo:".length)
-      : data.slice("repo:".length)
-    const repoUrl = this.config.repos[repoSlug]
-    if (!repoUrl) {
-      await this.telegram.answerCallbackQuery(query.id, "Unknown repo")
-      return
-    }
-
-    const messageId = query.message?.message_id
-
-    if (messageId) {
-      const pending = this.pendingTasks.get(messageId)
-      if (pending) {
-        this.pendingTasks.delete(messageId)
-        await this.telegram.answerCallbackQuery(query.id, `Selected: ${repoSlug}`)
-        await this.telegram.deleteMessage(messageId)
-
-        pending.repoSlug = repoSlug
-        pending.repoUrl = repoUrl
-        if (pending.mode === "review" && !pending.task) {
-          pending.task = buildReviewAllTask(repoUrl)
-        }
-
-        const defaultProfileId = this.profileStore.getDefaultId()
-        if (defaultProfileId) {
-          await this.startTopicSession(repoUrl, pending.task, pending.mode, undefined, defaultProfileId, pending.autoAdvance)
-        } else {
-          const profiles = this.profileStore.list()
-          if (profiles.length > 1) {
-            const label = pending.mode === "ship-think" ? "ship" : pending.mode
-            const keyboard = buildProfileKeyboard(profiles)
-            const msgId = await this.telegram.sendMessageWithKeyboard(
-              `Pick a profile for ${label}: <i>${escapeHtml(pending.task)}</i>`,
-              keyboard,
-              pending.threadId,
-            )
-            if (msgId) {
-              this.pendingProfiles.set(msgId, pending)
-            }
-          } else {
-            await this.startTopicSession(repoUrl, pending.task, pending.mode, undefined, undefined, pending.autoAdvance)
-          }
-        }
-        return
-      }
-    }
-
-    await this.telegram.answerCallbackQuery(query.id)
-  }
-
-  private async handleProfileCallback(query: TelegramCallbackQuery, profileId: string): Promise<void> {
-    const profile = this.profileStore.get(profileId)
-    if (!profile) {
-      await this.telegram.answerCallbackQuery(query.id, "Unknown profile")
-      return
-    }
-
-    const messageId = query.message?.message_id
-    if (messageId) {
-      const pending = this.pendingProfiles.get(messageId)
-      if (pending) {
-        this.pendingProfiles.delete(messageId)
-        await this.telegram.answerCallbackQuery(query.id, `Selected: ${profile.name}`)
-        await this.telegram.deleteMessage(messageId)
-        await this.startTopicSession(pending.repoUrl, pending.task, pending.mode, undefined, profileId, pending.autoAdvance)
-        return
-      }
-    }
-
-    await this.telegram.answerCallbackQuery(query.id)
   }
 
   // ── Global commands ───────────────────────────────────────────────────

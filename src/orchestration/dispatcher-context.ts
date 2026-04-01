@@ -12,12 +12,12 @@ import type { TelegramClient } from "../telegram/telegram.js"
 import type { Observer } from "../telegram/observer.js"
 import type {
   TopicSession, TopicMessage,
-  TelegramPhotoSize,
+  TelegramPhotoSize, SessionMode, AutoAdvance,
 } from "../types.js"
 import type { MinionConfig, McpConfig } from "../config/config-types.js"
 import type { DagGraph, DagNode, DagInput } from "../dag/dag.js"
 import type { QualityReport } from "../ci/quality-gates.js"
-import type { ActiveSession, MergeResult } from "../session/session-manager.js"
+import type { ActiveSession, PendingTask, MergeResult } from "../session/session-manager.js"
 import type { StatsTracker } from "../stats.js"
 import type { ProfileStore } from "../profile-store.js"
 import type { StateBroadcaster } from "../api-server.js"
@@ -38,6 +38,10 @@ export interface DispatcherContext {
   readonly topicSessions: Map<number, TopicSession>
   /** DAG graphs keyed by dagId. */
   readonly dags: Map<string, DagGraph>
+  /** Pending task selections keyed by message ID. */
+  readonly pendingTasks: Map<number, PendingTask>
+  /** Pending profile selections keyed by message ID. */
+  readonly pendingProfiles: Map<number, PendingTask>
 
   // ── Token management ───────────────────────────────────────────────
 
@@ -52,6 +56,16 @@ export interface DispatcherContext {
     task: string,
     mcpOverrides?: Partial<McpConfig>,
     systemPromptOverride?: string,
+  ): Promise<void>
+
+  /** Start a new topic session (creates topic, spawns agent). */
+  startTopicSession(
+    repoUrl: string | undefined,
+    task: string,
+    mode: SessionMode,
+    photos?: TelegramPhotoSize[],
+    profileId?: string,
+    autoAdvance?: AutoAdvance,
   ): Promise<void>
 
   /** Spawn a CI-fix agent session with a completion callback. */

@@ -12,6 +12,8 @@ function createMockContext(overrides: Partial<DispatcherContext> = {}): Dispatch
   const sessions = new Map()
   const topicSessions = new Map()
   const dags = new Map()
+  const pendingTasks = new Map()
+  const pendingProfiles = new Map()
 
   return {
     config: {
@@ -61,7 +63,10 @@ function createMockContext(overrides: Partial<DispatcherContext> = {}): Dispatch
     sessions,
     topicSessions,
     dags,
+    pendingTasks,
+    pendingProfiles,
     refreshGitToken: async () => {},
+    startTopicSession: async () => {},
     spawnTopicAgent: async () => {},
     spawnCIFixAgent: async () => {},
     prepareWorkspace: async () => "/tmp/test/workspace",
