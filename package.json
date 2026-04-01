@@ -1,6 +1,6 @@
 {
   "name": "@tprei/telegram-minions",
-  "version": "1.73.2",
+  "version": "1.76.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -30,11 +30,13 @@
     "typecheck": "tsc --noEmit",
     "typecheck:ui": "cd ui && npm run typecheck",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.config.integration.ts",
     "test:watch": "vitest",
     "prepare": "git config core.hooksPath .githooks",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@anthropic-ai/claude-code": "^2.1.89",
     "@sentry/node": "^9.12.0",
     "pino": "^9.6.0"
   },
