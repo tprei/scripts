@@ -277,7 +277,7 @@ describe("Dispatcher module wiring", () => {
 
       const d = dispatcher as unknown as {
         topicSessions: Map<number, TopicSession>
-        handleSessionComplete: (ts: TopicSession, m: any, state: string, sid: string) => void
+        sessionLifecycle: { handleSessionComplete: (ts: TopicSession, m: any, state: string, sid: string) => void }
         observer: { onSessionComplete: ReturnType<typeof vi.fn> }
         cleanBuildArtifacts: ReturnType<typeof vi.fn>
         stats: { record: ReturnType<typeof vi.fn> }
@@ -321,7 +321,7 @@ describe("Dispatcher module wiring", () => {
         mode: "ship-plan" as const,
       }
 
-      d.handleSessionComplete(session, meta, "errored", "session-abc")
+      d.sessionLifecycle.handleSessionComplete(session, meta, "errored", "session-abc")
 
       // Phase should be preserved, not set to "done"
       expect(session.autoAdvance!.phase).toBe("plan")
@@ -356,7 +356,7 @@ describe("Dispatcher module wiring", () => {
 
       const d = dispatcher as unknown as {
         topicSessions: Map<number, TopicSession>
-        handleSessionComplete: (ts: TopicSession, m: any, state: string, sid: string) => void
+        sessionLifecycle: { handleSessionComplete: (ts: TopicSession, m: any, state: string, sid: string) => void }
         observer: { onSessionComplete: ReturnType<typeof vi.fn> }
         cleanBuildArtifacts: ReturnType<typeof vi.fn>
         stats: { record: ReturnType<typeof vi.fn> }
@@ -399,7 +399,7 @@ describe("Dispatcher module wiring", () => {
         mode: "ship-think" as const,
       }
 
-      d.handleSessionComplete(session, meta, "errored", "session-def")
+      d.sessionLifecycle.handleSessionComplete(session, meta, "errored", "session-def")
 
       expect(session.autoAdvance!.phase).toBe("think")
       expect(telegram.sendMessage).toHaveBeenCalledWith(
