@@ -10,6 +10,7 @@ import { createApiServer, StateBroadcaster, type DispatcherApi } from "./api-ser
 import { loggers } from "./logger.js"
 import { initSentry } from "./sentry.js"
 import { GitHubTokenProvider } from "./github/index.js"
+import { EventBus } from "./events/event-bus.js"
 
 const log = loggers.minion
 
@@ -55,9 +56,10 @@ export function createMinion(config: MinionConfig, options?: MinionOptions): Min
     activityEditDebounceMs: config.observer.activityEditDebounceMs,
   })
   const broadcaster = new StateBroadcaster()
+  const eventBus = new EventBus()
   const tokenProvider = new GitHubTokenProvider(config.githubApp)
   tokenProvider.setTokenFilePath(path.join(config.workspace.root, ".github-token"))
-  const dispatcher = new Dispatcher(telegram, observer, config, broadcaster, tokenProvider)
+  const dispatcher = new Dispatcher(telegram, observer, config, eventBus, broadcaster, tokenProvider)
 
   let apiServer: http.Server | undefined
 

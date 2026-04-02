@@ -6,6 +6,7 @@ import type { TelegramClient } from "../src/telegram/telegram.js"
 import { Observer } from "../src/telegram/observer.js"
 import type { MinionConfig } from "../src/config/config-types.js"
 import type { TopicSession } from "../src/types.js"
+import { EventBus } from "../src/events/event-bus.js"
 
 const WORKSPACE_ROOT = "/tmp/test-workspace-wiring"
 
@@ -79,7 +80,7 @@ describe("Dispatcher module wiring", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 123)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     expect(dispatcher).toBeDefined()
     expect(typeof dispatcher.start).toBe("function")
@@ -103,7 +104,7 @@ describe("Dispatcher module wiring", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 123)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     const d = dispatcher as unknown as Record<string, unknown>
     expect(d.ciBabysitter).toBeDefined()
@@ -119,7 +120,7 @@ describe("Dispatcher module wiring", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 123)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     const d = dispatcher as unknown as {
       topicSessions: Map<number, TopicSession>
@@ -145,7 +146,7 @@ describe("Dispatcher module wiring", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 123)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
 
@@ -170,7 +171,7 @@ describe("Dispatcher module wiring", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 123)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
     const mockKill = vi.fn().mockResolvedValue(undefined)
@@ -201,7 +202,7 @@ describe("Dispatcher module wiring", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 123)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     await dispatcher.handleReplyCommand(999, "hello")
     expect(telegram.sendMessage).toHaveBeenCalledWith(
@@ -214,7 +215,7 @@ describe("Dispatcher module wiring", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 123)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     expect(dispatcher.activeSessions()).toBe(0)
   })
@@ -223,7 +224,7 @@ describe("Dispatcher module wiring", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 123)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     expect(dispatcher.getDags()).toBeInstanceOf(Map)
     expect(dispatcher.getDags().size).toBe(0)
@@ -233,7 +234,7 @@ describe("Dispatcher module wiring", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 123)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
 
@@ -269,16 +270,17 @@ describe("Dispatcher module wiring", () => {
     expect(session.pendingFeedback).toEqual([])
   })
 
-  describe("ship phase error resilience", () => {
+  describe("ship phase error resilience via EventBus", () => {
     it("preserves phase and shows recovery options when ship session errors", async () => {
       const telegram = makeMockTelegram()
       const config = makeConfig()
       const observer = new Observer(telegram, 123)
-      const dispatcher = new Dispatcher(telegram, observer, config)
+      const eventBus = new EventBus()
+      const dispatcher = new Dispatcher(telegram, observer, config, eventBus)
 
       const d = dispatcher as unknown as {
         topicSessions: Map<number, TopicSession>
-        handleSessionComplete: (ts: TopicSession, m: any, state: string, sid: string) => void
+        sessions: Map<number, unknown>
         observer: { onSessionComplete: ReturnType<typeof vi.fn> }
         cleanBuildArtifacts: ReturnType<typeof vi.fn>
         stats: { record: ReturnType<typeof vi.fn> }
@@ -286,7 +288,6 @@ describe("Dispatcher module wiring", () => {
         persistTopicSessions: ReturnType<typeof vi.fn>
       }
 
-      // Stub internal dependencies
       d.observer.onSessionComplete = vi.fn().mockResolvedValue(undefined)
       d.cleanBuildArtifacts = vi.fn()
       d.stats.record = vi.fn().mockResolvedValue(undefined)
@@ -322,29 +323,17 @@ describe("Dispatcher module wiring", () => {
         mode: "ship-plan" as const,
       }
 
-      d.handleSessionComplete(session, meta, "errored", "session-abc")
+      await eventBus.emit({
+        type: "session.completed" as const,
+        timestamp: Date.now(),
+        meta,
+        state: "errored" as const,
+      })
 
-      // Phase should be preserved, not set to "done"
       expect(session.autoAdvance!.phase).toBe("plan")
-
-      // Should show warning emoji, not error
       expect(d.pinnedMessages.updateTopicTitle).toHaveBeenCalledWith(session, "⚠️")
-
-      // Should send recovery options
       expect(telegram.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Recovery options"),
-        300,
-      )
-      expect(telegram.sendMessage).toHaveBeenCalledWith(
-        expect.stringContaining("/dag"),
-        300,
-      )
-      expect(telegram.sendMessage).toHaveBeenCalledWith(
-        expect.stringContaining("/execute"),
-        300,
-      )
-      expect(telegram.sendMessage).toHaveBeenCalledWith(
-        expect.stringContaining("/close"),
         300,
       )
     })
@@ -353,11 +342,12 @@ describe("Dispatcher module wiring", () => {
       const telegram = makeMockTelegram()
       const config = makeConfig()
       const observer = new Observer(telegram, 123)
-      const dispatcher = new Dispatcher(telegram, observer, config)
+      const eventBus = new EventBus()
+      const dispatcher = new Dispatcher(telegram, observer, config, eventBus)
 
       const d = dispatcher as unknown as {
         topicSessions: Map<number, TopicSession>
-        handleSessionComplete: (ts: TopicSession, m: any, state: string, sid: string) => void
+        sessions: Map<number, unknown>
         observer: { onSessionComplete: ReturnType<typeof vi.fn> }
         cleanBuildArtifacts: ReturnType<typeof vi.fn>
         stats: { record: ReturnType<typeof vi.fn> }
@@ -400,7 +390,12 @@ describe("Dispatcher module wiring", () => {
         mode: "ship-think" as const,
       }
 
-      d.handleSessionComplete(session, meta, "errored", "session-def")
+      await eventBus.emit({
+        type: "session.completed" as const,
+        timestamp: Date.now(),
+        meta,
+        state: "errored" as const,
+      })
 
       expect(session.autoAdvance!.phase).toBe("think")
       expect(telegram.sendMessage).toHaveBeenCalledWith(

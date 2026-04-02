@@ -165,20 +165,11 @@ export interface DispatcherContext {
   /** Handle the /land command (used by ShipPipeline → LandingManager). */
   handleLandCommand(topicSession: TopicSession): Promise<void>
 
-  /** Advance to the next ship phase (used by session completion handler → ShipPipeline). */
-  handleShipAdvance(topicSession: TopicSession): Promise<void>
-
   /** Re-run DAG extraction (used by DagOrchestrator for /retry in dag phase). */
   shipAdvanceToDag(topicSession: TopicSession): Promise<void>
 
   /** Handle the /execute command (used by SplitOrchestrator). */
   handleExecuteCommand(topicSession: TopicSession, directive?: string): Promise<void>
-
-  /** Notify parent when a child session completes (used by session completion handler). */
-  notifyParentOfChildComplete(childSession: TopicSession, state: string): Promise<void>
-
-  /** Post a session digest comment to a PR. */
-  postSessionDigest(topicSession: TopicSession, prUrl: string): void
 
   /** Run deferred CI babysitting for a parent's children. */
   runDeferredBabysit(parentThreadId: number): Promise<void>
