@@ -7,6 +7,7 @@ import { Observer } from "../src/telegram/observer.js"
 import type { MinionConfig } from "../src/config/config-types.js"
 import type { TopicSession } from "../src/types.js"
 import { loggers } from "../src/logger.js"
+import { EventBus } from "../src/events/event-bus.js"
 
 const WORKSPACE_ROOT = "/tmp/test-workspace-close-command"
 const SESSIONS_FILE = path.join(WORKSPACE_ROOT, ".sessions.json")
@@ -77,7 +78,7 @@ describe("handleCloseCommand ordering", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 1)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     const callOrder: string[] = []
     // Track call order
@@ -110,7 +111,7 @@ describe("handleCloseCommand ordering", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 1)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
     const callOrder: string[] = []
     ;(telegram.deleteForumTopic as ReturnType<typeof vi.fn>).mockImplementation(async () => {
       callOrder.push("deleteForumTopic")
@@ -159,7 +160,7 @@ describe("closeChildSessions warning for high child count", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 1)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
     // Create parent session
     const parentSession: TopicSession = {
@@ -205,7 +206,7 @@ describe("closeChildSessions warning for high child count", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 1)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
     // Create parent session
     const parentSession: TopicSession = {
@@ -246,7 +247,7 @@ describe("closeChildSessions orphan detection", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 1)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
     // Create parent session
     const parentSession: TopicSession = {
@@ -337,7 +338,7 @@ describe("closeChildSessions orphan detection", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 1)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
     // Create parent session
     const parentSession: TopicSession = {

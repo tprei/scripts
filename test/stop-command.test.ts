@@ -4,6 +4,7 @@ import type { TelegramClient } from "../src/telegram/telegram.js"
 import { Observer } from "../src/telegram/observer.js"
 import type { MinionConfig } from "../src/config/config-types.js"
 import type { TopicSession } from "../src/types.js"
+import { EventBus } from "../src/events/event-bus.js"
 
 function makeMockTelegram(): TelegramClient {
   return {
@@ -57,7 +58,7 @@ describe("handleStopCommand", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 1)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     const mockKill = vi.fn().mockResolvedValue(undefined)
 
@@ -105,7 +106,7 @@ describe("handleStopCommand", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 1)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     const topicSession: TopicSession = {
       threadId: 200,
@@ -138,7 +139,7 @@ describe("handleStopCommand", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 1)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     const mockKill = vi.fn().mockResolvedValue(undefined)
 
@@ -178,7 +179,7 @@ describe("handleStopCommand", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 1)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     const mockKill = vi.fn().mockResolvedValue(undefined)
 
@@ -218,7 +219,7 @@ describe("handleStopCommand", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const observer = new Observer(telegram, 1)
-    const dispatcher = new Dispatcher(telegram, observer, config)
+    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
 
     const topicSession: TopicSession = {
       threadId: 500,

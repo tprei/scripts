@@ -1,6 +1,3 @@
-import { execSync } from "node:child_process"
-import path from "node:path"
-import fs from "node:fs"
 import crypto from "node:crypto"
 import type { TelegramClient } from "../telegram/telegram.js"
 import { captureException } from "../sentry.js"
@@ -18,29 +15,19 @@ import { DagStore } from "../dag-store.js"
 import { ProfileStore } from "../profile-store.js"
 import {
   formatPlanIteration,
-  formatPlanComplete,
   formatThinkIteration,
-  formatThinkComplete,
   formatReviewIteration,
-  formatReviewComplete,
-  formatTaskComplete,
   formatFollowUpIteration,
-  formatQualityReport,
-  formatQualityReportForContext,
   formatBudgetWarning,
-  formatPinnedStatus,
   formatQuotaSleep,
   formatQuotaResume,
   formatQuotaExhausted,
 } from "../telegram/format.js"
-import { runQualityGates } from "../ci/quality-gates.js"
 import { StatsTracker } from "../stats.js"
-import { writeSessionLog } from "../session/session-log.js"
-import { extractPRUrl } from "../ci/ci-babysit.js"
-import { buildConversationDigest, buildChildSessionDigest } from "../conversation-digest.js"
 import { truncateConversation } from "../conversation-limits.js"
 import { DEFAULT_CI_FIX_PROMPT } from "../config/prompts.js"
-import { StateBroadcaster, topicSessionToApi, dagToApi } from "../api-server.js"
+import type { StateBroadcaster } from "../api-server.js"
+import { topicSessionToApi, dagToApi } from "../api-server.js"
 import { loggers } from "../logger.js"
 import { SessionNotFoundError } from "../errors.js"
 import {
@@ -68,6 +55,20 @@ import { PinnedMessageManager } from "../telegram/pinned-message-manager.js"
 import { routeCommand } from "../commands/command-router.js"
 import { CommandHandler } from "../commands/command-handler.js"
 import { parseResetTime } from "../session/quota-detection.js"
+import type { EventBus } from "../events/event-bus.js"
+import { CompletionHandlerChain } from "../handlers/completion-handler-chain.js"
+import { StatsHandler } from "../handlers/stats-handler.js"
+import { QuotaHandler } from "../handlers/quota-handler.js"
+import { ShipAdvanceHandler } from "../handlers/ship-advance-handler.js"
+import { ModeCompletionHandler } from "../handlers/mode-completion-handler.js"
+import { TaskCompletionHandler } from "../handlers/task-completion-handler.js"
+import { QualityGateHandler } from "../handlers/quality-gate-handler.js"
+import { CIBabysitHandler } from "../handlers/ci-babysit-handler.js"
+import { DigestHandler } from "../handlers/digest-handler.js"
+import { ParentNotifyHandler } from "../handlers/parent-notify-handler.js"
+import { PendingFeedbackHandler } from "../handlers/pending-feedback-handler.js"
+import { extractPRUrl } from "../ci/ci-babysit.js"
+import { writeSessionLog } from "../session/session-log.js"
 
 const log = loggers.dispatcher
 
@@ -103,38 +104,32 @@ export class Dispatcher {
   private readonly judgeOrchestrator: JudgeOrchestrator
   private readonly commandHandler: CommandHandler
   private readonly pinnedMessages: PinnedMessageManager
+  private readonly eventBus: EventBus
+  private readonly completionChain: CompletionHandlerChain
 
   constructor(
     private readonly telegram: TelegramClient,
     private readonly observer: Observer,
     private readonly config: MinionConfig,
+    eventBus: EventBus,
     broadcaster?: StateBroadcaster,
     private readonly tokenProvider?: GitHubTokenProvider,
   ) {
     this.broadcaster = broadcaster
+    this.eventBus = eventBus
     this.store = new SessionStore(this.config.workspace.root)
     this.dagStore = new DagStore(this.config.workspace.root)
     this.profileStore = new ProfileStore(this.config.workspace.root)
     this.stats = new StatsTracker(this.config.workspace.root)
-
-    const ctx = this.buildContext()
-    this.ciBabysitter = new CIBabysitter(ctx)
-    this.landingManager = new LandingManager(ctx)
-    this.dagOrchestrator = new DagOrchestrator(ctx)
-    this.shipPipeline = new ShipPipeline(ctx)
-    this.splitOrchestrator = new SplitOrchestrator(ctx)
-    this.judgeOrchestrator = new JudgeOrchestrator(ctx)
-    this.commandHandler = new CommandHandler(ctx)
     this.pinnedMessages = new PinnedMessageManager({
       telegram: this.telegram,
       topicSessions: this.topicSessions,
       workspaceRoot: this.config.workspace.root,
       chatId: this.config.telegram.chatId,
     })
-  }
 
-  private buildContext(): DispatcherContext {
-    return {
+    // Build context for extracted orchestrator modules
+    const ctx: DispatcherContext = {
       config: this.config,
       telegram: this.telegram,
       observer: this.observer,
@@ -175,11 +170,8 @@ export class Dispatcher {
       startDag: (ts, items, isStack) => this.dagOrchestrator.startDag(ts, items, isStack),
       shipAdvanceToVerification: (ts, g) => this.shipPipeline.shipAdvanceToVerification(ts, g),
       handleLandCommand: (ts) => this.landingManager.handleLandCommand(ts),
-      handleShipAdvance: (ts) => this.shipPipeline.handleShipAdvance(ts),
       shipAdvanceToDag: (ts) => this.shipPipeline.shipAdvanceToDag(ts),
       handleExecuteCommand: (ts, d) => this.commandHandler.handleExecuteCommand(ts, d),
-      notifyParentOfChildComplete: (cs, s) => this.notifyParentOfChildComplete(cs, s),
-      postSessionDigest: (ts, pr) => { this.postSessionDigest(ts, pr).catch(() => {}) },
       runDeferredBabysit: (id) => this.ciBabysitter.runDeferredBabysit(id),
       babysitPR: (ts, pr, qr) => this.ciBabysitter.babysitPR(ts, pr, qr),
       babysitDagChildCI: (cs, pr) => this.ciBabysitter.babysitDagChildCI(cs, pr),
@@ -188,6 +180,77 @@ export class Dispatcher {
       spawnSplitChild: (p, item, all) => this.spawnSplitChild(p, item, all),
       spawnDagChild: (p, g, n, s) => this.dagOrchestrator.spawnDagChild(p, g, n, s),
     }
+
+    this.ciBabysitter = new CIBabysitter(ctx)
+    this.landingManager = new LandingManager(ctx)
+    this.dagOrchestrator = new DagOrchestrator(ctx)
+    this.shipPipeline = new ShipPipeline(ctx)
+    this.splitOrchestrator = new SplitOrchestrator(ctx)
+    this.judgeOrchestrator = new JudgeOrchestrator(ctx)
+    this.commandHandler = new CommandHandler(ctx)
+
+    // Wire completion handler chain
+    this.completionChain = new CompletionHandlerChain(
+      { get: (id) => this.topicSessions.get(id) },
+      { delete: (id) => this.sessions.delete(id) },
+      { broadcastSession: (s, e, st) => this.broadcastSession(s, e, st) },
+      { updatePinnedSummary: () => this.pinnedMessages.updatePinnedSummary() },
+      { persistTopicSessions: () => this.persistTopicSessions() },
+      { getQueue: (id) => {
+        const q = this.replyQueues.get(id)
+        return q ? { clearDelivered: () => q.clearDelivered().then(() => {}) } : undefined
+      }},
+    )
+
+    const qualityGateHandler = new QualityGateHandler(
+      this.telegram,
+      { pushToConversation: (s, m) => this.pushToConversation(s, m) },
+    )
+    const digestHandler = new DigestHandler(
+      { get: (id) => this.topicSessions.get(id) },
+      this.profileStore,
+      this.pinnedMessages,
+    )
+    const ciBabysitHandler = new CIBabysitHandler(
+      this.config.ci,
+      this.ciBabysitter,
+    )
+
+    this.completionChain
+      .register(new StatsHandler(this.stats))
+      .register(new QuotaHandler(
+        this.observer,
+        this.quotaEvents,
+        { handleQuotaSleep: (ts, msg) => this.handleQuotaSleep(ts, msg) },
+      ))
+      .register(new ShipAdvanceHandler(
+        this.telegram,
+        this.observer,
+        this.shipPipeline,
+        this.pinnedMessages,
+        { cleanBuildArtifacts: (cwd) => this.cleanBuildArtifacts(cwd) },
+        { persistTopicSessions: () => this.persistTopicSessions() },
+      ))
+      .register(new ModeCompletionHandler(
+        this.telegram,
+        this.observer,
+        this.pinnedMessages,
+      ))
+      .register(new TaskCompletionHandler(
+        this.telegram,
+        this.observer,
+        this.pinnedMessages,
+        { cleanBuildArtifacts: (cwd) => this.cleanBuildArtifacts(cwd) },
+        [qualityGateHandler, digestHandler, ciBabysitHandler],
+      ))
+      .register(new ParentNotifyHandler(
+        { notifyParentOfChildComplete: (cs, s) => this.notifyParentOfChildComplete(cs, s) },
+      ))
+      .register(new PendingFeedbackHandler(
+        { handleTopicFeedback: (ts, fb) => this.handleTopicFeedback(ts, fb) },
+      ))
+
+    this.completionChain.subscribe(this.eventBus)
   }
 
   // ── Conversation & broadcast helpers ──────────────────────────────────
@@ -934,7 +997,7 @@ export class Dispatcher {
         handle.interrupt()
       }
     }
-    const onDone = (m: SessionMeta, state: SessionDoneState) => this.handleSessionComplete(topicSession, m, state, sessionId)
+    const onDone = (m: SessionMeta, state: SessionDoneState) => this.handleSessionComplete(topicSession, m, state)
 
     const handle: SessionPort = useSDK
       ? new SDKSessionHandle(
@@ -968,192 +1031,15 @@ export class Dispatcher {
     handle.start(task, systemPrompt)
   }
 
-  private handleSessionComplete(topicSession: TopicSession, m: SessionMeta, state: SessionDoneState, sessionId: string): void {
-    if (topicSession.activeSessionId !== m.sessionId) return
-
-    const durationMs = Date.now() - m.startedAt
-    this.sessions.delete(topicSession.threadId)
-    topicSession.activeSessionId = undefined
-    topicSession.lastActivityAt = Date.now()
-    this.broadcastSession(topicSession, "session_updated", state)
-    this.pinnedMessages.updatePinnedSummary()
-
-    this.stats.record({
-      slug: topicSession.slug,
-      repo: topicSession.repo,
-      mode: topicSession.mode,
-      state: state === "quota_exhausted" ? "errored" : state,
-      durationMs,
-      totalTokens: m.totalTokens ?? 0,
+  private handleSessionComplete(topicSession: TopicSession, m: SessionMeta, state: SessionDoneState): void {
+    this.eventBus.emit<"session.completed">({
+      type: "session.completed",
       timestamp: Date.now(),
-    }).catch(() => {})
-
-    // Quota exhaustion — sleep and retry
-    const quotaEvent = this.quotaEvents.get(topicSession.threadId)
-    if (quotaEvent && state === "quota_exhausted") {
-      this.quotaEvents.delete(topicSession.threadId)
-      this.observer.onSessionComplete(m, "errored", durationMs).catch(() => {})
-      writeSessionLog(topicSession, m, "errored", durationMs)
-      this.handleQuotaSleep(topicSession, quotaEvent.rawMessage)
-      return
-    }
-    this.quotaEvents.delete(topicSession.threadId)
-    if (state === "quota_exhausted") return
-
-    // Ship auto-advance
-    if (topicSession.autoAdvance && (topicSession.mode === "ship-think" || topicSession.mode === "ship-plan" || topicSession.mode === "ship-verify")) {
-      if (state === "completed") {
-        this.observer.flushAndComplete(m, state, durationMs).then(() => {
-          writeSessionLog(topicSession, m, state, durationMs)
-          this.shipPipeline.handleShipAdvance(topicSession).catch((err) => {
-            loggers.ship.error({ err, slug: topicSession.slug }, "ship advance error")
-            this.telegram.sendMessage(
-              `❌ Ship pipeline error during ${topicSession.autoAdvance!.phase} phase: ${err instanceof Error ? err.message : String(err)}`,
-              topicSession.threadId,
-            ).catch(() => {})
-          })
-        }).catch((err) => {
-          loggers.ship.error({ err }, "flushAndComplete error in ship phase")
-        })
-      } else {
-        // Keep phase unchanged so the user can retry — don't set to "done"
-        this.pinnedMessages.updateTopicTitle(topicSession, "⚠️").catch(() => {})
-        this.observer.onSessionComplete(m, state, durationMs).catch(() => {})
-        const phase = topicSession.autoAdvance.phase
-        this.telegram.sendMessage(
-          `⚠️ Ship pipeline paused: ${topicSession.mode} phase errored during <b>${phase}</b>.\n\nRecovery options:\n• /retry — re-run the current phase\n• /dag — retry DAG extraction\n• /execute — run as a single task\n• /split — split into parallel sub-tasks\n• /close — abandon this ship`,
-          topicSession.threadId,
-        ).catch(() => {})
-        writeSessionLog(topicSession, m, state, durationMs)
-      }
-      this.persistTopicSessions().catch(() => {})
-      this.cleanBuildArtifacts(topicSession.cwd)
-      return
-    }
-
-    if (topicSession.mode === "think") {
-      this.pinnedMessages.updateTopicTitle(topicSession, "💬").catch(() => {})
-      this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
-        loggers.observer.error({ err, sessionId }, "onSessionComplete error")
-      })
-      this.telegram.sendMessage(
-        formatThinkComplete(topicSession.slug),
-        topicSession.threadId,
-      ).catch(() => {})
-      writeSessionLog(topicSession, m, state, durationMs)
-    } else if (topicSession.mode === "review") {
-      this.pinnedMessages.updateTopicTitle(topicSession, "💬").catch(() => {})
-      this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
-        loggers.observer.error({ err, sessionId }, "onSessionComplete error")
-      })
-      this.telegram.sendMessage(
-        formatReviewComplete(topicSession.slug),
-        topicSession.threadId,
-      ).catch(() => {})
-      writeSessionLog(topicSession, m, state, durationMs)
-    } else if (topicSession.mode === "plan") {
-      this.pinnedMessages.updateTopicTitle(topicSession, "💬").catch(() => {})
-      this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
-        loggers.observer.error({ err, sessionId }, "onSessionComplete error")
-      })
-      this.telegram.sendMessage(
-        formatPlanComplete(topicSession.slug),
-        topicSession.threadId,
-      ).catch(() => {})
-      writeSessionLog(topicSession, m, state, durationMs)
-    } else if (state === "errored") {
-      topicSession.lastState = "errored"
-      this.pinnedMessages.updateTopicTitle(topicSession, "❌").catch(() => {})
-      this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
-        loggers.observer.error({ err, sessionId }, "onSessionComplete error")
-      })
-      writeSessionLog(topicSession, m, state, durationMs)
-    } else {
-      topicSession.lastState = "completed"
-      this.pinnedMessages.updateTopicTitle(topicSession, "✅").catch(() => {})
-      this.observer.flushAndComplete(m, state, durationMs).then(async () => {
-        await this.telegram.sendMessage(
-          formatTaskComplete(topicSession.slug, durationMs, m.totalTokens),
-          topicSession.threadId,
-        )
-
-        let qualityReport
-        try {
-          qualityReport = runQualityGates(topicSession.cwd)
-          if (qualityReport.results.length > 0) {
-            await this.telegram.sendMessage(
-              formatQualityReport(qualityReport.results),
-              topicSession.threadId,
-            )
-          }
-          if (qualityReport && !qualityReport.allPassed) {
-            this.pushToConversation(topicSession, {
-              role: "user",
-              text: formatQualityReportForContext(qualityReport.results),
-            })
-          }
-        } catch (err) {
-          log.error({ err, sessionId }, "quality gates error")
-          captureException(err, { operation: "qualityGates" })
-        }
-
-        writeSessionLog(topicSession, m, state, durationMs, qualityReport)
-
-        if (topicSession.mode === "task") {
-          const prUrl = this.extractPRFromConversation(topicSession)
-          if (prUrl) {
-            topicSession.prUrl = prUrl
-            await this.postSessionDigest(topicSession, prUrl)
-            await this.pinnedMessages.pinThreadMessage(
-              topicSession,
-              formatPinnedStatus(topicSession.slug, topicSession.repo, "completed", prUrl),
-            )
-            if (this.config.ci.babysitEnabled) {
-              if (topicSession.dagId) {
-                // DAG children: CI is handled inline in onDagChildComplete
-              } else if (topicSession.parentThreadId) {
-                this.ciBabysitter.queueDeferredBabysit(topicSession.parentThreadId, { childSession: topicSession, prUrl, qualityReport })
-              } else {
-                this.ciBabysitter.babysitPR(topicSession, prUrl, qualityReport).catch((err) => {
-                  log.error({ err, prUrl }, "babysitPR error")
-                  captureException(err, { operation: "babysitPR", prUrl })
-                })
-              }
-            }
-          } else {
-            await this.pinnedMessages.pinThreadMessage(
-              topicSession,
-              formatPinnedStatus(topicSession.slug, topicSession.repo, "completed"),
-            )
-          }
-        }
-      }).catch((err) => {
-        loggers.observer.error({ err, sessionId }, "flushAndComplete error")
-      }).finally(() => {
-        this.cleanBuildArtifacts(topicSession.cwd)
-      })
-    }
-
-    this.persistTopicSessions().catch(() => {})
-
-    const queue = this.replyQueues.get(topicSession.threadId)
-    if (queue) {
-      queue.clearDelivered().catch((err) => {
-        log.warn({ err, slug: topicSession.slug }, "failed to clear delivered replies")
-      })
-    }
-
-    this.notifyParentOfChildComplete(topicSession, state).catch((err) => {
-      log.warn({ err, slug: topicSession.slug }, "parent notify error")
+      meta: m,
+      state,
+    }).catch((err) => {
+      log.error({ err, sessionId: m.sessionId }, "session.completed event dispatch error")
     })
-
-    if (topicSession.pendingFeedback.length > 0) {
-      const feedback = topicSession.pendingFeedback.join("\n\n")
-      topicSession.pendingFeedback = []
-      this.handleTopicFeedback(topicSession, feedback).catch((err) => {
-        log.error({ err }, "queued feedback error")
-      })
-    }
   }
 
   private handleQuotaSleep(topicSession: TopicSession, rawMessage: string): void {
@@ -1486,37 +1372,6 @@ export class Dispatcher {
       }
     }
     return null
-  }
-
-  private async postSessionDigest(topicSession: TopicSession, prUrl: string): Promise<void> {
-    const summaryPath = path.join(topicSession.cwd, ".session-summary.md")
-    if (fs.existsSync(summaryPath)) return
-
-    let digest: string | null
-    if (topicSession.parentThreadId) {
-      const parentSession = this.topicSessions.get(topicSession.parentThreadId)
-      const profile = topicSession.profileId
-        ? this.profileStore.get(topicSession.profileId)
-        : undefined
-      digest = await buildChildSessionDigest({
-        childConversation: topicSession.conversation,
-        parentConversation: parentSession?.conversation,
-        profile,
-      })
-    } else {
-      digest = buildConversationDigest(topicSession.conversation)
-    }
-    if (!digest) return
-
-    try {
-      execSync(`gh pr comment "${prUrl}" --body-file -`, {
-        input: digest,
-        cwd: topicSession.cwd,
-        stdio: ["pipe", "pipe", "pipe"],
-      })
-    } catch (err) {
-      log.error({ err }, "failed to post session digest")
-    }
   }
 
   // ── Child session management ──────────────────────────────────────────
