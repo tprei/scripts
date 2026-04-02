@@ -115,7 +115,7 @@ export class SplitOrchestrator {
       topicSession.threadId,
     )
 
-    await this.ctx.updateTopicTitle(topicSession, "🔀")
+    await this.ctx.notifications.updateTopicTitle(topicSession, "🔀")
     await this.ctx.persistTopicSessions()
   }
 
@@ -190,7 +190,7 @@ export class SplitOrchestrator {
       parent.threadId,
     )
 
-    await this.ctx.updatePinnedSplitStatus(parent)
+    await this.ctx.notifications.updatePinnedSplitStatus(parent)
 
     if (parent.pendingSplitItems && parent.pendingSplitItems.length > 0) {
       const nextItem = parent.pendingSplitItems.shift()!
@@ -223,7 +223,7 @@ export class SplitOrchestrator {
         formatSplitAllDone(succeeded, parent.childThreadIds.length),
         parent.threadId,
       )
-      await this.ctx.updateTopicTitle(parent, succeeded === parent.childThreadIds.length ? "✅" : "⚠️")
+      await this.ctx.notifications.updateTopicTitle(parent, succeeded === parent.childThreadIds.length ? "✅" : "⚠️")
 
       await this.ctx.runDeferredBabysit(parent.threadId)
     }

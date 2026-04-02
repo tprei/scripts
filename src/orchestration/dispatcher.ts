@@ -40,7 +40,8 @@ import { extractPRUrl } from "../ci/ci-babysit.js"
 import { buildConversationDigest, buildChildSessionDigest } from "../conversation-digest.js"
 import { truncateConversation } from "../conversation-limits.js"
 import { DEFAULT_CI_FIX_PROMPT } from "../config/prompts.js"
-import { StateBroadcaster, topicSessionToApi, dagToApi } from "../api-server.js"
+import { StateBroadcaster } from "../api-server.js"
+import { createNotificationService, type NotificationService } from "../application/notification-service.js"
 import { loggers } from "../logger.js"
 import { SessionNotFoundError } from "../errors.js"
 import {
@@ -102,6 +103,7 @@ export class Dispatcher {
   private readonly judgeOrchestrator: JudgeOrchestrator
   private readonly commandHandler: CommandHandler
   private readonly pinnedMessages: PinnedMessageManager
+  private readonly notifications: NotificationService
 
   constructor(
     private readonly telegram: TelegramClient,
@@ -130,6 +132,13 @@ export class Dispatcher {
       workspaceRoot: this.config.workspace.root,
       chatId: this.config.telegram.chatId,
     })
+    this.notifications = createNotificationService({
+      chatId: this.config.telegram.chatId,
+      topicSessions: this.topicSessions,
+      sessions: this.sessions,
+      pinnedMessages: this.pinnedMessages,
+      broadcaster: this.broadcaster,
+    })
   }
 
   private buildContext(): DispatcherContext {
@@ -139,7 +148,7 @@ export class Dispatcher {
       observer: this.observer,
       stats: this.stats,
       profileStore: this.profileStore,
-      broadcaster: this.broadcaster,
+      notifications: this.notifications,
       sessions: this.sessions,
       topicSessions: this.topicSessions,
       dags: this.dags,
@@ -157,15 +166,6 @@ export class Dispatcher {
       extractPRFromConversation: (ts) => this.extractPRFromConversation(ts),
       persistTopicSessions: (mark) => this.persistTopicSessions(mark),
       persistDags: () => this.persistDags(),
-      updatePinnedSummary: () => this.pinnedMessages.updatePinnedSummary(),
-      updateTopicTitle: (ts, emoji) => this.pinnedMessages.updateTopicTitle(ts, emoji),
-      pinThreadMessage: (s, html) => this.pinnedMessages.pinThreadMessage(s, html),
-      updatePinnedSplitStatus: (p) => this.pinnedMessages.updatePinnedSplitStatus(p),
-      updatePinnedDagStatus: (p, g) => this.pinnedMessages.updatePinnedDagStatus(p, g),
-      broadcastSession: (s, e, st) => this.broadcastSession(s, e, st),
-      broadcastSessionDeleted: (slug) => this.broadcastSessionDeleted(slug),
-      broadcastDag: (g, e) => this.broadcastDag(g, e),
-      broadcastDagDeleted: (id) => this.broadcastDagDeleted(id),
       closeChildSessions: (p) => this.closeChildSessions(p),
       closeSingleChild: (c) => this.closeSingleChild(c),
       startWithProfileSelection: (repo, task, mode, threadId, photos, autoAdv) =>
@@ -202,27 +202,6 @@ export class Dispatcher {
     }
   }
 
-  private broadcastSession(session: TopicSession, eventType: "session_created" | "session_updated", sessionState?: SessionDoneState): void {
-    if (!this.broadcaster) return
-    const apiSession = topicSessionToApi(session, this.config.telegram.chatId, session.activeSessionId, sessionState)
-    this.broadcaster.broadcast({ type: eventType, session: apiSession })
-  }
-
-  private broadcastSessionDeleted(slug: string): void {
-    if (!this.broadcaster) return
-    this.broadcaster.broadcast({ type: "session_deleted", sessionId: slug })
-  }
-
-  private broadcastDag(graph: DagGraph, eventType: "dag_created" | "dag_updated"): void {
-    if (!this.broadcaster) return
-    const apiDag = dagToApi(graph, this.topicSessions, this.sessions, this.config.telegram.chatId)
-    this.broadcaster.broadcast({ type: eventType, dag: apiDag })
-  }
-
-  private broadcastDagDeleted(dagId: string): void {
-    if (!this.broadcaster) return
-    this.broadcaster.broadcast({ type: "dag_deleted", dagId })
-  }
 
   // ── Session persistence & lifecycle ───────────────────────────────────
 
@@ -283,7 +262,7 @@ export class Dispatcher {
       await this.reconcileDags()
     }
 
-    this.pinnedMessages.updatePinnedSummary()
+    this.notifications.updatePinnedSummary()
   }
 
   private async recoverUndeliveredReplies(topicSession: TopicSession): Promise<void> {
@@ -338,10 +317,10 @@ export class Dispatcher {
           ).catch((err) => {
             log.warn({ err, dagId }, "failed to send DAG recovery notification")
           })
-          this.pinnedMessages.updatePinnedDagStatus(parent, graph).catch(() => {})
+          this.notifications.updatePinnedDagStatus(parent, graph).catch(() => {})
         }
 
-        this.broadcastDag(graph, "dag_updated")
+        this.notifications.broadcastDag(graph, "dag_updated")
       }
     }
 
@@ -448,7 +427,7 @@ export class Dispatcher {
     for (const [threadId, session] of stale) {
       if (session.dagId) {
         this.dags.delete(session.dagId)
-        this.broadcastDagDeleted(session.dagId)
+        this.notifications.broadcastDagDeleted(session.dagId)
       }
       await this.closeChildSessions(session)
       await this.telegram.deleteForumTopic(threadId)
@@ -458,7 +437,7 @@ export class Dispatcher {
     }
 
     await this.persistTopicSessions()
-    this.pinnedMessages.updatePinnedSummary()
+    this.notifications.updatePinnedSummary()
   }
 
   private async persistTopicSessions(markInterrupted = false): Promise<void> {
@@ -859,8 +838,8 @@ export class Dispatcher {
     }
 
     this.topicSessions.set(threadId, topicSession)
-    this.broadcastSession(topicSession, "session_created")
-    this.pinnedMessages.updatePinnedSummary()
+    this.notifications.broadcastSession(topicSession, "session_created")
+    this.notifications.updatePinnedSummary()
 
     await this.spawnTopicAgent(topicSession, fullTask)
   }
@@ -885,7 +864,7 @@ export class Dispatcher {
 
     const sessionId = crypto.randomUUID()
     topicSession.activeSessionId = sessionId
-    this.broadcastSession(topicSession, "session_updated")
+    this.notifications.broadcastSession(topicSession, "session_updated")
 
     const meta: SessionMeta = {
       sessionId,
@@ -953,8 +932,8 @@ export class Dispatcher {
 
     this.sessions.set(topicSession.threadId, { handle, meta, task })
 
-    await this.pinnedMessages.updateTopicTitle(topicSession, "⚡")
-    this.pinnedMessages.updatePinnedSummary()
+    await this.notifications.updateTopicTitle(topicSession, "⚡")
+    this.notifications.updatePinnedSummary()
     const onDeadThread = () => {
       log.warn({ threadId: meta.threadId, slug: topicSession.slug }, "thread not found, removing session from store")
       this.topicSessions.delete(meta.threadId)
@@ -972,8 +951,8 @@ export class Dispatcher {
     this.sessions.delete(topicSession.threadId)
     topicSession.activeSessionId = undefined
     topicSession.lastActivityAt = Date.now()
-    this.broadcastSession(topicSession, "session_updated", state)
-    this.pinnedMessages.updatePinnedSummary()
+    this.notifications.broadcastSession(topicSession, "session_updated", state)
+    this.notifications.updatePinnedSummary()
 
     this.stats.record({
       slug: topicSession.slug,
@@ -1014,7 +993,7 @@ export class Dispatcher {
         })
       } else {
         // Keep phase unchanged so the user can retry — don't set to "done"
-        this.pinnedMessages.updateTopicTitle(topicSession, "⚠️").catch(() => {})
+        this.notifications.updateTopicTitle(topicSession, "⚠️").catch(() => {})
         this.observer.onSessionComplete(m, state, durationMs).catch(() => {})
         const phase = topicSession.autoAdvance.phase
         this.telegram.sendMessage(
@@ -1029,7 +1008,7 @@ export class Dispatcher {
     }
 
     if (topicSession.mode === "think") {
-      this.pinnedMessages.updateTopicTitle(topicSession, "💬").catch(() => {})
+      this.notifications.updateTopicTitle(topicSession, "💬").catch(() => {})
       this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
         loggers.observer.error({ err, sessionId }, "onSessionComplete error")
       })
@@ -1039,7 +1018,7 @@ export class Dispatcher {
       ).catch(() => {})
       writeSessionLog(topicSession, m, state, durationMs)
     } else if (topicSession.mode === "review") {
-      this.pinnedMessages.updateTopicTitle(topicSession, "💬").catch(() => {})
+      this.notifications.updateTopicTitle(topicSession, "💬").catch(() => {})
       this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
         loggers.observer.error({ err, sessionId }, "onSessionComplete error")
       })
@@ -1049,7 +1028,7 @@ export class Dispatcher {
       ).catch(() => {})
       writeSessionLog(topicSession, m, state, durationMs)
     } else if (topicSession.mode === "plan") {
-      this.pinnedMessages.updateTopicTitle(topicSession, "💬").catch(() => {})
+      this.notifications.updateTopicTitle(topicSession, "💬").catch(() => {})
       this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
         loggers.observer.error({ err, sessionId }, "onSessionComplete error")
       })
@@ -1060,14 +1039,14 @@ export class Dispatcher {
       writeSessionLog(topicSession, m, state, durationMs)
     } else if (state === "errored") {
       topicSession.lastState = "errored"
-      this.pinnedMessages.updateTopicTitle(topicSession, "❌").catch(() => {})
+      this.notifications.updateTopicTitle(topicSession, "❌").catch(() => {})
       this.observer.onSessionComplete(m, state, durationMs).catch((err) => {
         loggers.observer.error({ err, sessionId }, "onSessionComplete error")
       })
       writeSessionLog(topicSession, m, state, durationMs)
     } else {
       topicSession.lastState = "completed"
-      this.pinnedMessages.updateTopicTitle(topicSession, "✅").catch(() => {})
+      this.notifications.updateTopicTitle(topicSession, "✅").catch(() => {})
       this.observer.flushAndComplete(m, state, durationMs).then(async () => {
         await this.telegram.sendMessage(
           formatTaskComplete(topicSession.slug, durationMs, m.totalTokens),
@@ -1101,7 +1080,7 @@ export class Dispatcher {
           if (prUrl) {
             topicSession.prUrl = prUrl
             await this.postSessionDigest(topicSession, prUrl)
-            await this.pinnedMessages.pinThreadMessage(
+            await this.notifications.pinThreadMessage(
               topicSession,
               formatPinnedStatus(topicSession.slug, topicSession.repo, "completed", prUrl),
             )
@@ -1118,7 +1097,7 @@ export class Dispatcher {
               }
             }
           } else {
-            await this.pinnedMessages.pinThreadMessage(
+            await this.notifications.pinThreadMessage(
               topicSession,
               formatPinnedStatus(topicSession.slug, topicSession.repo, "completed"),
             )
@@ -1159,7 +1138,7 @@ export class Dispatcher {
     if (retryCount > retryMax) {
       topicSession.lastState = "quota_exhausted"
       topicSession.quotaRetryCount = retryCount
-      this.pinnedMessages.updateTopicTitle(topicSession, "💤").catch(() => {})
+      this.notifications.updateTopicTitle(topicSession, "💤").catch(() => {})
       this.telegram.sendMessage(
         formatQuotaExhausted(topicSession.slug, retryMax),
         topicSession.threadId,
@@ -1179,7 +1158,7 @@ export class Dispatcher {
       "quota exhausted, scheduling sleep",
     )
 
-    this.pinnedMessages.updateTopicTitle(topicSession, "💤").catch(() => {})
+    this.notifications.updateTopicTitle(topicSession, "💤").catch(() => {})
     this.telegram.sendMessage(
       formatQuotaSleep(topicSession.slug, sleepMs, retryCount, retryMax),
       topicSession.threadId,
@@ -1464,7 +1443,7 @@ export class Dispatcher {
     }
 
     this.topicSessions.set(threadId, childSession)
-    this.broadcastSession(childSession, "session_created")
+    this.notifications.broadcastSession(childSession, "session_created")
 
     await this.spawnTopicAgent(childSession, task, { browserEnabled: false })
     return threadId
@@ -1557,7 +1536,7 @@ export class Dispatcher {
       if (childActive) await childActive.handle.kill().catch(() => {})
     }
     this.topicSessions.delete(childId)
-    this.broadcastSessionDeleted(child.slug)
+    this.notifications.broadcastSessionDeleted(child.slug)
     await this.telegram.deleteForumTopic(childId).catch(() => {})
     await this.removeWorkspace(child).catch(() => {})
     log.info({ slug: child.slug, threadId: childId }, "closed child topic")
@@ -1571,14 +1550,14 @@ export class Dispatcher {
     await this.closeChildSessions(topicSession)
 
     if (topicSession.dagId) {
-      this.broadcastDagDeleted(topicSession.dagId)
+      this.notifications.broadcastDagDeleted(topicSession.dagId)
       this.dags.delete(topicSession.dagId)
     }
 
     this.topicSessions.delete(threadId)
-    this.broadcastSessionDeleted(topicSession.slug)
+    this.notifications.broadcastSessionDeleted(topicSession.slug)
     await this.persistTopicSessions()
-    this.pinnedMessages.updatePinnedSummary()
+    this.notifications.updatePinnedSummary()
     await this.telegram.deleteForumTopic(threadId)
     log.info({ slug: topicSession.slug, threadId }, "closed and deleted topic")
 
@@ -1732,8 +1711,8 @@ export class Dispatcher {
     await this.telegram.deleteForumTopic(threadId)
     await this.removeWorkspace(topicSession)
     this.topicSessions.delete(threadId)
-    this.broadcastSessionDeleted(topicSession.slug)
+    this.notifications.broadcastSessionDeleted(topicSession.slug)
     await this.persistTopicSessions()
-    this.pinnedMessages.updatePinnedSummary()
+    this.notifications.updatePinnedSummary()
   }
 }

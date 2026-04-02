@@ -66,7 +66,6 @@ function createMockContext(overrides: Partial<DispatcherContext> = {}): Dispatch
       setDefaultId: vi.fn(() => true),
       clearDefault: vi.fn(),
     } as any,
-    broadcaster: undefined,
     sessions,
     topicSessions,
     dags,
@@ -83,15 +82,17 @@ function createMockContext(overrides: Partial<DispatcherContext> = {}): Dispatch
     extractPRFromConversation: () => null,
     persistTopicSessions: vi.fn(async () => {}),
     persistDags: vi.fn(async () => {}),
-    updatePinnedSummary: vi.fn(),
-    updateTopicTitle: async () => {},
-    pinThreadMessage: async () => {},
-    updatePinnedSplitStatus: async () => {},
-    updatePinnedDagStatus: async () => {},
-    broadcastSession: () => {},
-    broadcastSessionDeleted: () => {},
-    broadcastDag: () => {},
-    broadcastDagDeleted: () => {},
+    notifications: {
+      broadcastSession: () => {},
+      broadcastSessionDeleted: () => {},
+      broadcastDag: () => {},
+      broadcastDagDeleted: () => {},
+      updatePinnedSummary: vi.fn(),
+      updateTopicTitle: async () => {},
+      pinThreadMessage: async () => {},
+      updatePinnedSplitStatus: async () => {},
+      updatePinnedDagStatus: async () => {},
+    },
     closeChildSessions: async () => {},
     closeSingleChild: async () => {},
     startDag: async () => {},
@@ -226,7 +227,7 @@ describe("ConfigManager", () => {
         expect.stringContaining("Nothing to clean"),
       )
       expect(ctx.persistTopicSessions).toHaveBeenCalled()
-      expect(ctx.updatePinnedSummary).toHaveBeenCalled()
+      expect(ctx.notifications.updatePinnedSummary).toHaveBeenCalled()
       fs.rmSync(root, { recursive: true, force: true })
     })
 

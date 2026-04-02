@@ -127,7 +127,7 @@ export class ShipPipeline {
         `⚠️ DAG extraction failed — <code>${result.errorMessage ?? "Unknown error"}</code>\n\nYou can retry with <code>/dag</code>, or fall back to <code>/execute</code> or <code>/split</code>.`,
         topicSession.threadId,
       )
-      await this.ctx.updateTopicTitle(topicSession, "⚠️")
+      await this.ctx.notifications.updateTopicTitle(topicSession, "⚠️")
       return
     }
 
@@ -325,7 +325,7 @@ export class ShipPipeline {
       )
     }
 
-    await this.ctx.updateTopicTitle(topicSession, failed === 0 ? "✅" : "⚠️")
+    await this.ctx.notifications.updateTopicTitle(topicSession, failed === 0 ? "✅" : "⚠️")
     await this.ctx.persistTopicSessions()
   }
 }

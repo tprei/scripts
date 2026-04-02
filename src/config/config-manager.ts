@@ -170,7 +170,7 @@ export class ConfigManager {
     }
 
     await this.ctx.persistTopicSessions()
-    this.ctx.updatePinnedSummary()
+    this.ctx.notifications.updatePinnedSummary()
 
     const totalItems = removedSessions + removedOrphans + removedRepos
     if (totalItems === 0) {

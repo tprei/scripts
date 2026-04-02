@@ -89,7 +89,6 @@ function makeContext(overrides: Partial<DispatcherContext> = {}): DispatcherCont
     profileStore: {
       get: vi.fn().mockReturnValue(undefined),
     } as any,
-    broadcaster: undefined,
     sessions: new Map(),
     topicSessions: new Map(),
     dags: new Map(),
@@ -106,15 +105,17 @@ function makeContext(overrides: Partial<DispatcherContext> = {}): DispatcherCont
     extractPRFromConversation: vi.fn().mockReturnValue(null),
     persistTopicSessions: vi.fn().mockResolvedValue(undefined),
     persistDags: vi.fn().mockResolvedValue(undefined),
-    updatePinnedSummary: vi.fn(),
-    updateTopicTitle: vi.fn().mockResolvedValue(undefined),
-    pinThreadMessage: vi.fn().mockResolvedValue(undefined),
-    updatePinnedSplitStatus: vi.fn().mockResolvedValue(undefined),
-    updatePinnedDagStatus: vi.fn().mockResolvedValue(undefined),
-    broadcastSession: vi.fn(),
-    broadcastSessionDeleted: vi.fn(),
-    broadcastDag: vi.fn(),
-    broadcastDagDeleted: vi.fn(),
+    notifications: {
+      broadcastSession: vi.fn(),
+      broadcastSessionDeleted: vi.fn(),
+      broadcastDag: vi.fn(),
+      broadcastDagDeleted: vi.fn(),
+      updatePinnedSummary: vi.fn(),
+      updateTopicTitle: vi.fn().mockResolvedValue(undefined),
+      pinThreadMessage: vi.fn().mockResolvedValue(undefined),
+      updatePinnedSplitStatus: vi.fn().mockResolvedValue(undefined),
+      updatePinnedDagStatus: vi.fn().mockResolvedValue(undefined),
+    },
     closeChildSessions: vi.fn().mockResolvedValue(undefined),
     closeSingleChild: vi.fn().mockResolvedValue(undefined),
     startDag: vi.fn().mockResolvedValue(undefined),
@@ -280,7 +281,7 @@ describe("ShipPipeline", () => {
       await pipeline.shipAdvanceToDag(session)
 
       expect(session.autoAdvance!.phase).toBe("plan")
-      expect(ctx.updateTopicTitle).toHaveBeenCalledWith(session, "⚠️")
+      expect(ctx.notifications.updateTopicTitle).toHaveBeenCalledWith(session, "⚠️")
       const msg = (ctx.telegram.sendMessage as ReturnType<typeof vi.fn>).mock.calls.find(
         (c: unknown[]) => typeof c[0] === "string" && c[0].includes("DAG extraction failed"),
       )
@@ -437,7 +438,7 @@ describe("ShipPipeline", () => {
         expect.stringContaining("Ship complete"),
         session.threadId,
       )
-      expect(ctx.updateTopicTitle).toHaveBeenCalledWith(session, "✅")
+      expect(ctx.notifications.updateTopicTitle).toHaveBeenCalledWith(session, "✅")
     })
 
     it("auto-lands when autoLand is true and all passed", async () => {
@@ -461,7 +462,7 @@ describe("ShipPipeline", () => {
       await pipeline.shipFinalize(session)
 
       expect(ctx.handleLandCommand).toHaveBeenCalledWith(session)
-      expect(ctx.updateTopicTitle).toHaveBeenCalledWith(session, "✅")
+      expect(ctx.notifications.updateTopicTitle).toHaveBeenCalledWith(session, "✅")
     })
 
     it("shows land hint when all passed but autoLand is false", async () => {
@@ -512,7 +513,7 @@ describe("ShipPipeline", () => {
 
       await pipeline.shipFinalize(session)
 
-      expect(ctx.updateTopicTitle).toHaveBeenCalledWith(session, "⚠️")
+      expect(ctx.notifications.updateTopicTitle).toHaveBeenCalledWith(session, "⚠️")
       expect(ctx.handleLandCommand).not.toHaveBeenCalled()
     })
 
@@ -524,7 +525,7 @@ describe("ShipPipeline", () => {
       await pipeline.shipFinalize(session)
 
       expect(session.autoAdvance!.phase).toBe("done")
-      expect(ctx.updateTopicTitle).toHaveBeenCalledWith(session, "✅")
+      expect(ctx.notifications.updateTopicTitle).toHaveBeenCalledWith(session, "✅")
     })
   })
 })

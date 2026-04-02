@@ -75,7 +75,7 @@ export class DagOrchestrator {
 
     this.ctx.dags.set(dagId, graph)
     await this.ctx.persistDags()
-    this.ctx.broadcastDag(graph, "dag_created")
+    this.ctx.notifications.broadcastDag(graph, "dag_created")
 
     const childSummaries = graph.nodes.map((n) => ({
       slug: n.id,
@@ -91,7 +91,7 @@ export class DagOrchestrator {
       renderDagStatus(graph, isStack),
       topicSession.threadId,
     )
-    await this.ctx.updateTopicTitle(topicSession, isStack ? "📚" : "🔗")
+    await this.ctx.notifications.updateTopicTitle(topicSession, isStack ? "📚" : "🔗")
 
     await this.scheduleDagNodes(topicSession, graph, isStack)
     await this.ctx.persistTopicSessions()
@@ -250,7 +250,7 @@ export class DagOrchestrator {
     }
 
     this.ctx.topicSessions.set(threadId, childSession)
-    this.ctx.broadcastSession(childSession, "session_created")
+    this.ctx.notifications.broadcastSession(childSession, "session_created")
 
     await this.ctx.telegram.sendMessage(
       formatDagNodeStarting(node.title, node.id, slug, threadId, this.ctx.config.telegram.chatId),
@@ -435,9 +435,9 @@ export class DagOrchestrator {
       }
     }
 
-    this.ctx.broadcastDag(graph, "dag_updated")
+    this.ctx.notifications.broadcastDag(graph, "dag_updated")
 
-    try { await this.ctx.updatePinnedDagStatus(parent, graph) } catch { /* non-critical */ }
+    try { await this.ctx.notifications.updatePinnedDagStatus(parent, graph) } catch { /* non-critical */ }
     try { await this.updateDagPRDescriptions(graph, childSession.cwd) } catch { /* non-critical */ }
 
     if (isDagComplete(graph)) {
@@ -454,7 +454,7 @@ export class DagOrchestrator {
         if (parent.autoAdvance?.phase === "dag") {
           if (totalFailed > 0) {
             parent.autoAdvance.phase = "done"
-            await this.ctx.updateTopicTitle(parent, "⚠️")
+            await this.ctx.notifications.updateTopicTitle(parent, "⚠️")
             await this.ctx.telegram.sendMessage(
               `🚢 Ship pipeline halted: ${totalFailed} DAG node(s) failed. Use <code>/retry</code> to fix failed nodes.`,
               parent.threadId,
@@ -463,13 +463,13 @@ export class DagOrchestrator {
             await this.ctx.shipAdvanceToVerification(parent, graph)
           }
         } else if (totalFailed > 0) {
-          await this.ctx.updateTopicTitle(parent, "⚠️")
+          await this.ctx.notifications.updateTopicTitle(parent, "⚠️")
           await this.ctx.telegram.sendMessage(
             `Send <code>/retry</code> to retry failed nodes, <code>/force node-id</code> to advance past CI failures, or <code>/close</code> to finish.`,
             parent.threadId,
           )
         } else {
-          await this.ctx.updateTopicTitle(parent, "✅")
+          await this.ctx.notifications.updateTopicTitle(parent, "✅")
           await this.ctx.closeChildSessions(parent)
         }
       } catch (err) {
@@ -641,8 +641,8 @@ export class DagOrchestrator {
       }
     }
 
-    this.ctx.broadcastDag(graph, "dag_updated")
-    await this.ctx.updatePinnedDagStatus(topicSession, graph)
+    this.ctx.notifications.broadcastDag(graph, "dag_updated")
+    await this.ctx.notifications.updatePinnedDagStatus(topicSession, graph)
     await this.updateDagPRDescriptions(graph, topicSession.cwd)
     await this.ctx.persistTopicSessions()
     await this.ctx.persistDags()

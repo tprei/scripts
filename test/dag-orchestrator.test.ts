@@ -51,7 +51,6 @@ function makeContext(overrides: Partial<DispatcherContext> = {}): DispatcherCont
     observer: {} as any,
     stats: {} as any,
     profileStore: {} as any,
-    broadcaster: undefined,
     sessions: new Map(),
     topicSessions: new Map(),
     dags: new Map(),
@@ -68,15 +67,17 @@ function makeContext(overrides: Partial<DispatcherContext> = {}): DispatcherCont
     extractPRFromConversation: vi.fn().mockReturnValue(null),
     persistTopicSessions: vi.fn().mockResolvedValue(undefined),
     persistDags: vi.fn().mockResolvedValue(undefined),
-    updatePinnedSummary: vi.fn(),
-    updateTopicTitle: vi.fn().mockResolvedValue(undefined),
-    pinThreadMessage: vi.fn().mockResolvedValue(undefined),
-    updatePinnedSplitStatus: vi.fn().mockResolvedValue(undefined),
-    updatePinnedDagStatus: vi.fn().mockResolvedValue(undefined),
-    broadcastSession: vi.fn(),
-    broadcastSessionDeleted: vi.fn(),
-    broadcastDag: vi.fn(),
-    broadcastDagDeleted: vi.fn(),
+    notifications: {
+      broadcastSession: vi.fn(),
+      broadcastSessionDeleted: vi.fn(),
+      broadcastDag: vi.fn(),
+      broadcastDagDeleted: vi.fn(),
+      updatePinnedSummary: vi.fn(),
+      updateTopicTitle: vi.fn().mockResolvedValue(undefined),
+      pinThreadMessage: vi.fn().mockResolvedValue(undefined),
+      updatePinnedSplitStatus: vi.fn().mockResolvedValue(undefined),
+      updatePinnedDagStatus: vi.fn().mockResolvedValue(undefined),
+    },
     closeChildSessions: vi.fn().mockResolvedValue(undefined),
     closeSingleChild: vi.fn().mockResolvedValue(undefined),
     startDag: vi.fn().mockResolvedValue(undefined),
@@ -120,7 +121,7 @@ describe("DagOrchestrator", () => {
       expect(ctx.closeChildSessions).toHaveBeenCalledWith(session)
       expect(session.dagId).toBe("dag-parent-slug")
       expect(ctx.dags.size).toBe(1)
-      expect(ctx.broadcastDag).toHaveBeenCalledWith(expect.any(Object), "dag_created")
+      expect(ctx.notifications.broadcastDag).toHaveBeenCalledWith(expect.any(Object), "dag_created")
       expect(ctx.telegram.sendMessage).toHaveBeenCalled()
       expect(ctx.persistTopicSessions).toHaveBeenCalled()
     })
@@ -147,7 +148,7 @@ describe("DagOrchestrator", () => {
 
       await orchestrator.startDag(session, items, true)
 
-      expect(ctx.updateTopicTitle).toHaveBeenCalledWith(session, "📚")
+      expect(ctx.notifications.updateTopicTitle).toHaveBeenCalledWith(session, "📚")
     })
 
     it("sets DAG emoji for non-stack mode", async () => {
@@ -158,7 +159,7 @@ describe("DagOrchestrator", () => {
 
       await orchestrator.startDag(session, items, false)
 
-      expect(ctx.updateTopicTitle).toHaveBeenCalledWith(session, "🔗")
+      expect(ctx.notifications.updateTopicTitle).toHaveBeenCalledWith(session, "🔗")
     })
   })
 
@@ -441,8 +442,8 @@ describe("DagOrchestrator", () => {
 
       expect(graph.nodes[0].status).toBe("done")
       expect(graph.nodes[0].prUrl).toBe("https://github.com/org/repo/pull/42")
-      expect(ctx.broadcastDag).toHaveBeenCalledWith(graph, "dag_updated")
-      expect(ctx.updatePinnedDagStatus).toHaveBeenCalled()
+      expect(ctx.notifications.broadcastDag).toHaveBeenCalledWith(graph, "dag_updated")
+      expect(ctx.notifications.updatePinnedDagStatus).toHaveBeenCalled()
     })
 
     it("attempts recovery when completed without PR", async () => {
@@ -550,7 +551,7 @@ describe("DagOrchestrator", () => {
 
       await orchestrator.onDagChildComplete(child, "completed")
 
-      expect(ctx.updateTopicTitle).toHaveBeenCalledWith(expect.any(Object), "✅")
+      expect(ctx.notifications.updateTopicTitle).toHaveBeenCalledWith(expect.any(Object), "✅")
       expect(ctx.closeChildSessions).toHaveBeenCalled()
     })
 
@@ -799,7 +800,7 @@ describe("DagOrchestrator", () => {
 
       expect(graph.nodes[0].status).toBe("done")
       expect(graph.nodes[0].error).toBeUndefined()
-      expect(ctx.broadcastDag).toHaveBeenCalledWith(graph, "dag_updated")
+      expect(ctx.notifications.broadcastDag).toHaveBeenCalledWith(graph, "dag_updated")
       expect(ctx.persistTopicSessions).toHaveBeenCalled()
     })
   })

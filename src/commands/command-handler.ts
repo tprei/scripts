@@ -249,7 +249,7 @@ export class CommandHandler {
     }
 
     await this.ctx.persistTopicSessions()
-    this.ctx.updatePinnedSummary()
+    this.ctx.notifications.updatePinnedSummary()
 
     const totalItems = removedSessions + removedOrphans + removedRepos
     if (totalItems === 0) {
@@ -542,14 +542,14 @@ export class CommandHandler {
     await this.ctx.closeChildSessions(topicSession)
 
     if (topicSession.dagId) {
-      this.ctx.broadcastDagDeleted(topicSession.dagId)
+      this.ctx.notifications.broadcastDagDeleted(topicSession.dagId)
       this.ctx.dags.delete(topicSession.dagId)
     }
 
     this.ctx.topicSessions.delete(threadId)
-    this.ctx.broadcastSessionDeleted(topicSession.slug)
+    this.ctx.notifications.broadcastSessionDeleted(topicSession.slug)
     await this.ctx.persistTopicSessions()
-    this.ctx.updatePinnedSummary()
+    this.ctx.notifications.updatePinnedSummary()
     await this.ctx.telegram.deleteForumTopic(threadId)
     log.info({ slug: topicSession.slug, threadId }, "/done — closed topic")
 

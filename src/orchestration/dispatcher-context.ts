@@ -13,7 +13,6 @@ import type { Observer } from "../telegram/observer.js"
 import type {
   TopicSession, TopicMessage,
   TelegramPhotoSize,
-  SessionDoneState,
 } from "../types.js"
 import type { MinionConfig, McpConfig } from "../config/config-types.js"
 import type { DagGraph, DagNode, DagInput } from "../dag/dag.js"
@@ -21,7 +20,7 @@ import type { QualityReport } from "../ci/quality-gates.js"
 import type { ActiveSession, MergeResult, PendingTask } from "../session/session-manager.js"
 import type { StatsTracker } from "../stats.js"
 import type { ProfileStore } from "../profile-store.js"
-import type { StateBroadcaster } from "../api-server.js"
+import type { NotificationService } from "../application/notification-service.js"
 
 export interface DispatcherContext {
   // ── Configuration ──────────────────────────────────────────────────
@@ -30,7 +29,7 @@ export interface DispatcherContext {
   readonly observer: Observer
   readonly stats: StatsTracker
   readonly profileStore: ProfileStore
-  readonly broadcaster?: StateBroadcaster
+  readonly notifications: NotificationService
 
   // ── Shared mutable state ───────────────────────────────────────────
   /** Active running sessions keyed by threadId. */
@@ -100,36 +99,6 @@ export interface DispatcherContext {
   /** Persist DAG graphs to disk. */
   persistDags(): Promise<void>
 
-  // ── UI updates ─────────────────────────────────────────────────────
-
-  /** Update the global pinned summary message. */
-  updatePinnedSummary(): void
-
-  /** Update a session's topic title with a state emoji. */
-  updateTopicTitle(topicSession: TopicSession, stateEmoji: string): Promise<void>
-
-  /** Pin or update a pinned message in a thread. */
-  pinThreadMessage(session: TopicSession, html: string): Promise<void>
-
-  /** Update the pinned split status in a parent thread. */
-  updatePinnedSplitStatus(parent: TopicSession): Promise<void>
-
-  /** Update the pinned DAG status in a parent thread. */
-  updatePinnedDagStatus(parent: TopicSession, graph: DagGraph): Promise<void>
-
-  // ── Broadcasting ───────────────────────────────────────────────────
-
-  /** Broadcast session state changes to the API server. */
-  broadcastSession(session: TopicSession, eventType: "session_created" | "session_updated", sessionState?: SessionDoneState): void
-
-  /** Broadcast session deletion to the API server. */
-  broadcastSessionDeleted(slug: string): void
-
-  /** Broadcast DAG state changes to the API server. */
-  broadcastDag(graph: DagGraph, eventType: "dag_created" | "dag_updated"): void
-
-  /** Broadcast DAG deletion to the API server. */
-  broadcastDagDeleted(dagId: string): void
 
   // ── Child session management ───────────────────────────────────────
 

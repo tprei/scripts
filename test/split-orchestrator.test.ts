@@ -54,7 +54,6 @@ function makeContext(overrides: Partial<DispatcherContext> = {}): DispatcherCont
     observer: {} as any,
     stats: {} as any,
     profileStore: { get: vi.fn().mockReturnValue(undefined) } as any,
-    broadcaster: undefined,
     sessions: new Map(),
     topicSessions: new Map(),
     dags: new Map(),
@@ -71,15 +70,17 @@ function makeContext(overrides: Partial<DispatcherContext> = {}): DispatcherCont
     extractPRFromConversation: vi.fn().mockReturnValue(null),
     persistTopicSessions: vi.fn().mockResolvedValue(undefined),
     persistDags: vi.fn().mockResolvedValue(undefined),
-    updatePinnedSummary: vi.fn(),
-    updateTopicTitle: vi.fn().mockResolvedValue(undefined),
-    pinThreadMessage: vi.fn().mockResolvedValue(undefined),
-    updatePinnedSplitStatus: vi.fn().mockResolvedValue(undefined),
-    updatePinnedDagStatus: vi.fn().mockResolvedValue(undefined),
-    broadcastSession: vi.fn(),
-    broadcastSessionDeleted: vi.fn(),
-    broadcastDag: vi.fn(),
-    broadcastDagDeleted: vi.fn(),
+    notifications: {
+      broadcastSession: vi.fn(),
+      broadcastSessionDeleted: vi.fn(),
+      broadcastDag: vi.fn(),
+      broadcastDagDeleted: vi.fn(),
+      updatePinnedSummary: vi.fn(),
+      updateTopicTitle: vi.fn().mockResolvedValue(undefined),
+      pinThreadMessage: vi.fn().mockResolvedValue(undefined),
+      updatePinnedSplitStatus: vi.fn().mockResolvedValue(undefined),
+      updatePinnedDagStatus: vi.fn().mockResolvedValue(undefined),
+    },
     closeChildSessions: vi.fn().mockResolvedValue(undefined),
     closeSingleChild: vi.fn().mockResolvedValue(undefined),
     startDag: vi.fn().mockResolvedValue(undefined),
@@ -177,7 +178,7 @@ describe("SplitOrchestrator", () => {
 
       expect(ctx.spawnSplitChild).toHaveBeenCalledTimes(2)
       expect(session.childThreadIds).toEqual([201, 202])
-      expect(ctx.updateTopicTitle).toHaveBeenCalledWith(session, "🔀")
+      expect(ctx.notifications.updateTopicTitle).toHaveBeenCalledWith(session, "🔀")
       expect(ctx.persistTopicSessions).toHaveBeenCalled()
     })
 
@@ -373,7 +374,7 @@ describe("SplitOrchestrator", () => {
       expect(ctx.telegram.sendMessage).toHaveBeenCalled()
       expect(child.conversation).toEqual([])
       expect(child.prUrl).toBe("https://github.com/org/repo/pull/42")
-      expect(ctx.updatePinnedSplitStatus).toHaveBeenCalledWith(parent)
+      expect(ctx.notifications.updatePinnedSplitStatus).toHaveBeenCalledWith(parent)
     })
 
     it("passes threadId and chatId to formatSplitChildComplete", async () => {
@@ -438,7 +439,7 @@ describe("SplitOrchestrator", () => {
       await orchestrator.notifyParentOfChildComplete(child1, "completed")
 
       expect(ctx.runDeferredBabysit).toHaveBeenCalledWith(1)
-      expect(ctx.updateTopicTitle).toHaveBeenCalledWith(parent, "⚠️")
+      expect(ctx.notifications.updateTopicTitle).toHaveBeenCalledWith(parent, "⚠️")
     })
 
     it("uses ✅ emoji when all children have PRs", async () => {
@@ -459,7 +460,7 @@ describe("SplitOrchestrator", () => {
 
       await orchestrator.notifyParentOfChildComplete(child1, "completed")
 
-      expect(ctx.updateTopicTitle).toHaveBeenCalledWith(parent, "✅")
+      expect(ctx.notifications.updateTopicTitle).toHaveBeenCalledWith(parent, "✅")
     })
 
     it("does not send all-done when pending items remain", async () => {

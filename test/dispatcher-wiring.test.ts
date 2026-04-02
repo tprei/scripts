@@ -282,7 +282,7 @@ describe("Dispatcher module wiring", () => {
         observer: { onSessionComplete: ReturnType<typeof vi.fn> }
         cleanBuildArtifacts: ReturnType<typeof vi.fn>
         stats: { record: ReturnType<typeof vi.fn> }
-        pinnedMessages: { updateTopicTitle: ReturnType<typeof vi.fn>; updatePinnedSummary: ReturnType<typeof vi.fn> }
+        notifications: { updateTopicTitle: ReturnType<typeof vi.fn>; updatePinnedSummary: ReturnType<typeof vi.fn> }
         persistTopicSessions: ReturnType<typeof vi.fn>
       }
 
@@ -290,8 +290,8 @@ describe("Dispatcher module wiring", () => {
       d.observer.onSessionComplete = vi.fn().mockResolvedValue(undefined)
       d.cleanBuildArtifacts = vi.fn()
       d.stats.record = vi.fn().mockResolvedValue(undefined)
-      d.pinnedMessages.updateTopicTitle = vi.fn().mockResolvedValue(undefined)
-      d.pinnedMessages.updatePinnedSummary = vi.fn()
+      d.notifications.updateTopicTitle = vi.fn().mockResolvedValue(undefined)
+      d.notifications.updatePinnedSummary = vi.fn()
       d.persistTopicSessions = vi.fn().mockResolvedValue(undefined)
 
       const session: TopicSession = {
@@ -328,7 +328,7 @@ describe("Dispatcher module wiring", () => {
       expect(session.autoAdvance!.phase).toBe("plan")
 
       // Should show warning emoji, not error
-      expect(d.pinnedMessages.updateTopicTitle).toHaveBeenCalledWith(session, "⚠️")
+      expect(d.notifications.updateTopicTitle).toHaveBeenCalledWith(session, "⚠️")
 
       // Should send recovery options
       expect(telegram.sendMessage).toHaveBeenCalledWith(
@@ -361,15 +361,15 @@ describe("Dispatcher module wiring", () => {
         observer: { onSessionComplete: ReturnType<typeof vi.fn> }
         cleanBuildArtifacts: ReturnType<typeof vi.fn>
         stats: { record: ReturnType<typeof vi.fn> }
-        pinnedMessages: { updateTopicTitle: ReturnType<typeof vi.fn>; updatePinnedSummary: ReturnType<typeof vi.fn> }
+        notifications: { updateTopicTitle: ReturnType<typeof vi.fn>; updatePinnedSummary: ReturnType<typeof vi.fn> }
         persistTopicSessions: ReturnType<typeof vi.fn>
       }
 
       d.observer.onSessionComplete = vi.fn().mockResolvedValue(undefined)
       d.cleanBuildArtifacts = vi.fn()
       d.stats.record = vi.fn().mockResolvedValue(undefined)
-      d.pinnedMessages.updateTopicTitle = vi.fn().mockResolvedValue(undefined)
-      d.pinnedMessages.updatePinnedSummary = vi.fn()
+      d.notifications.updateTopicTitle = vi.fn().mockResolvedValue(undefined)
+      d.notifications.updatePinnedSummary = vi.fn()
       d.persistTopicSessions = vi.fn().mockResolvedValue(undefined)
 
       const session: TopicSession = {
