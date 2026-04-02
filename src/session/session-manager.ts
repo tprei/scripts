@@ -364,6 +364,7 @@ function bootstrapOnePackage(
 ): void {
   const versionedKey = `${CACHE_VERSION}-${cacheKey}`
   const lockFile = path.join(pkgDir, "package-lock.json")
+  const nmDir = path.join(pkgDir, "node_modules")
   const cacheDir = path.join(reposDir, `${versionedKey}-node_modules`)
   const cacheLockHash = path.join(reposDir, `${versionedKey}-lock.hash`)
 
@@ -375,15 +376,28 @@ function bootstrapOnePackage(
     ? fs.readFileSync(cacheLockHash, "utf8").trim()
     : null
 
+  if (fs.existsSync(nmDir)) {
+    if (currentHash && cachedHash === currentHash) {
+      log.debug({ label }, "node_modules already present and cache hash matches, skipping")
+      return
+    }
+    try {
+      execSync(`chmod -R u+w ${JSON.stringify(nmDir)}`, {
+        stdio: ["ignore", "pipe", "pipe"], timeout: 30_000,
+      })
+    } catch { /* best-effort */ }
+    fs.rmSync(nmDir, { recursive: true, force: true })
+  }
+
   const stdio: import("node:child_process").StdioOptions = ["ignore", "pipe", "pipe"]
 
   if (currentHash && cachedHash === currentHash && fs.existsSync(cacheDir)) {
     try {
-      execSync(`cp -al ${JSON.stringify(cacheDir)} ${JSON.stringify(path.join(pkgDir, "node_modules"))}`, {
+      execSync(`cp -al ${JSON.stringify(cacheDir)} ${JSON.stringify(nmDir)}`, {
         stdio, timeout: 30_000,
       })
       log.debug({ label }, "hardlinked node_modules")
-      makeNodeModulesReadOnly(path.join(pkgDir, "node_modules"), label)
+      makeNodeModulesReadOnly(nmDir, label)
       return
     } catch (err) {
       log.warn({ err, label }, "hardlink copy failed, falling back to npm ci")
@@ -401,14 +415,14 @@ function bootstrapOnePackage(
     if (fs.existsSync(cacheDir)) {
       fs.rmSync(cacheDir, { recursive: true, force: true })
     }
-    execSync(`cp -al ${JSON.stringify(path.join(pkgDir, "node_modules"))} ${JSON.stringify(cacheDir)}`, {
+    execSync(`cp -al ${JSON.stringify(nmDir)} ${JSON.stringify(cacheDir)}`, {
       stdio, timeout: 60_000,
     })
     if (currentHash) {
       fs.writeFileSync(cacheLockHash, currentHash)
     }
     log.debug({ label }, "cached node_modules")
-    makeNodeModulesReadOnly(path.join(pkgDir, "node_modules"), label)
+    makeNodeModulesReadOnly(nmDir, label)
   } catch (err) {
     log.warn({ err, label }, "dependency bootstrap failed (non-fatal)")
   }
@@ -548,6 +562,19 @@ function bootstrapPythonProject(
   const stdio: import("node:child_process").StdioOptions = ["ignore", "pipe", "pipe"]
   const venvDir = path.join(pkgDir, ".venv")
 
+  if (fs.existsSync(venvDir)) {
+    if (currentHash && cachedHash === currentHash) {
+      log.debug({ label }, ".venv already present and cache hash matches, skipping")
+      return
+    }
+    try {
+      execSync(`chmod -R u+w ${JSON.stringify(venvDir)}`, {
+        stdio: ["ignore", "pipe", "pipe"], timeout: 30_000,
+      })
+    } catch { /* best-effort */ }
+    fs.rmSync(venvDir, { recursive: true, force: true })
+  }
+
   if (currentHash && cachedHash === currentHash && fs.existsSync(cacheDir)) {
     try {
       execSync(`cp -al ${JSON.stringify(cacheDir)} ${JSON.stringify(venvDir)}`, {
@@ -596,6 +623,19 @@ function bootstrapPythonRequirements(
 
   const stdio: import("node:child_process").StdioOptions = ["ignore", "pipe", "pipe"]
   const venvDir = path.join(pkgDir, ".venv")
+
+  if (fs.existsSync(venvDir)) {
+    if (cachedHash === currentHash) {
+      log.debug({ label }, ".venv already present and cache hash matches, skipping")
+      return
+    }
+    try {
+      execSync(`chmod -R u+w ${JSON.stringify(venvDir)}`, {
+        stdio: ["ignore", "pipe", "pipe"], timeout: 30_000,
+      })
+    } catch { /* best-effort */ }
+    fs.rmSync(venvDir, { recursive: true, force: true })
+  }
 
   if (cachedHash === currentHash && fs.existsSync(cacheDir)) {
     try {
