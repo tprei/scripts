@@ -674,6 +674,14 @@ export function bootstrapPythonDependencies(
 ): void {
   const hasPyproject = fs.existsSync(path.join(pkgDir, "pyproject.toml"))
   const hasRequirements = fs.existsSync(path.join(pkgDir, "requirements.txt"))
+  if (!hasPyproject && !hasRequirements) return
+
+  try {
+    execSync("which uv", { stdio: ["ignore", "pipe", "pipe"], timeout: 5_000 })
+  } catch {
+    log.debug({ label: pkgDir }, "uv not found on PATH, skipping Python bootstrap")
+    return
+  }
 
   if (hasPyproject) {
     bootstrapPythonProject(pkgDir, reposDir, cacheKey, pkgDir)
