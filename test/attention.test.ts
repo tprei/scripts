@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { computeAttentionReasons, type AttentionReason } from "../src/api-server.js"
-import type { TopicSession } from "../src/types.js"
-
+import type { TopicSession } from "../src/domain/session-types.js"
 function makeSession(overrides: Partial<TopicSession> = {}): TopicSession {
   return {
     threadId: 1,

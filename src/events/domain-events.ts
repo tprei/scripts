@@ -1,5 +1,4 @@
-import type { SessionDoneState, SessionMeta, SessionMode } from "../types.js"
-
+import type { SessionDoneState, SessionMeta, SessionMode } from "../domain/session-types.js"
 /** Base shape shared by every domain event. */
 export interface DomainEvent<T extends string = string> {
   readonly type: T

@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { SessionHandle, type SessionConfig } from "../src/session/session.js"
-import type { SessionMeta } from "../src/types.js"
-
+import type { SessionMeta } from "../src/domain/session-types.js"
 const baseConfig: SessionConfig = {
   goose: { provider: "test", model: "test" },
   claude: { planModel: "plan-model", thinkModel: "think-model", reviewModel: "review-model" },

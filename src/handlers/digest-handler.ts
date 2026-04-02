@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import type { TopicSession } from "../types.js"
+import type { TopicSession } from "../domain/session-types.js"
 import type { CompletionHandler, SessionCompletionContext } from "./handler-types.js"
 import { buildConversationDigest, buildChildSessionDigest } from "../conversation-digest.js"
 import { formatPinnedStatus } from "../telegram/format.js"

@@ -3,8 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { SessionStore } from "../src/store.js"
-import type { TopicSession } from "../src/types.js"
-
+import type { TopicSession } from "../src/domain/session-types.js"
 function makeSession(overrides: Partial<TopicSession> = {}): TopicSession {
   return {
     threadId: 100,

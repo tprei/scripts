@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { buildConversationDigest, buildChildSessionDigest } from "../src/conversation-digest.js"
-import type { TopicMessage } from "../src/types.js"
-
+import type { TopicMessage } from "../src/domain/session-types.js"
 vi.mock("../src/conversation-summarizer.js", () => ({
   summarizeConversation: vi.fn(),
   formatSummary: vi.fn((summary: { lines: string[] }) => summary.lines.join("\n")),

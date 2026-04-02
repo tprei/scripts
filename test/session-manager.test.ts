@@ -18,7 +18,7 @@ import {
   mergeUpstreamBranches,
   downloadPhotos,
 } from "../src/session/session-manager.js"
-import type { TopicSession } from "../src/types.js"
+import type { TopicSession } from "../src/domain/session-types.js"
 import fs from "node:fs"
 import path from "node:path"
 import os from "node:os"

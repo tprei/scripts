@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import http from "node:http"
 import { createApiServer, StateBroadcaster, topicSessionToApi, type DispatcherApi, type PlanActionType, type ApiSession } from "../src/api-server.js"
-import type { TopicSession } from "../src/types.js"
-
+import type { TopicSession } from "../src/domain/session-types.js"
 function makeTopicSession(overrides: Partial<TopicSession> = {}): TopicSession {
   return {
     threadId: 1,

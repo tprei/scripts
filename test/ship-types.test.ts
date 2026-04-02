@@ -1,15 +1,6 @@
 import { describe, it, expect } from "vitest"
-import type {
-  AutoAdvance,
-  ShipPhase,
-  TopicSession,
-  VerificationCheck,
-  VerificationRound,
-  VerificationState,
-  VerificationCheckKind,
-  VerificationCheckStatus,
-  SessionMode,
-} from "../src/types.js"
+import type { TopicSession, SessionMode } from "../src/domain/session-types.js"
+import type { AutoAdvance, ShipPhase, VerificationCheck, VerificationRound, VerificationState, VerificationCheckKind, VerificationCheckStatus } from "../src/domain/workflow-types.js"
 import type { PendingTask } from "../src/session/session-manager.js"
 
 describe("ship session modes", () => {

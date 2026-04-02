@@ -1,5 +1,5 @@
 import type { DispatcherContext } from "../orchestration/dispatcher-context.js"
-import type { TopicSession } from "../types.js"
+import type { TopicSession } from "../domain/session-types.js"
 import type { QualityReport } from "./quality-gates.js"
 import { runQualityGates } from "./quality-gates.js"
 import {

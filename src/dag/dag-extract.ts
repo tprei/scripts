@@ -1,4 +1,4 @@
-import type { TopicMessage } from "../types.js"
+import type { TopicMessage } from "../domain/session-types.js"
 import type { DagInput } from "./dag.js"
 import type { ProviderProfile } from "../config/config-types.js"
 import { retryClaudeExtraction, buildConversationText, ParseError, MAX_ASSISTANT_CHARS } from "../claude-extract.js"

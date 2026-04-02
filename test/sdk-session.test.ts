@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { SDKSessionHandle, type SDKSessionEventCallback, type SDKSessionDoneCallback } from "../src/session/sdk-session.js"
 import type { SessionConfig } from "../src/session/session.js"
-import type { SessionMeta, SessionPort, GooseStreamEvent } from "../src/types.js"
-
+import type { GooseStreamEvent } from "../src/domain/goose-types.js"
+import type { SessionMeta, SessionPort } from "../src/domain/session-types.js"
 const baseConfig: SessionConfig = {
   goose: { provider: "test", model: "test" },
   claude: { planModel: "plan-model", thinkModel: "think-model", reviewModel: "review-model" },

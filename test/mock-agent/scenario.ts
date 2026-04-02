@@ -5,8 +5,7 @@
  * the mock agent should emit on stdout, with optional delays and exit code.
  */
 
-import type { GooseStreamEvent } from "../../src/types.js"
-
+import type { GooseStreamEvent } from "../../src/domain/goose-types.js"
 // ── Scenario schema ──
 
 export interface ScenarioStep {

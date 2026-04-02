@@ -4,7 +4,7 @@ import {
   parseJudgeDecision,
   JudgeOrchestrator,
 } from "../src/judge/judge-orchestrator.js"
-import type { TopicSession, TopicMessage } from "../src/types.js"
+import type { TopicSession, TopicMessage } from "../src/domain/session-types.js"
 import type { ChildProcess } from "node:child_process"
 import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
 

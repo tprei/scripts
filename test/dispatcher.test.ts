@@ -13,8 +13,7 @@ import {
   buildContextPrompt,
   buildExecutionPrompt,
 } from "../src/session/session-manager.js"
-import type { TopicSession } from "../src/types.js"
-
+import type { TopicSession } from "../src/domain/session-types.js"
 const testRepos = {
   scripts: "https://github.com/tprei/scripts",
   pinoquio: "https://github.com/retirers/pinoquio-na-web",

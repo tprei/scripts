@@ -49,14 +49,18 @@ export type {
   TopicSession,
   SessionMode,
   SessionState,
+} from "./domain/session-types.js"
+export type {
   GooseStreamEvent,
   GooseMessage,
+} from "./domain/goose-types.js"
+export type {
   ShipPhase,
   AutoAdvance,
   VerificationState,
   VerificationCheck,
   VerificationRound,
-} from "./types.js"
+} from "./domain/workflow-types.js"
 export { SHIP_PREFIX } from "./commands/command-parser.js"
 export { cleanupMergedBranch, type BranchCleanupResult } from "./dag/dag.js"
 export { resolveConflictsWithAgent, buildConflictResolutionPrompt } from "./conflict-resolver.js"

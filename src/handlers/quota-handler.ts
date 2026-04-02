@@ -8,7 +8,7 @@ export interface QuotaEventStore {
 }
 
 export interface QuotaSleepHandler {
-  handleQuotaSleep(topicSession: import("../types.js").TopicSession, rawMessage: string): void
+  handleQuotaSleep(topicSession: import("../domain/session-types.js").TopicSession, rawMessage: string): void
 }
 
 export class QuotaHandler implements CompletionHandler {

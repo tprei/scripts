@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { ShipPipeline } from "../src/orchestration/ship-pipeline.js"
 import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
-import type { TopicSession, AutoAdvance } from "../src/types.js"
+import type { TopicSession } from "../src/domain/session-types.js"
+import type { AutoAdvance } from "../src/domain/workflow-types.js"
 import type { DagGraph, DagNode } from "../src/dag/dag.js"
 
 vi.mock("../src/ci/verification.js", () => ({

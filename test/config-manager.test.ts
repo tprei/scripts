@@ -3,8 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { ConfigManager } from "../src/config/config-manager.js"
 import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
-import type { TopicSession } from "../src/types.js"
-
+import type { TopicSession } from "../src/domain/session-types.js"
 function createMockContext(overrides: Partial<DispatcherContext> = {}): DispatcherContext {
   const sessions = new Map()
   const topicSessions = new Map()

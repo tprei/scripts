@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { parseSplitItems, buildSplitChildPrompt, getClaudeConfigDir } from "../src/orchestration/split.js"
-import type { TopicMessage } from "../src/types.js"
-
+import type { TopicMessage } from "../src/domain/session-types.js"
 describe("parseSplitItems", () => {
   it("parses a valid JSON array", () => {
     const input = '[{"title":"Add auth","description":"Implement auth middleware"}]'

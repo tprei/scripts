@@ -2,7 +2,8 @@ import { execSync } from "node:child_process"
 import path from "node:path"
 import fs from "node:fs"
 import type { DispatcherContext } from "../orchestration/dispatcher-context.js"
-import type { TopicSession, TelegramPhotoSize } from "../types.js"
+import type { TopicSession } from "../domain/session-types.js"
+import type { TelegramPhotoSize } from "../domain/telegram-types.js"
 import { dirSizeBytes } from "../session/session-manager.js"
 import {
   parseTaskArgs, parseReviewArgs, buildReviewAllTask,

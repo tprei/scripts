@@ -1,6 +1,6 @@
 import crypto from "node:crypto"
 import type { DispatcherContext } from "./dispatcher-context.js"
-import type { TopicSession, SessionMeta } from "../types.js"
+import type { TopicSession, SessionMeta } from "../domain/session-types.js"
 import type { DagGraph } from "../dag/dag.js"
 import { SessionHandle, type SessionConfig } from "../session/session.js"
 import { buildCompletenessReviewPrompt, parseCompletenessResult } from "../ci/verification.js"

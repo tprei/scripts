@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import type { TopicMessage } from "../src/types.js"
-
+import type { TopicMessage } from "../src/domain/session-types.js"
 vi.mock("../src/claude-extract.js", () => ({
   retryClaudeExtraction: vi.fn(),
   buildConversationText: vi.fn((conversation: TopicMessage[]) =>

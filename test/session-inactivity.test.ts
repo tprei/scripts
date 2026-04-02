@@ -1,8 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { spawn } from "node:child_process"
 import { SessionHandle, type SessionConfig } from "../src/session/session.js"
-import type { SessionMeta } from "../src/types.js"
-
+import type { SessionMeta } from "../src/domain/session-types.js"
 const stubConfig: SessionConfig = {
   goose: { provider: "test", model: "test" },
   claude: { planModel: "test", thinkModel: "test", reviewModel: "test" },

@@ -1,4 +1,4 @@
-import type { TopicMessage } from "../types.js"
+import type { TopicMessage } from "../domain/session-types.js"
 import type { ProviderProfile } from "../config/config-types.js"
 import type { JudgeOption, JudgeExtractResult } from "./judge-types.js"
 import { retryClaudeExtraction, buildConversationText } from "../claude-extract.js"

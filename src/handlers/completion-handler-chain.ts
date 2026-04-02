@@ -1,6 +1,6 @@
 import type { EventBus } from "../events/event-bus.js"
 import type { SessionCompletedEvent } from "../events/domain-events.js"
-import type { TopicSession } from "../types.js"
+import type { TopicSession } from "../domain/session-types.js"
 import type { CompletionHandler, SessionCompletionContext } from "./handler-types.js"
 import { createLogger } from "../logger.js"
 
@@ -15,7 +15,7 @@ export interface SessionRemover {
 }
 
 export interface SessionBroadcaster {
-  broadcastSession(session: TopicSession, eventType: "session_created" | "session_updated", sessionState?: import("../types.js").SessionDoneState): void
+  broadcastSession(session: TopicSession, eventType: "session_created" | "session_updated", sessionState?: import("../domain/session-types.js").SessionDoneState): void
 }
 
 export interface PinnedSummaryUpdater {

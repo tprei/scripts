@@ -3,8 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import os from "node:os"
 import { writeSessionLog, type SessionLogEntry } from "../src/session/session-log.js"
-import type { TopicSession, SessionMeta } from "../src/types.js"
-
+import type { TopicSession, SessionMeta } from "../src/domain/session-types.js"
 describe("writeSessionLog", () => {
   let tmpDir: string
 

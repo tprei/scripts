@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process"
 import crypto from "node:crypto"
 import type { DispatcherContext } from "../orchestration/dispatcher-context.js"
-import type { TopicSession } from "../types.js"
+import type { TopicSession } from "../domain/session-types.js"
 import { generateSlug } from "../slugs.js"
 import { DEFAULT_RECOVERY_PROMPT } from "../config/prompts.js"
 import { findPRByBranch } from "../ci/ci-babysit.js"

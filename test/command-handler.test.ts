@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { CommandHandler } from "../src/commands/command-handler.js"
 import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
-import type { TopicSession } from "../src/types.js"
-
+import type { TopicSession } from "../src/domain/session-types.js"
 vi.mock("../src/dag/dag-extract.js", () => ({
   extractDagItems: vi.fn(),
 }))
