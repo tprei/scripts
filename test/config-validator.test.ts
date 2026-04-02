@@ -13,6 +13,7 @@ import {
   validateApiServerConfig,
   validateProviderProfile,
   validateGitHubAppConfig,
+  validateQuotaConfig,
   validateConfigOrThrow,
   assertValidConfig,
   ConfigValidationError,
@@ -72,6 +73,11 @@ function createValidMinionConfig(): MinionConfig {
       activityThrottleMs: 3000,
       textFlushDebounceMs: 5000,
       activityEditDebounceMs: 5000,
+    },
+    quota: {
+      retryMax: 3,
+      defaultSleepMs: 3600_000,
+      sleepBufferMs: 60_000,
     },
     repos: {},
   }
@@ -617,6 +623,79 @@ describe("validateProviderProfile", () => {
       baseUrl: "not-a-url",
     })
     expect(result.valid).toBe(false)
+  })
+})
+
+describe("validateQuotaConfig", () => {
+  it("validates a valid config", () => {
+    const result = validateQuotaConfig({
+      retryMax: 3,
+      defaultSleepMs: 3600_000,
+      sleepBufferMs: 60_000,
+    })
+    expect(result.valid).toBe(true)
+  })
+
+  it("rejects non-object config", () => {
+    const result = validateQuotaConfig(null)
+    expect(result.valid).toBe(false)
+  })
+
+  it("rejects retryMax below 0", () => {
+    const result = validateQuotaConfig({
+      retryMax: -1,
+      defaultSleepMs: 3600_000,
+      sleepBufferMs: 60_000,
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.path.includes("retryMax"))).toBe(true)
+  })
+
+  it("rejects retryMax above 20", () => {
+    const result = validateQuotaConfig({
+      retryMax: 21,
+      defaultSleepMs: 3600_000,
+      sleepBufferMs: 60_000,
+    })
+    expect(result.valid).toBe(false)
+  })
+
+  it("rejects non-integer retryMax", () => {
+    const result = validateQuotaConfig({
+      retryMax: 2.5,
+      defaultSleepMs: 3600_000,
+      sleepBufferMs: 60_000,
+    })
+    expect(result.valid).toBe(false)
+  })
+
+  it("rejects defaultSleepMs below 1000", () => {
+    const result = validateQuotaConfig({
+      retryMax: 3,
+      defaultSleepMs: 500,
+      sleepBufferMs: 60_000,
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.path.includes("defaultSleepMs"))).toBe(true)
+  })
+
+  it("rejects negative sleepBufferMs", () => {
+    const result = validateQuotaConfig({
+      retryMax: 3,
+      defaultSleepMs: 3600_000,
+      sleepBufferMs: -1,
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.path.includes("sleepBufferMs"))).toBe(true)
+  })
+
+  it("accepts zero sleepBufferMs", () => {
+    const result = validateQuotaConfig({
+      retryMax: 0,
+      defaultSleepMs: 1000,
+      sleepBufferMs: 0,
+    })
+    expect(result.valid).toBe(true)
   })
 })
 

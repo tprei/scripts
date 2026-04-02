@@ -83,6 +83,12 @@ export interface AgentDefinitions {
   settingsJson?: object
 }
 
+export interface QuotaConfig {
+  retryMax: number
+  defaultSleepMs: number
+  sleepBufferMs: number
+}
+
 export interface MinionConfig {
   telegram: TelegramConfig
   telegramQueue: TelegramQueueConfig
@@ -99,6 +105,8 @@ export interface MinionConfig {
   githubApp?: GitHubAppConfig
   /** List of environment variable names to pass through to minion sessions */
   sessionEnvPassthrough?: string[]
+  /** Quota exhaustion sleep/retry configuration */
+  quota: QuotaConfig
   /** HTTP API server configuration */
   api?: ApiServerConfig
 }
