@@ -532,7 +532,7 @@ export function formatStatus(
 
   for (const topic of standbyTopics) {
     const desc = truncate(topic.conversation[0]?.text ?? "", 50)
-    const topicIcon = topic.lastState === "errored" ? "❌" : topic.prUrl ? "✅" : "💬"
+    const topicIcon = topic.lastState === "quota_exhausted" ? "💤" : topic.lastState === "errored" ? "❌" : topic.prUrl ? "✅" : "💬"
     const link = threadLink(chatId, topic.threadId)
     const slugPart = link
       ? `<a href="${esc(link)}">${esc(topic.slug)}</a>`
@@ -662,6 +662,26 @@ export function formatQualityReportForContext(
 
 export function formatBudgetWarning(slug: string, tokens: number, budget: number): string {
   return `💰 <b>Token budget exceeded</b>  ·  🏷 <code>${esc(slug)}</code>  ·  ${tokens.toLocaleString()} / ${budget.toLocaleString()} tokens\nSession terminated to limit context usage.`
+}
+
+export function formatQuotaSleep(slug: string, sleepMs: number, retryCount: number, retryMax: number): string {
+  const resumeAt = new Date(Date.now() + sleepMs)
+  const timeStr = resumeAt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "UTC" })
+  const minutes = Math.round(sleepMs / 60000)
+  return [
+    `💤 <b>Quota exhausted</b>  ·  🏷 <code>${esc(slug)}</code>`,
+    ``,
+    `Sleeping for ~${minutes} min until ${timeStr} UTC (attempt ${retryCount}/${retryMax}).`,
+    `Session will resume automatically.`,
+  ].join("\n")
+}
+
+export function formatQuotaResume(slug: string, retryCount: number): string {
+  return `🔄 <b>Resuming after quota sleep</b>  ·  🏷 <code>${esc(slug)}</code>  ·  attempt ${retryCount}`
+}
+
+export function formatQuotaExhausted(slug: string, retryMax: number): string {
+  return `❌ <b>Quota retries exhausted</b>  ·  🏷 <code>${esc(slug)}</code>  ·  ${retryMax}/${retryMax} attempts used. Send <b>/reply</b> to continue manually when quota resets.`
 }
 
 export function formatStats(
