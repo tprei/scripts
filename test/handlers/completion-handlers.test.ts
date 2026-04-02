@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import type { SessionMeta, TopicSession, SessionDoneState } from "../../src/types.js"
+import type { SessionMeta, TopicSession, SessionDoneState } from "../../src/domain/session-types.js"
 import type { SessionCompletionContext } from "../../src/handlers/handler-types.js"
 import { StatsHandler } from "../../src/handlers/stats-handler.js"
 import { QuotaHandler } from "../../src/handlers/quota-handler.js"

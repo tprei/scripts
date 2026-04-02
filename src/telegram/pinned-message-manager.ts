@@ -1,7 +1,7 @@
 import path from "node:path"
 import fs from "node:fs"
 import type { TelegramClient } from "./telegram.js"
-import type { TopicSession } from "../types.js"
+import type { TopicSession } from "../domain/session-types.js"
 import type { DagGraph } from "../dag/dag.js"
 import {
   formatPinnedSplitStatus,

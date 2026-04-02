@@ -3,8 +3,8 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { Observer } from "../src/telegram/observer.js"
-import type { SessionMeta, GooseStreamEvent } from "../src/types.js"
-
+import type { GooseStreamEvent } from "../src/domain/goose-types.js"
+import type { SessionMeta } from "../src/domain/session-types.js"
 function makeTelegram() {
   return {
     sendMessage: vi.fn().mockResolvedValue({ messageId: 1 }),

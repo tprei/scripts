@@ -1,5 +1,5 @@
 import type { TelegramClient } from "../telegram/telegram.js"
-import type { TopicSession, TopicMessage } from "../types.js"
+import type { TopicSession, TopicMessage } from "../domain/session-types.js"
 import type { CompletionHandler, SessionCompletionContext } from "./handler-types.js"
 import { runQualityGates } from "../ci/quality-gates.js"
 import { formatQualityReport, formatQualityReportForContext } from "../telegram/format.js"

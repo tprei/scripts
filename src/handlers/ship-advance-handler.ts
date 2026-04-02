@@ -1,6 +1,6 @@
 import type { TelegramClient } from "../telegram/telegram.js"
 import type { Observer } from "../telegram/observer.js"
-import type { TopicSession } from "../types.js"
+import type { TopicSession } from "../domain/session-types.js"
 import type { CompletionHandler, SessionCompletionContext } from "./handler-types.js"
 import { writeSessionLog } from "../session/session-log.js"
 import { loggers } from "../logger.js"

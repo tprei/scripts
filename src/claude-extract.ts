@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process"
-import type { TopicMessage } from "./types.js"
+import type { TopicMessage } from "./domain/session-types.js"
 import type { ProviderProfile } from "./config/config-types.js"
 import type { Logger } from "pino"
 

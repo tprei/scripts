@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
-import type { TopicSession, TopicMessage, AutoAdvance } from "../src/types.js"
+import type { TopicSession, TopicMessage } from "../src/domain/session-types.js"
+import type { AutoAdvance } from "../src/domain/workflow-types.js"
 import type { DagGraph, DagNode, DagInput } from "../src/dag/dag.js"
 import type { QualityReport } from "../src/ci/quality-gates.js"
 

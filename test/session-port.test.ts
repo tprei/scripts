@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest"
-import type { SessionPort, SessionMeta, SessionState } from "../src/types.js"
-
+import type { SessionPort, SessionMeta, SessionState } from "../src/domain/session-types.js"
 /** Minimal stub implementing SessionPort for compile-time and runtime verification */
 class StubSessionPort implements SessionPort {
   readonly meta: SessionMeta

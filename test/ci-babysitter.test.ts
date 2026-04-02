@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { CIBabysitter } from "../src/ci/ci-babysitter.js"
 import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
-import type { TopicSession } from "../src/types.js"
-
+import type { TopicSession } from "../src/domain/session-types.js"
 // Mock external dependencies
 vi.mock("../src/ci/ci-babysit.js", () => ({
   waitForCI: vi.fn(),

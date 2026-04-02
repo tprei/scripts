@@ -10,11 +10,8 @@
 
 import type { TelegramClient } from "../telegram/telegram.js"
 import type { Observer } from "../telegram/observer.js"
-import type {
-  TopicSession, TopicMessage,
-  TelegramPhotoSize,
-  SessionDoneState,
-} from "../types.js"
+import type { TopicSession, TopicMessage, SessionDoneState } from "../domain/session-types.js"
+import type { TelegramPhotoSize } from "../domain/telegram-types.js"
 import type { MinionConfig, McpConfig } from "../config/config-types.js"
 import type { DagGraph, DagNode, DagInput } from "../dag/dag.js"
 import type { QualityReport } from "../ci/quality-gates.js"
@@ -153,7 +150,7 @@ export interface DispatcherContext {
     mode: "task" | "plan" | "think" | "review" | "ship-think",
     replyThreadId?: number,
     photos?: TelegramPhotoSize[],
-    autoAdvance?: import("../types.js").AutoAdvance,
+    autoAdvance?: import("../domain/workflow-types.js").AutoAdvance,
   ): Promise<void>
 
   /** Start a DAG from extracted items (used by ShipPipeline → DagOrchestrator). */

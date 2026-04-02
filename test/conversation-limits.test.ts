@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { truncateConversation } from "../src/conversation-limits.js"
-import type { TopicMessage } from "../src/types.js"
-
+import type { TopicMessage } from "../src/domain/session-types.js"
 function makeMessages(count: number, startRole: "user" | "assistant" = "user"): TopicMessage[] {
   const messages: TopicMessage[] = []
   let role: "user" | "assistant" = startRole

@@ -1,9 +1,4 @@
-import type {
-  TelegramUpdate,
-  TelegramForumTopic,
-  TelegramMessage,
-} from "../../src/types.js"
-
+import type { TelegramUpdate, TelegramForumTopic, TelegramMessage } from "../../src/domain/telegram-types.js"
 /** A recorded call to any FakeTelegram method. */
 export interface TelegramCall {
   method: string

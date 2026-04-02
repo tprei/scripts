@@ -9,7 +9,8 @@ import path from "node:path"
 import fs from "node:fs"
 import os from "node:os"
 import crypto from "node:crypto"
-import type { AutoAdvance, SessionMeta, SessionPort, TopicSession } from "../types.js"
+import type { SessionMeta, SessionPort, TopicSession } from "../domain/session-types.js"
+import type { AutoAdvance } from "../domain/workflow-types.js"
 import { extractRepoName } from "../commands/command-parser.js"
 import { loggers } from "../logger.js"
 import { DefaultBranchError } from "../errors.js"
@@ -800,7 +801,7 @@ export function dirSizeBytes(dirPath: string): number {
  */
 export async function downloadPhotos(
   photos:
-    | import("../types.js").TelegramPhotoSize[]
+    | import("../domain/telegram-types.js").TelegramPhotoSize[]
     | undefined,
   telegramClient: {
     downloadFile: (fileId: string, destPath: string) => Promise<boolean>

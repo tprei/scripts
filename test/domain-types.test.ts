@@ -46,13 +46,6 @@ import type {
   AutoAdvance as BarrelAutoAdvance,
 } from "../src/domain/index.js"
 
-// And verify the backwards-compat shim re-exports work
-import type {
-  TelegramUser as ShimTelegramUser,
-  GooseMessage as ShimGooseMessage,
-  SessionMeta as ShimSessionMeta,
-  AutoAdvance as ShimAutoAdvance,
-} from "../src/types.js"
 
 describe("domain/telegram-types", () => {
   it("TelegramUser has required fields", () => {
@@ -353,32 +346,3 @@ describe("barrel re-exports (domain/index)", () => {
   })
 })
 
-describe("backwards-compat shim (types.ts)", () => {
-  it("re-exports Telegram types from shim", () => {
-    const user: ShimTelegramUser = { id: 1, is_bot: false }
-    expect(user.id).toBe(1)
-  })
-
-  it("re-exports Goose types from shim", () => {
-    const msg: ShimGooseMessage = { role: "assistant", created: 0, content: [] }
-    expect(msg.role).toBe("assistant")
-  })
-
-  it("re-exports Session types from shim", () => {
-    const meta: ShimSessionMeta = {
-      sessionId: "s1",
-      threadId: 1,
-      topicName: "t",
-      repo: "r",
-      cwd: "/",
-      startedAt: 0,
-      mode: "task",
-    }
-    expect(meta.sessionId).toBe("s1")
-  })
-
-  it("re-exports Workflow types from shim", () => {
-    const aa: ShimAutoAdvance = { phase: "dag", featureDescription: "f", autoLand: true }
-    expect(aa.phase).toBe("dag")
-  })
-})

@@ -1,5 +1,4 @@
-import type { TopicMessage } from "./types.js"
-
+import type { TopicMessage } from "./domain/session-types.js"
 const SUMMARY_MAX_CHARS = 500
 
 export interface TruncationResult {

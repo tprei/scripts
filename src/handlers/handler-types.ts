@@ -1,4 +1,4 @@
-import type { SessionMeta, SessionDoneState, TopicSession } from "../types.js"
+import type { SessionMeta, SessionDoneState, TopicSession } from "../domain/session-types.js"
 import type { QualityReport } from "../ci/quality-gates.js"
 
 /**

@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { pipeline } from "node:stream/promises"
 import { Readable } from "node:stream"
-import type { TelegramUpdate, TelegramForumTopic } from "../types.js"
+import type { TelegramUpdate, TelegramForumTopic } from "../domain/telegram-types.js"
 import { captureException } from "../sentry.js"
 import { loggers } from "../logger.js"
 import {

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { PendingDagItem, SessionMode, TopicSession } from "../src/types.js"
-
+import type { PendingDagItem, SessionMode, TopicSession } from "../src/domain/session-types.js"
 describe("PendingDagItem type", () => {
   it("should define a valid pending DAG item", () => {
     const item: PendingDagItem = {

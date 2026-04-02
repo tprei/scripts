@@ -20,8 +20,8 @@ import type { Scenario } from "../mock-agent/index.js"
 import { FakeTelegram } from "./fake-telegram.js"
 import { SessionHandle } from "../../src/session/session.js"
 import type { SessionConfig } from "../../src/session/session.js"
-import type { GooseStreamEvent, SessionMeta, SessionMode } from "../../src/types.js"
-
+import type { GooseStreamEvent } from "../../src/domain/goose-types.js"
+import type { SessionMeta, SessionMode } from "../../src/domain/session-types.js"
 // ── Types ──
 
 export interface HarnessOptions {

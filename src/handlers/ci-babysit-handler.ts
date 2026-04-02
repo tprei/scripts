@@ -1,4 +1,4 @@
-import type { TopicSession } from "../types.js"
+import type { TopicSession } from "../domain/session-types.js"
 import type { CompletionHandler, SessionCompletionContext } from "./handler-types.js"
 import type { QualityReport } from "../ci/quality-gates.js"
 import { captureException } from "../sentry.js"

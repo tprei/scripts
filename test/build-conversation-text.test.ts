@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { buildConversationText, MAX_ASSISTANT_CHARS } from "../src/claude-extract.js"
-import type { TopicMessage } from "../src/types.js"
-
+import type { TopicMessage } from "../src/domain/session-types.js"
 describe("buildConversationText", () => {
   it("formats a simple conversation", () => {
     const conversation: TopicMessage[] = [

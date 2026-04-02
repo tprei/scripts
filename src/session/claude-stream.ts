@@ -1,5 +1,4 @@
-import type { GooseStreamEvent } from "../types.js"
-
+import type { GooseStreamEvent } from "../domain/goose-types.js"
 interface ClaudeStreamEvent {
   type: string
   subtype?: string

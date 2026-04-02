@@ -1,4 +1,4 @@
-import type { TopicMessage } from "./types.js"
+import type { TopicMessage } from "./domain/session-types.js"
 import type { ProviderProfile } from "./config/config-types.js"
 import { summarizeConversation, formatSummary } from "./conversation-summarizer.js"
 

@@ -1,6 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-import type { TopicSession } from "./types.js"
+import type { TopicSession } from "./domain/session-types.js"
 import { captureException } from "./sentry.js"
 import { loggers } from "./logger.js"
 

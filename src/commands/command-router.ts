@@ -1,4 +1,5 @@
-import type { TelegramPhotoSize, SessionMode } from "../types.js"
+import type { SessionMode } from "../domain/session-types.js"
+import type { TelegramPhotoSize } from "../domain/telegram-types.js"
 import {
   TASK_PREFIX, TASK_SHORT, PLAN_PREFIX, THINK_PREFIX, REVIEW_PREFIX,
   EXECUTE_CMD, STATUS_CMD, STATS_CMD, REPLY_PREFIX, REPLY_SHORT,

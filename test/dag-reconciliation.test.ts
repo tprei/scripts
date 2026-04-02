@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import type { DagGraph, DagNode } from "../src/dag/dag.js"
-import type { TopicSession } from "../src/types.js"
-
+import type { TopicSession } from "../src/domain/session-types.js"
 vi.mock("../src/sentry.js", () => ({
   captureException: vi.fn(),
 }))

@@ -3,7 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import crypto from "node:crypto"
 import { EventEmitter } from "node:events"
-import type { TopicSession, SessionState, SessionDoneState } from "./types.js"
+import type { TopicSession, SessionState, SessionDoneState } from "./domain/session-types.js"
 import type { DagGraph } from "./dag/dag.js"
 import { loggers } from "./logger.js"
 

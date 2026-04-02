@@ -1,5 +1,5 @@
 import type { DispatcherContext } from "./dispatcher-context.js"
-import type { TopicSession } from "../types.js"
+import type { TopicSession } from "../domain/session-types.js"
 import { extractSplitItems } from "./split.js"
 import { extractStackItems } from "../dag/dag-extract.js"
 import {

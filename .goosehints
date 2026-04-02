@@ -1,0 +1,44 @@
+This is a TypeScript project that runs as a Telegram bot controlling autonomous coding agents.
+
+## Project structure
+
+- `src/` — main source code (TypeScript, ESM)
+- `test/` — vitest tests
+- `assets/` — bundled files for npm package consumers
+- `.claude/agents/` — Claude agent definitions for Docker deployment
+- `goose/config.yaml` — reference Goose configuration
+
+## Development commands
+
+- Type check: `npx tsc --noEmit`
+- Lint: `npx eslint src/`
+- Test: `npx vitest run`
+- Build: `npm run build`
+
+## Key conventions
+
+- ESM imports with `.js` extensions (e.g., `import { foo } from "./bar.js"`)
+- No `eslint-disable`, `@ts-ignore`, or `@ts-expect-error` comments
+- Remove unused variables instead of prefixing with `_`
+- Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`
+- Stage specific files, never `git add .`
+
+## Dependencies
+
+### Node.js
+Dependencies are pre-installed and read-only. Do NOT run `npm install` or `npm ci`. Common dev tools (vitest, typescript, happy-dom, jsdom) are available as fallbacks even if not in the project's own dependencies — `npx vitest`, `npx tsc` work from any worktree.
+
+### Python
+Python projects use [uv](https://docs.astral.sh/uv/) for dependency management. UV and a managed Python are pre-installed.
+
+- Common Python tools (pytest, ruff, mypy) are pre-installed as global fallbacks. Use `uv run pytest` when the project has its own pytest, or just `pytest` for the fallback. `ruff check .` and `mypy .` are always available.
+- Use `uv run <script>` to execute Python scripts (auto-resolves `.venv`)
+- Use `uv add <package>` to add dependencies (updates `pyproject.toml` + `uv.lock`)
+- Do not use `uv pip install` or `pip install` — always use `uv add` to add dependencies properly
+- Do not create virtual environments manually — `uv` handles `.venv` automatically
+- If `pyproject.toml` or `requirements.txt` exists, deps are pre-installed during bootstrap
+
+## Environment
+
+- Never read, log, or commit `.env` files or secret values
+- Use `.env.example` for reference on expected environment variables

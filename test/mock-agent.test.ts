@@ -4,7 +4,7 @@ import { createInterface } from "node:readline"
 import { createServer } from "node:http"
 import { resolve } from "node:path"
 import { rmSync } from "node:fs"
-import type { GooseStreamEvent } from "../src/types.js"
+import type { GooseStreamEvent } from "../src/domain/goose-types.js"
 import {
   installMockAgent,
   writeScenarioFile,

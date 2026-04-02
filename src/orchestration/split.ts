@@ -1,6 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
-import type { TopicMessage } from "../types.js"
+import type { TopicMessage } from "../domain/session-types.js"
 import { retryClaudeExtraction, buildConversationText } from "../claude-extract.js"
 import { loggers } from "../logger.js"
 

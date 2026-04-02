@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest"
 import { parseJudgeOptions, extractJudgeOptions } from "../src/judge/judge-extraction.js"
-import type { TopicMessage } from "../src/types.js"
+import type { TopicMessage } from "../src/domain/session-types.js"
 import type { ProviderProfile } from "../src/config/config-types.js"
 import type { ChildProcess } from "node:child_process"
 
