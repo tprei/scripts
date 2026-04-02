@@ -228,6 +228,8 @@ EOF
 
   # Dockerfile
   cat > "$PROJECT_DIR/Dockerfile" <<'DOCKERFILE'
+FROM ghcr.io/astral-sh/uv:latest AS uv
+
 FROM node:22-slim
 
 RUN apt-get update && apt-get install -y \
@@ -238,6 +240,30 @@ RUN apt-get update && apt-get install -y \
      | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
   && apt-get update && apt-get install -y gh \
   && rm -rf /var/lib/apt/lists/*
+
+COPY --from=uv /uv /uvx /usr/local/bin/
+
+ENV UV_PYTHON_INSTALL_DIR="/opt/uv-python"
+RUN uv python install 3.13 \
+    && chmod -R o+rx /opt/uv-python
+
+RUN apt-get update && apt-get install -y build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/devtools \
+    && cd /opt/devtools \
+    && npm init -y \
+    && npm install --ignore-scripts vitest typescript happy-dom jsdom \
+    && rm package.json package-lock.json \
+    && node -e "const c=require('crypto');const h=c.createHash('sha256');const fs=require('fs');h.update(fs.readdirSync('/opt/devtools/node_modules').sort().join(','));fs.writeFileSync('/opt/devtools/.version',h.digest('hex'))" \
+    && chmod -R o+rx /opt/devtools
+
+ENV UV_TOOL_DIR="/opt/uv-tools"
+ENV UV_TOOL_BIN_DIR="/opt/uv-tools/bin"
+RUN uv tool install pytest \
+    && uv tool install ruff \
+    && uv tool install mypy \
+    && chmod -R o+rx /opt/uv-tools
 
 RUN curl -fsSL -o /tmp/goose.tar.bz2 \
       https://github.com/block/goose/releases/download/stable/goose-x86_64-unknown-linux-gnu.tar.bz2 \
@@ -250,10 +276,14 @@ RUN npm install -g \
   @anthropic-ai/claude-code \
   @zed-industries/claude-agent-acp \
   @playwright/mcp \
-  @upstash/context7-mcp \
-  github-mcp-server \
-  vitest \
-  typescript
+  @upstash/context7-mcp
+
+RUN curl -fsSL -o /tmp/github-mcp-server.tar.gz \
+      https://github.com/github/github-mcp-server/releases/latest/download/github-mcp-server_Linux_x86_64.tar.gz \
+    && tar -xzf /tmp/github-mcp-server.tar.gz -C /tmp \
+    && mv /tmp/github-mcp-server /usr/local/bin/github-mcp-server \
+    && chmod +x /usr/local/bin/github-mcp-server \
+    && rm /tmp/github-mcp-server.tar.gz
 
 ENV PLAYWRIGHT_BROWSERS_PATH="/opt/pw-browsers"
 RUN chmod 1777 /tmp && apt-get update && npx playwright install --with-deps chromium && chmod -R o+rx /opt/pw-browsers && rm -rf /var/lib/apt/lists/*
@@ -267,10 +297,12 @@ COPY . .
 RUN npm run build && npm prune --production
 
 RUN useradd -m -s /bin/bash minion \
-    && chown -R minion:minion /opt/pw-browsers
+    && chown -R minion:minion /opt/pw-browsers \
+    && chown -R minion:minion /opt/uv-python \
+    && chown -R minion:minion /opt/devtools \
+    && chown -R minion:minion /opt/uv-tools
 
-COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh /app/scripts/*.sh
 
 CMD ["/app/entrypoint.sh"]
 DOCKERFILE
