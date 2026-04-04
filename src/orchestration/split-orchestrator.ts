@@ -12,6 +12,7 @@ import {
 
 export class SplitOrchestrator {
   private readonly ctx: DispatcherContext
+  private readonly drainingParents = new Set<number>()
 
   constructor(ctx: DispatcherContext) {
     this.ctx = ctx
@@ -193,11 +194,19 @@ export class SplitOrchestrator {
     await this.ctx.updatePinnedSplitStatus(parent)
 
     if (parent.pendingSplitItems && parent.pendingSplitItems.length > 0) {
-      const nextItem = parent.pendingSplitItems.shift()!
-      const allItems = parent.allSplitItems ?? [nextItem]
-      const childThreadId = await this.ctx.spawnSplitChild(parent, nextItem, allItems)
-      if (childThreadId) {
-        parent.childThreadIds!.push(childThreadId)
+      const parentId = parent.threadId
+      if (!this.drainingParents.has(parentId)) {
+        this.drainingParents.add(parentId)
+        try {
+          const nextItem = parent.pendingSplitItems.shift()!
+          const allItems = parent.allSplitItems ?? [nextItem]
+          const childThreadId = await this.ctx.spawnSplitChild(parent, nextItem, allItems)
+          if (childThreadId) {
+            parent.childThreadIds!.push(childThreadId)
+          }
+        } finally {
+          this.drainingParents.delete(parentId)
+        }
       }
     }
 

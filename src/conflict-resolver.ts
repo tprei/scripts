@@ -1,9 +1,11 @@
-import { spawn, execFileSync } from "node:child_process"
+import { spawn, execFile as execFileCb } from "node:child_process"
+import { promisify } from "node:util"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 import { loggers } from "./logger.js"
 
 const log = loggers.conflictResolver
+const execFile = promisify(execFileCb)
 
 const CONFLICT_TIMEOUT_MS = 120_000
 const MAX_FILE_PREVIEW_BYTES = 8_000
@@ -71,8 +73,8 @@ export async function resolveConflictsWithAgent(
 ): Promise<boolean> {
   let conflictFiles: string[]
   try {
-    const raw = execFileSync("git", ["diff", "--name-only", "--diff-filter=U"], { cwd, encoding: "utf-8" }).trim()
-    conflictFiles = raw.split("\n").filter(Boolean)
+    const { stdout: raw } = await execFile("git", ["diff", "--name-only", "--diff-filter=U"], { cwd, encoding: "utf-8" })
+    conflictFiles = raw.trim().split("\n").filter(Boolean)
   } catch {
     return false
   }
@@ -124,7 +126,8 @@ export async function resolveConflictsWithAgent(
   }
 
   try {
-    const remaining = execFileSync("git", ["diff", "--name-only", "--diff-filter=U"], { cwd, encoding: "utf-8" }).trim()
+    const { stdout } = await execFile("git", ["diff", "--name-only", "--diff-filter=U"], { cwd, encoding: "utf-8" })
+    const remaining = stdout.trim()
     const resolved = remaining.length === 0
     log.info({ resolved, remaining: remaining || "(none)" }, "conflict resolution result")
     return resolved

@@ -1,4 +1,5 @@
-import { execSync } from "node:child_process"
+import { execFile as execFileCb } from "node:child_process"
+import { promisify } from "node:util"
 import path from "node:path"
 import fs from "node:fs"
 import type { DispatcherContext } from "../orchestration/dispatcher-context.js"
@@ -25,6 +26,7 @@ import { buildExecutionPrompt } from "../session/session-manager.js"
 import { loggers } from "../logger.js"
 
 const log = loggers.dispatcher
+const execFile = promisify(execFileCb)
 
 /**
  * CommandHandler — extracted from Dispatcher.
@@ -484,16 +486,15 @@ export class CommandHandler {
       cwd: topicSession.cwd,
       timeout: 30_000,
       encoding: "utf-8" as const,
-      stdio: ["pipe" as const, "pipe" as const, "pipe" as const],
       env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
     }
 
     await this.ctx.refreshGitToken()
     try {
-      const checksJson = execSync(`gh pr checks ${prNumber} --repo ${repo} --json name,state,bucket`, execOpts).trim()
+      const { stdout: checksJson } = await execFile("gh", ["pr", "checks", prNumber, "--repo", repo, "--json", "name,state,bucket"], execOpts)
 
-      if (checksJson && checksJson !== "[]") {
-        const checks = JSON.parse(checksJson) as { name: string; state: string; bucket: string }[]
+      if (checksJson.trim() && checksJson.trim() !== "[]") {
+        const checks = JSON.parse(checksJson.trim()) as { name: string; state: string; bucket: string }[]
         const pending = checks.filter((c) => c.bucket === "pending")
         if (pending.length > 0) {
           await this.ctx.telegram.sendMessage(
@@ -524,7 +525,7 @@ export class CommandHandler {
     }
 
     try {
-      execSync(`gh pr merge ${prNumber} --repo ${repo} --squash --delete-branch`, {
+      await execFile("gh", ["pr", "merge", prNumber, "--repo", repo, "--squash", "--delete-branch"], {
         ...execOpts,
         timeout: 120_000,
       })

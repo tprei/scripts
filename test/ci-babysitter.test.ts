@@ -60,6 +60,7 @@ function makeContext(overrides: Partial<DispatcherContext> = {}): DispatcherCont
     sessions: new Map(),
     topicSessions: new Map(),
     dags: new Map(),
+    abortControllers: new Map(),
     refreshGitToken: vi.fn().mockResolvedValue(undefined),
     spawnTopicAgent: vi.fn().mockResolvedValue(undefined),
     spawnCIFixAgent: vi.fn().mockImplementation(async (_s, _t, cb) => cb()),
