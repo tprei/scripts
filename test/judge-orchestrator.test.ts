@@ -238,6 +238,7 @@ describe("JudgeOrchestrator.handleJudgeCommand", () => {
       sessions: new Map(),
       topicSessions: new Map(),
       dags: new Map(),
+    abortControllers: new Map(),
       profileStore: { get: vi.fn().mockReturnValue(undefined) },
       pushToConversation: vi.fn(),
     } as unknown as DispatcherContext

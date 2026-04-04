@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process"
+import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import type { TopicSession } from "../domain/session-types.js"
@@ -87,10 +87,16 @@ export class DigestHandler implements CompletionHandler {
     if (!digest) return
 
     try {
-      execSync(`gh pr comment "${prUrl}" --body-file -`, {
-        input: digest,
-        cwd: topicSession.cwd,
-        stdio: ["pipe", "pipe", "pipe"],
+      await new Promise<void>((resolve, reject) => {
+        const prNumber = prUrl.match(/\/pull\/(\d+)/)?.[1]
+        if (!prNumber) { reject(new Error("cannot parse PR number")); return }
+        const repoMatch = prUrl.match(/github\.com\/([^/]+\/[^/]+)\/pull\//)
+        const args = ["pr", "comment", prNumber, "--body-file", "-"]
+        if (repoMatch) args.push("--repo", repoMatch[1])
+        const proc = spawn("gh", args, { cwd: topicSession.cwd, stdio: ["pipe", "pipe", "pipe"] })
+        proc.stdin.end(digest)
+        proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`gh pr comment exited ${code}`)))
+        proc.on("error", reject)
       })
     } catch (err) {
       log.error({ err }, "failed to post session digest")

@@ -9,6 +9,7 @@ function createMockContext(overrides: Partial<DispatcherContext> = {}): Dispatch
   const sessions = new Map()
   const topicSessions = new Map()
   const dags = new Map()
+  const abortControllers = new Map()
 
   return {
     config: {
@@ -60,6 +61,7 @@ function createMockContext(overrides: Partial<DispatcherContext> = {}): Dispatch
     sessions,
     topicSessions,
     dags,
+    abortControllers,
     refreshGitToken: async () => {},
     spawnTopicAgent: async () => {},
     spawnCIFixAgent: async () => {},

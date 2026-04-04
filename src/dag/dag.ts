@@ -1,5 +1,8 @@
-import { execFileSync } from "node:child_process"
+import { execFile as execFileCb } from "node:child_process"
+import { promisify } from "node:util"
 import { DagCycleError, DagSelfDependencyError, UnknownNodeError } from "../errors.js"
+
+const execFile = promisify(execFileCb)
 
 export type DagNodeStatus = "pending" | "ready" | "running" | "done" | "failed" | "skipped" | "ci-pending" | "ci-failed" | "landed"
 
@@ -214,7 +217,10 @@ export function advanceDag(graph: DagGraph): DagNode[] {
   for (const node of graph.nodes) {
     if (node.status !== "pending") continue
 
-    const allDepsDone = node.dependsOn.every((dep) => statusMap.get(dep) === "done")
+    const allDepsDone = node.dependsOn.every((dep) => {
+      const s = statusMap.get(dep)
+      return s === "done" || s === "landed"
+    })
     if (allDepsDone) {
       node.status = "ready"
       newlyReady.push(node)
@@ -676,19 +682,19 @@ export interface BranchCleanupResult {
   remoteBranchDeleted: boolean
 }
 
-export function cleanupMergedBranch(
+export async function cleanupMergedBranch(
   branch: string,
   worktreePath: string | undefined,
   cwd: string,
   opts?: { timeout?: number },
-): BranchCleanupResult {
+): Promise<BranchCleanupResult> {
   const timeout = opts?.timeout ?? 120_000
-  const execOpts = { stdio: ["pipe" as const, "pipe" as const, "pipe" as const], timeout, cwd, encoding: "utf-8" as const, env: { ...process.env } }
+  const execOpts = { timeout, cwd, encoding: "utf-8" as const, env: { ...process.env } }
   const result: BranchCleanupResult = { worktreeRemoved: false, remoteBranchDeleted: false }
 
   if (worktreePath) {
     try {
-      execFileSync("git", ["worktree", "remove", "--force", worktreePath], execOpts)
+      await execFile("git", ["worktree", "remove", "--force", worktreePath], execOpts)
       result.worktreeRemoved = true
     } catch {
       // Worktree may already be cleaned up
@@ -696,7 +702,7 @@ export function cleanupMergedBranch(
   }
 
   try {
-    execFileSync("git", ["push", "origin", "--delete", branch], execOpts)
+    await execFile("git", ["push", "origin", "--delete", branch], execOpts)
     result.remoteBranchDeleted = true
   } catch {
     // Remote branch may already be deleted (e.g., by GitHub after PR merge)

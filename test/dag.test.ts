@@ -255,6 +255,35 @@ describe("advanceDag", () => {
     const ready = advanceDag(graph)
     expect(ready).toHaveLength(0)
   })
+
+  it("treats landed dependencies as satisfied", () => {
+    const graph = buildDag("test", [
+      { id: "a", title: "A", description: "A", dependsOn: [] },
+      { id: "b", title: "B", description: "B", dependsOn: ["a"] },
+    ], 1, "repo")
+
+    graph.nodes[0].status = "landed"
+    const newlyReady = advanceDag(graph)
+
+    expect(newlyReady).toHaveLength(1)
+    expect(newlyReady[0].id).toBe("b")
+    expect(newlyReady[0].status).toBe("ready")
+  })
+
+  it("advances when deps are a mix of done and landed", () => {
+    const graph = buildDag("test", [
+      { id: "a", title: "A", description: "A", dependsOn: [] },
+      { id: "b", title: "B", description: "B", dependsOn: [] },
+      { id: "c", title: "C", description: "C", dependsOn: ["a", "b"] },
+    ], 1, "repo")
+
+    graph.nodes[0].status = "landed"
+    graph.nodes[1].status = "done"
+    const newlyReady = advanceDag(graph)
+
+    expect(newlyReady).toHaveLength(1)
+    expect(newlyReady[0].id).toBe("c")
+  })
 })
 
 describe("failNode", () => {

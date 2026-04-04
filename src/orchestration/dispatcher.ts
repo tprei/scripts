@@ -90,6 +90,7 @@ export class Dispatcher {
   private readonly dagStore: DagStore
   private readonly profileStore: ProfileStore
   private readonly dags = new Map<string, DagGraph>()
+  private readonly abortControllers = new Map<number, AbortController>()
   private readonly broadcaster?: StateBroadcaster
   private offset = 0
   private running = false
@@ -142,6 +143,7 @@ export class Dispatcher {
       sessions: this.sessions,
       topicSessions: this.topicSessions,
       dags: this.dags,
+      abortControllers: this.abortControllers,
       pendingTasks: this.pendingTasks,
       refreshGitToken: () => this.refreshGitToken(),
       spawnTopicAgent: (ts, task, mcp, sp) => this.spawnTopicAgent(ts, task, mcp, sp),
@@ -1412,6 +1414,8 @@ export class Dispatcher {
   private async closeSingleChild(child: TopicSession): Promise<void> {
     this.replyQueues.delete(child.threadId)
     this.clearQuotaSleepTimer(child.threadId)
+    this.abortControllers.get(child.threadId)?.abort()
+    this.abortControllers.delete(child.threadId)
     const childId = child.threadId
 
     if (child.activeSessionId) {
@@ -1430,6 +1434,9 @@ export class Dispatcher {
     const threadId = topicSession.threadId
     this.replyQueues.delete(threadId)
     this.clearQuotaSleepTimer(threadId)
+
+    this.abortControllers.get(threadId)?.abort()
+    this.abortControllers.delete(threadId)
 
     await this.closeChildSessions(topicSession)
 

@@ -39,6 +39,10 @@ export interface DispatcherContext {
   /** Pending task selections waiting for repo/profile keyboard callbacks. */
   readonly pendingTasks: Map<number, PendingTask>
 
+  // ── Abort management ───────────────────────────────────────────────
+  /** Map of threadId → AbortController for cancellable long-running operations. */
+  readonly abortControllers: Map<number, AbortController>
+
   // ── Token management ───────────────────────────────────────────────
 
   /** Refresh the GitHub token in process.env before git/gh operations. */

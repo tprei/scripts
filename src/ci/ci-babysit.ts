@@ -87,7 +87,7 @@ export async function findPRByBranch(branch: string, cwd: string): Promise<strin
   }
 }
 
-export async function waitForCI(prUrl: string, cwd: string, ciConfig: CiConfig): Promise<CIWaitResult> {
+export async function waitForCI(prUrl: string, cwd: string, ciConfig: CiConfig, signal?: AbortSignal): Promise<CIWaitResult> {
   const baseIntervalMs = ciConfig.pollIntervalMs
   const maxIntervalMs = Math.max(baseIntervalMs, 30_000)
   const timeoutMs = ciConfig.pollTimeoutMs
@@ -97,6 +97,8 @@ export async function waitForCI(prUrl: string, cwd: string, ciConfig: CiConfig):
   let pollCount = 0
 
   while (Date.now() - startedAt < timeoutMs) {
+    if (signal?.aborted) return { passed: false, checks: [], timedOut: false }
+
     const result = await getCheckStatus(prUrl, cwd)
 
     if (result?.terminal) {
@@ -123,9 +125,10 @@ export async function waitForCI(prUrl: string, cwd: string, ciConfig: CiConfig):
 
     const delay = Math.min(baseIntervalMs * 2 ** pollCount, maxIntervalMs)
     pollCount++
-    await sleep(delay)
+    await sleep(delay, signal)
   }
 
+  if (signal?.aborted) return { passed: false, checks: [], timedOut: false }
   const finalResult = await getCheckStatus(prUrl, cwd)
   return { passed: false, checks: finalResult?.checks ?? [], timedOut: true }
 }
@@ -355,6 +358,10 @@ export async function checkPRMergeability(prUrl: string, cwd: string): Promise<M
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) { resolve(); return }
+    const timer = setTimeout(resolve, ms)
+    signal?.addEventListener("abort", () => { clearTimeout(timer); resolve() }, { once: true })
+  })
 }

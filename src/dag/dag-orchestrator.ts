@@ -1,4 +1,5 @@
-import { execFileSync } from "node:child_process"
+import { execFile as execFileCb, spawn } from "node:child_process"
+import { promisify } from "node:util"
 import crypto from "node:crypto"
 import type { DispatcherContext } from "../orchestration/dispatcher-context.js"
 import type { TopicSession } from "../domain/session-types.js"
@@ -37,6 +38,7 @@ import {
 import { loggers } from "../logger.js"
 
 const log = loggers.dispatcher
+const execFile = promisify(execFileCb)
 
 /**
  * DagOrchestrator — extracted from Dispatcher.
@@ -217,7 +219,8 @@ export class DagOrchestrator {
     node.branch = branch
 
     try {
-      node.mergeBase = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf-8", timeout: 10_000 }).trim()
+      const { stdout } = await execFile("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf-8", timeout: 10_000 })
+      node.mergeBase = stdout.trim()
     } catch {
       log.warn({ dagId: graph.id, nodeId: node.id }, "failed to record mergeBase")
     }
@@ -357,6 +360,7 @@ export class DagOrchestrator {
           const ciPolicy = this.ctx.config.ci.dagCiPolicy
           if (ciPolicy !== "skip" && this.ctx.config.ci.babysitEnabled && resolvedPrUrl) {
             node.status = "ci-pending"
+            await this.ctx.persistDags()
 
             const progress = dagProgress(graph)
             await this.ctx.telegram.sendMessage(
@@ -377,8 +381,10 @@ export class DagOrchestrator {
 
             if (ciBabysitResult) {
               node.status = "done"
+              await this.ctx.persistDags()
             } else if (ciPolicy === "warn") {
               node.status = "done"
+              await this.ctx.persistDags()
               await this.ctx.telegram.sendMessage(
                 formatDagCIFailed(childSession.slug, node.title, resolvedPrUrl, ciPolicy),
                 parent.threadId,
@@ -386,6 +392,7 @@ export class DagOrchestrator {
             } else {
               node.status = "ci-failed"
               node.error = "CI checks failed"
+              await this.ctx.persistDags()
               await this.ctx.telegram.sendMessage(
                 formatDagCIFailed(childSession.slug, node.title, resolvedPrUrl, ciPolicy),
                 parent.threadId,
@@ -495,19 +502,25 @@ export class DagOrchestrator {
         const repoMatch = node.prUrl!.match(/github\.com\/([^/]+\/[^/]+)\/pull\//)
         const repoFlag = repoMatch ? ["--repo", repoMatch[1]] : []
 
-        const currentBody = execFileSync(
+        const { stdout: currentBody } = await execFile(
           "gh",
           ["pr", "view", prNumber, ...repoFlag, "--json", "body", "--jq", ".body"],
-          { cwd, stdio: ["pipe", "pipe", "pipe"], timeout: 30_000, encoding: "utf-8", env: { ...process.env } },
+          { cwd, timeout: 30_000, encoding: "utf-8", env: { ...process.env } },
         )
 
         const newBody = upsertDagSection(currentBody, dagSection)
 
-        execFileSync(
-          "gh",
-          ["pr", "edit", prNumber, ...repoFlag, "--body-file", "-"],
-          { input: newBody, cwd, stdio: ["pipe", "pipe", "pipe"], timeout: 30_000, env: { ...process.env } },
-        )
+        await new Promise<void>((resolve, reject) => {
+          const proc = spawn("gh", ["pr", "edit", prNumber!, ...repoFlag, "--body-file", "-"], {
+            cwd,
+            stdio: ["pipe", "pipe", "pipe"],
+            env: { ...process.env },
+          })
+          proc.stdin.end(newBody)
+          const timer = setTimeout(() => { proc.kill(); reject(new Error("gh pr edit timed out")) }, 30_000)
+          proc.on("close", (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`gh pr edit exited ${code}`)) })
+          proc.on("error", (err) => { clearTimeout(timer); reject(err) })
+        })
       } catch (err) {
         log.error({ err, prUrl: node.prUrl }, "failed to update DAG section in PR")
       }
