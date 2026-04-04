@@ -518,7 +518,7 @@ export class DagOrchestrator {
           })
           proc.stdin.end(newBody)
           const timer = setTimeout(() => { proc.kill(); reject(new Error("gh pr edit timed out")) }, 30_000)
-          proc.on("close", (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`gh pr edit exited ${code}`)) })
+          proc.on("close", (code) => { clearTimeout(timer); if (code === 0) resolve(); else reject(new Error(`gh pr edit exited ${code}`)) })
           proc.on("error", (err) => { clearTimeout(timer); reject(err) })
         })
       } catch (err) {
