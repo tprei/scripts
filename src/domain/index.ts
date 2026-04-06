@@ -39,3 +39,18 @@ export type {
   VerificationRound,
   VerificationState,
 } from "./workflow-types.js"
+
+export type {
+  InlineButton,
+  SendResult,
+  ProviderCapabilities,
+  ThreadInfo,
+  InboundUser,
+  InboundMessage,
+  InboundCallback,
+  InboundEvent,
+  MessagingPort,
+  ChannelPort,
+  InputPort,
+  ProviderAdapter,
+} from "./messaging-ports.js"
