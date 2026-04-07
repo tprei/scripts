@@ -461,8 +461,8 @@ export class LandingManager {
 
   private async detectBaseBranch(repo: string | undefined, topicSession: TopicSession, graph?: DagGraph): Promise<string> {
     try {
-      const repoFlag = repo ? ["--repo", repo] : []
-      return await gh(["repo", "view", ...repoFlag, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"])
+      const repoArg = repo ? [repo] : []
+      return await gh(["repo", "view", ...repoArg, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"])
     } catch (err) {
       log.warn({ err, repo }, "gh repo view failed — falling back to local git ref detection")
     }

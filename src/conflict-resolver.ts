@@ -93,6 +93,7 @@ export async function resolveConflictsWithAgent(
   const proc = spawn("claude", [
     "--print",
     "--output-format", "stream-json",
+    "--verbose",
     "--dangerously-skip-permissions",
     "--no-session-persistence",
     "--model", "sonnet",

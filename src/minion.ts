@@ -11,6 +11,7 @@ import { loggers } from "./logger.js"
 import { initSentry } from "./sentry.js"
 import { GitHubTokenProvider } from "./github/index.js"
 import { EventBus } from "./events/event-bus.js"
+import { DEFAULT_LOOPS } from "./loops/index.js"
 
 const log = loggers.minion
 
@@ -105,6 +106,7 @@ export function createMinion(config: MinionConfig, options?: MinionOptions): Min
       tokenProvider.startPeriodicRefresh()
       await dispatcher.loadPersistedSessions()
       dispatcher.startCleanupTimer()
+      await dispatcher.startLoops(DEFAULT_LOOPS)
       await dispatcher.start()
     },
     stop() {
