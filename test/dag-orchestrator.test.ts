@@ -599,10 +599,10 @@ describe("DagOrchestrator", () => {
     it("schedules concurrency-blocked ready node on next completion", async () => {
       ctx = makeContext({
         ...ctx,
-        config: {
+        config: makeMockConfig({
           ...ctx.config,
           workspace: { ...ctx.config.workspace, maxDagConcurrency: 2 },
-        } as any,
+        }),
       })
       orchestrator = new DagOrchestrator(ctx)
       const scheduleSpy = vi.spyOn(orchestrator, "scheduleDagNodes").mockResolvedValue(undefined)
