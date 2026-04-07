@@ -365,7 +365,7 @@ describe("FakeTelegram", () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Type compatibility: can be used as TelegramClient via `as any`
+  // Type compatibility: implements TelegramClient interface
   // ---------------------------------------------------------------------------
 
   describe("type compatibility", () => {
