@@ -395,7 +395,7 @@ function bootstrapOnePackage(
   if (currentHash && cachedHash === currentHash && fs.existsSync(cacheDir)) {
     try {
       execSync(`cp -al ${JSON.stringify(cacheDir)} ${JSON.stringify(nmDir)}`, {
-        stdio, timeout: 30_000,
+        stdio, timeout: 120_000,
       })
       log.debug({ label }, "hardlinked node_modules")
       makeNodeModulesReadOnly(nmDir, label)
@@ -417,7 +417,7 @@ function bootstrapOnePackage(
       fs.rmSync(cacheDir, { recursive: true, force: true })
     }
     execSync(`cp -al ${JSON.stringify(nmDir)} ${JSON.stringify(cacheDir)}`, {
-      stdio, timeout: 60_000,
+      stdio, timeout: 120_000,
     })
     if (currentHash) {
       fs.writeFileSync(cacheLockHash, currentHash)
@@ -579,7 +579,7 @@ function bootstrapPythonProject(
   if (currentHash && cachedHash === currentHash && fs.existsSync(cacheDir)) {
     try {
       execSync(`cp -al ${JSON.stringify(cacheDir)} ${JSON.stringify(venvDir)}`, {
-        stdio, timeout: 30_000,
+        stdio, timeout: 120_000,
       })
       log.debug({ label }, "hardlinked .venv from cache")
       return
@@ -604,7 +604,7 @@ function bootstrapPythonProject(
     }
     if (fs.existsSync(venvDir)) {
       execSync(`cp -al ${JSON.stringify(venvDir)} ${JSON.stringify(cacheDir)}`, {
-        stdio, timeout: 60_000,
+        stdio, timeout: 120_000,
       })
       if (currentHash) {
         fs.writeFileSync(cacheLockHash, currentHash)
@@ -648,7 +648,7 @@ function bootstrapPythonRequirements(
   if (cachedHash === currentHash && fs.existsSync(cacheDir)) {
     try {
       execSync(`cp -al ${JSON.stringify(cacheDir)} ${JSON.stringify(venvDir)}`, {
-        stdio, timeout: 30_000,
+        stdio, timeout: 120_000,
       })
       log.debug({ label }, "hardlinked .venv from requirements cache")
       return
@@ -674,7 +674,7 @@ function bootstrapPythonRequirements(
     }
     if (fs.existsSync(venvDir)) {
       execSync(`cp -al ${JSON.stringify(venvDir)} ${JSON.stringify(cacheDir)}`, {
-        stdio, timeout: 60_000,
+        stdio, timeout: 120_000,
       })
       fs.writeFileSync(cacheLockHash, currentHash)
       log.debug({ label }, "cached .venv from requirements")
