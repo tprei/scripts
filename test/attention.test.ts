@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { computeAttentionReasons, type AttentionReason } from "../src/api-server.js"
+import { computeAttentionReasons, type AttentionReason, type DispatcherApi } from "../src/api-server.js"
 import type { TopicSession } from "../src/domain/session-types.js"
 function makeSession(overrides: Partial<TopicSession> = {}): TopicSession {
   return {
@@ -128,7 +128,7 @@ describe("attention fields in API response", () => {
       closeSession: vi.fn(),
     }
 
-    const server = createApiServer(mockDispatcher as any, {
+    const server = createApiServer(mockDispatcher as unknown as DispatcherApi, {
       port: 0,
       uiDistPath: "/nonexistent",
       chatId: "-1001234567890",
@@ -185,7 +185,7 @@ describe("attention fields in API response", () => {
       closeSession: vi.fn(),
     }
 
-    const server = createApiServer(mockDispatcher as any, {
+    const server = createApiServer(mockDispatcher as unknown as DispatcherApi, {
       port: 0,
       uiDistPath: "/nonexistent",
       chatId: "-1001234567890",
