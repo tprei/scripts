@@ -3,7 +3,7 @@
  *
  * Centralised mock constructors for TelegramClient, Observer, StatsTracker,
  * ProfileStore, DispatcherContext, ActiveSession, TopicSession, and execFile
- * patterns. Eliminates repetitive `as any` casts across the test suite.
+ * patterns. Eliminates repetitive type casts across the test suite.
  */
 
 import { vi } from "vitest"
