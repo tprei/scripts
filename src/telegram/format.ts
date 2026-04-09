@@ -119,10 +119,6 @@ export function formatSessionError(slug: string, error: string): string {
   ].join("\n")
 }
 
-export function formatSessionInterrupted(slug: string): string {
-  return `⚠️ <b>Session interrupted</b>  ·  🏷 <code>${esc(slug)}</code>\nRestart not yet supported. Create a new task.`
-}
-
 const MAX_TEXT_PER_CHUNK = 3900
 
 /**
