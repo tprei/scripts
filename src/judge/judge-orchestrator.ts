@@ -96,7 +96,7 @@ export class JudgeOrchestrator {
     }
 
     // Send extraction status
-    await this.ctx.telegram.sendMessage(formatJudgeExtraction(slug), threadId)
+    await this.ctx.chat.sendMessage(formatJudgeExtraction(slug), threadId)
 
     // Resolve provider profile
     const profile = topicSession.profileId
@@ -108,7 +108,7 @@ export class JudgeOrchestrator {
 
     if (extractResult.error) {
       log.warn({ slug, error: extractResult.error, message: extractResult.errorMessage }, "option extraction failed")
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatJudgeError(slug, extractResult.errorMessage ?? "Failed to extract options"),
         threadId,
       )
@@ -116,7 +116,7 @@ export class JudgeOrchestrator {
     }
 
     if (extractResult.options.length < 2) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatJudgeError(slug, "Could not identify at least 2 distinct design options from the conversation. Try providing more context or a directive."),
         threadId,
       )
@@ -127,7 +127,7 @@ export class JudgeOrchestrator {
     const question = directive ?? summarizeQuestion(conversation)
 
     // Show arena with options
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatJudgeArena(slug, question, options),
       threadId,
     )
@@ -140,7 +140,7 @@ export class JudgeOrchestrator {
     for (const result of advocateResults) {
       const option = options.find((o) => o.id === result.optionId)
       if (!option) continue
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatAdvocateArgument(result.optionId, option.title, result.argument, result.sources.length),
         threadId,
       )
@@ -148,7 +148,7 @@ export class JudgeOrchestrator {
 
     if (advocateResults.length === 0) {
       log.warn({ slug }, "all advocates failed")
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatJudgeError(slug, "All advocate agents failed to produce arguments. Try again."),
         threadId,
       )
@@ -161,7 +161,7 @@ export class JudgeOrchestrator {
 
     if (!decision) {
       log.warn({ slug }, "judge failed to produce verdict")
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatJudgeError(slug, "Judge agent failed to produce a verdict. Try again."),
         threadId,
       )
@@ -173,7 +173,7 @@ export class JudgeOrchestrator {
     const chosenTitle = chosenOption?.title ?? decision.chosenOptionId
 
     // Post verdict
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatJudgeVerdict(question, decision.chosenOptionId, chosenTitle, decision.reasoning),
       threadId,
     )
@@ -211,7 +211,7 @@ export class JudgeOrchestrator {
     const options = extractResult.options
     const question = directive ?? summarizeQuestion(conversation)
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatJudgeArena(slug, question, options),
       threadId,
     )
@@ -222,7 +222,7 @@ export class JudgeOrchestrator {
     for (const result of advocateResults) {
       const option = options.find((o) => o.id === result.optionId)
       if (!option) continue
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatAdvocateArgument(result.optionId, option.title, result.argument, result.sources.length),
         threadId,
       )
@@ -244,7 +244,7 @@ export class JudgeOrchestrator {
     const chosenOption = options.find((o) => o.id === decision.chosenOptionId)
     const chosenTitle = chosenOption?.title ?? decision.chosenOptionId
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatJudgeVerdict(question, decision.chosenOptionId, chosenTitle, decision.reasoning),
       threadId,
     )

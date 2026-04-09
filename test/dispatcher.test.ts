@@ -83,12 +83,12 @@ describe("buildRepoKeyboard", () => {
 
   it("uses repo: prefix by default", () => {
     const keyboard = buildRepoKeyboard(["scripts"])
-    expect(keyboard[0][0]).toEqual({ text: "scripts", callback_data: "repo:scripts" })
+    expect(keyboard[0][0]).toEqual({ text: "scripts", callbackData: "repo:scripts" })
   })
 
   it("uses plan-repo: prefix when specified", () => {
     const keyboard = buildRepoKeyboard(["scripts"], "plan")
-    expect(keyboard[0][0]).toEqual({ text: "scripts", callback_data: "plan-repo:scripts" })
+    expect(keyboard[0][0]).toEqual({ text: "scripts", callbackData: "plan-repo:scripts" })
   })
 
   it("handles even number of repos", () => {
@@ -411,7 +411,7 @@ describe("buildReviewAllTask", () => {
 describe("buildRepoKeyboard (review prefix)", () => {
   it("uses review-repo: prefix", () => {
     const keyboard = buildRepoKeyboard(["scripts"], "review")
-    expect(keyboard[0][0]).toEqual({ text: "scripts", callback_data: "review-repo:scripts" })
+    expect(keyboard[0][0]).toEqual({ text: "scripts", callbackData: "review-repo:scripts" })
   })
 })
 

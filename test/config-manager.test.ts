@@ -19,7 +19,7 @@ describe("ConfigManager", () => {
       await mgr.handleConfigCommand("")
       expect(ctx.profileStore.list).toHaveBeenCalled()
       expect(ctx.profileStore.getDefaultId).toHaveBeenCalled()
-      expect(ctx.telegram.sendMessage).toHaveBeenCalled()
+      expect(ctx.chat.sendMessage).toHaveBeenCalled()
     })
 
     it("adds a profile", async () => {
@@ -27,7 +27,7 @@ describe("ConfigManager", () => {
       const mgr = new ConfigManager(ctx)
       await mgr.handleConfigCommand("add myprofile My Profile Name")
       expect(ctx.profileStore.add).toHaveBeenCalledWith({ id: "myprofile", name: "My Profile Name" })
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Added profile"),
       )
     })
@@ -40,7 +40,7 @@ describe("ConfigManager", () => {
       })
       const mgr = new ConfigManager(ctx)
       await mgr.handleConfigCommand("add existing Existing")
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("already exists"),
       )
     })
@@ -50,7 +50,7 @@ describe("ConfigManager", () => {
       const mgr = new ConfigManager(ctx)
       await mgr.handleConfigCommand("set myprofile name New Name")
       expect(ctx.profileStore.update).toHaveBeenCalledWith("myprofile", { name: "New Name" })
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Updated"),
       )
     })
@@ -60,7 +60,7 @@ describe("ConfigManager", () => {
       const mgr = new ConfigManager(ctx)
       await mgr.handleConfigCommand("set myprofile invalidField value")
       expect(ctx.profileStore.update).not.toHaveBeenCalled()
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Invalid field"),
       )
     })
@@ -70,7 +70,7 @@ describe("ConfigManager", () => {
       const mgr = new ConfigManager(ctx)
       await mgr.handleConfigCommand("remove myprofile")
       expect(ctx.profileStore.remove).toHaveBeenCalledWith("myprofile")
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Removed profile"),
       )
     })
@@ -80,7 +80,7 @@ describe("ConfigManager", () => {
       const mgr = new ConfigManager(ctx)
       await mgr.handleConfigCommand("default myprofile")
       expect(ctx.profileStore.setDefaultId).toHaveBeenCalledWith("myprofile")
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Default profile set"),
       )
     })
@@ -90,7 +90,7 @@ describe("ConfigManager", () => {
       const mgr = new ConfigManager(ctx)
       await mgr.handleConfigCommand("default")
       expect(ctx.profileStore.clearDefault).toHaveBeenCalled()
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Cleared default"),
       )
     })
@@ -106,7 +106,7 @@ describe("ConfigManager", () => {
       const ctx = createMockContext()
       const mgr = new ConfigManager(ctx)
       await mgr.handleConfigCommand("unknown")
-      expect(ctx.telegram.sendMessage).toHaveBeenCalled()
+      expect(ctx.chat.sendMessage).toHaveBeenCalled()
     })
   })
 
@@ -124,7 +124,7 @@ describe("ConfigManager", () => {
       })
       const mgr = new ConfigManager(ctx)
       await mgr.handleCleanCommand()
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Nothing to clean"),
       )
       expect(ctx.persistTopicSessions).toHaveBeenCalled()
@@ -159,10 +159,10 @@ describe("ConfigManager", () => {
       const mgr = new ConfigManager(ctx)
       await mgr.handleCleanCommand()
 
-      expect(ctx.telegram.deleteForumTopic).toHaveBeenCalledWith(42)
+      expect(ctx.threads.deleteThread).toHaveBeenCalledWith(42)
       expect(ctx.removeWorkspace).toHaveBeenCalledWith(idleSession)
       expect(ctx.topicSessions.has(42)).toBe(false)
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("idle session"),
       )
 
@@ -196,7 +196,7 @@ describe("ConfigManager", () => {
       await mgr.handleCleanCommand()
 
       expect(ctx.topicSessions.has(99)).toBe(true)
-      expect(ctx.telegram.deleteForumTopic).not.toHaveBeenCalled()
+      expect(ctx.threads.deleteThread).not.toHaveBeenCalled()
 
       fs.rmSync(root, { recursive: true, force: true })
     })

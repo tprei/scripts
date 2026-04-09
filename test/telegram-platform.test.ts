@@ -21,13 +21,13 @@ function client(overrides: Partial<TelegramClient> = {}): TelegramClient {
 // ── TelegramChatProvider ─────────────────────────────────────────────
 
 describe("TelegramChatProvider", () => {
-  it("sendMessage converts string IDs to numbers and returns string result", async () => {
+  it("sendMessage passes string IDs through and returns string result", async () => {
     const tg = client()
     const provider = new TelegramChatProvider(tg)
 
     const result = await provider.sendMessage("<b>hi</b>", "42", "10")
 
-    expect(tg.sendMessage).toHaveBeenCalledWith("<b>hi</b>", 42, 10)
+    expect(tg.sendMessage).toHaveBeenCalledWith("<b>hi</b>", "42", "10")
     expect(result).toEqual({ ok: true, messageId: "1" })
   })
 
@@ -50,23 +50,23 @@ describe("TelegramChatProvider", () => {
     expect(result).toEqual({ ok: false, messageId: null })
   })
 
-  it("editMessage converts IDs and returns boolean", async () => {
+  it("editMessage passes string IDs and returns boolean", async () => {
     const tg = client()
     const provider = new TelegramChatProvider(tg)
 
     const ok = await provider.editMessage("99", "updated", "42")
 
-    expect(tg.editMessage).toHaveBeenCalledWith(99, "updated", 42)
+    expect(tg.editMessage).toHaveBeenCalledWith("99", "updated", "42")
     expect(ok).toBe(true)
   })
 
-  it("deleteMessage converts ID", async () => {
+  it("deleteMessage passes string ID", async () => {
     const tg = client()
     const provider = new TelegramChatProvider(tg)
 
     await provider.deleteMessage("55")
 
-    expect(tg.deleteMessage).toHaveBeenCalledWith(55)
+    expect(tg.deleteMessage).toHaveBeenCalledWith("55")
   })
 
   it("pinMessage delegates to pinChatMessage", async () => {
@@ -75,7 +75,7 @@ describe("TelegramChatProvider", () => {
 
     await provider.pinMessage("77")
 
-    expect(tg.pinChatMessage).toHaveBeenCalledWith(77)
+    expect(tg.pinChatMessage).toHaveBeenCalledWith("77")
   })
 })
 
@@ -92,31 +92,31 @@ describe("TelegramThreadManager", () => {
     expect(info).toEqual({ threadId: "100", name: "test" })
   })
 
-  it("editThread converts threadId to number", async () => {
+  it("editThread passes string threadId", async () => {
     const tg = client()
     const manager = new TelegramThreadManager(tg)
 
     await manager.editThread("200", "renamed")
 
-    expect(tg.editForumTopic).toHaveBeenCalledWith(200, "renamed")
+    expect(tg.editForumTopic).toHaveBeenCalledWith("200", "renamed")
   })
 
-  it("closeThread converts threadId", async () => {
+  it("closeThread passes string threadId", async () => {
     const tg = client()
     const manager = new TelegramThreadManager(tg)
 
     await manager.closeThread("300")
 
-    expect(tg.closeForumTopic).toHaveBeenCalledWith(300)
+    expect(tg.closeForumTopic).toHaveBeenCalledWith("300")
   })
 
-  it("deleteThread converts threadId", async () => {
+  it("deleteThread passes string threadId", async () => {
     const tg = client()
     const manager = new TelegramThreadManager(tg)
 
     await manager.deleteThread("400")
 
-    expect(tg.deleteForumTopic).toHaveBeenCalledWith(400)
+    expect(tg.deleteForumTopic).toHaveBeenCalledWith("400")
   })
 })
 
@@ -275,7 +275,7 @@ describe("TelegramInteractiveUI", () => {
     expect(tg.sendMessageWithKeyboard).toHaveBeenCalledWith(
       "Pick one:",
       [[{ text: "A", callback_data: "a" }, { text: "B", callback_data: "b" }]],
-      42,
+      "42",
     )
     expect(msgId).toBe("1")
   })
@@ -318,7 +318,7 @@ describe("TelegramFileHandler", () => {
 
     const msgId = await handler.sendPhoto("/tmp/shot.png", "42", "Screenshot")
 
-    expect(tg.sendPhoto).toHaveBeenCalledWith("/tmp/shot.png", 42, "Screenshot")
+    expect(tg.sendPhoto).toHaveBeenCalledWith("/tmp/shot.png", "42", "Screenshot")
     expect(msgId).toBe("1")
   })
 
@@ -329,7 +329,7 @@ describe("TelegramFileHandler", () => {
 
     const msgId = await handler.sendPhotoBuffer(buf, "image.png", "42", "Caption")
 
-    expect(tg.sendPhotoBuffer).toHaveBeenCalledWith(buf, "image.png", 42, "Caption")
+    expect(tg.sendPhotoBuffer).toHaveBeenCalledWith(buf, "image.png", "42", "Caption")
     expect(msgId).toBe("1")
   })
 
@@ -525,7 +525,7 @@ describe("TelegramPlatform integration", () => {
 
     // Pin message
     await platform.chat.pinMessage(result.messageId!)
-    expect(tg.pinChatMessage).toHaveBeenCalledWith(1)
+    expect(tg.pinChatMessage).toHaveBeenCalledWith("1")
 
     // Send photo
     const photoMsgId = await platform.files.sendPhoto("/tmp/screenshot.png", thread.threadId, "Result")
@@ -533,10 +533,10 @@ describe("TelegramPlatform integration", () => {
 
     // Delete a message
     await platform.chat.deleteMessage(result.messageId!)
-    expect(tg.deleteMessage).toHaveBeenCalledWith(1)
+    expect(tg.deleteMessage).toHaveBeenCalledWith("1")
 
     // Close thread
     await platform.threads.closeThread(thread.threadId)
-    expect(tg.closeForumTopic).toHaveBeenCalledWith(100)
+    expect(tg.closeForumTopic).toHaveBeenCalledWith("100")
   })
 })

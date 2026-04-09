@@ -79,7 +79,7 @@ describe("SplitOrchestrator", () => {
 
       await orchestrator.handleSplitCommand(session)
 
-      const sendMsg = vi.mocked(ctx.telegram.sendMessage)
+      const sendMsg = vi.mocked(ctx.chat.sendMessage)
       const calls = sendMsg.mock.calls.map(c => c[0])
       expect(calls.some(c => typeof c === "string" && c.includes("System error"))).toBe(true)
     })
@@ -90,7 +90,7 @@ describe("SplitOrchestrator", () => {
 
       await orchestrator.handleSplitCommand(session)
 
-      const sendMsg = vi.mocked(ctx.telegram.sendMessage)
+      const sendMsg = vi.mocked(ctx.chat.sendMessage)
       const calls = sendMsg.mock.calls.map(c => c[0])
       expect(calls.some(c => typeof c === "string" && c.includes("Could not extract"))).toBe(true)
     })
@@ -172,7 +172,7 @@ describe("SplitOrchestrator", () => {
 
       await orchestrator.handleSplitCommand(session)
 
-      const sendMsg = vi.mocked(ctx.telegram.sendMessage)
+      const sendMsg = vi.mocked(ctx.chat.sendMessage)
       const calls = sendMsg.mock.calls.map(c => c[0])
       expect(calls.some(c => typeof c === "string" && c.includes("Failed to spawn"))).toBe(true)
     })
@@ -242,7 +242,7 @@ describe("SplitOrchestrator", () => {
 
       await orchestrator.handleStackCommand(session)
 
-      const sendMsg = vi.mocked(ctx.telegram.sendMessage)
+      const sendMsg = vi.mocked(ctx.chat.sendMessage)
       const calls = sendMsg.mock.calls.map(c => c[0])
       expect(calls.some(c => typeof c === "string" && c.includes("System error"))).toBe(true)
     })
@@ -253,7 +253,7 @@ describe("SplitOrchestrator", () => {
 
       await orchestrator.handleStackCommand(session)
 
-      const sendMsg = vi.mocked(ctx.telegram.sendMessage)
+      const sendMsg = vi.mocked(ctx.chat.sendMessage)
       const calls = sendMsg.mock.calls.map(c => c[0])
       expect(calls.some(c => typeof c === "string" && c.includes("Could not extract"))).toBe(true)
     })
@@ -310,7 +310,7 @@ describe("SplitOrchestrator", () => {
 
       await orchestrator.notifyParentOfChildComplete(child, "completed")
 
-      expect(ctx.telegram.sendMessage).not.toHaveBeenCalled()
+      expect(ctx.chat.sendMessage).not.toHaveBeenCalled()
     })
 
     it("skips DAG children", async () => {
@@ -322,7 +322,7 @@ describe("SplitOrchestrator", () => {
 
       await orchestrator.notifyParentOfChildComplete(child, "completed")
 
-      expect(ctx.telegram.sendMessage).not.toHaveBeenCalled()
+      expect(ctx.chat.sendMessage).not.toHaveBeenCalled()
     })
 
     it("notifies parent and clears child conversation", async () => {
@@ -335,7 +335,7 @@ describe("SplitOrchestrator", () => {
 
       await orchestrator.notifyParentOfChildComplete(child, "completed")
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalled()
+      expect(ctx.chat.sendMessage).toHaveBeenCalled()
       expect(child.conversation).toEqual([])
       expect(child.prUrl).toBe("https://github.com/org/repo/pull/42")
       expect(ctx.updatePinnedSplitStatus).toHaveBeenCalledWith(parent)

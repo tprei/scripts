@@ -8,8 +8,10 @@
  * owned by the Dispatcher core.
  */
 
-import type { TelegramClient } from "../telegram/telegram.js"
 import type { Observer } from "../telegram/observer.js"
+import type { ChatProvider } from "../provider/chat-provider.js"
+import type { ThreadManager } from "../provider/thread-manager.js"
+import type { InteractiveUI } from "../provider/interactive-ui.js"
 import type { TopicSession, TopicMessage, SessionDoneState } from "../domain/session-types.js"
 import type { TelegramPhotoSize } from "../domain/telegram-types.js"
 import type { MinionConfig, McpConfig } from "../config/config-types.js"
@@ -23,7 +25,9 @@ import type { StateBroadcaster } from "../api-server.js"
 export interface DispatcherContext {
   // ── Configuration ──────────────────────────────────────────────────
   readonly config: MinionConfig
-  readonly telegram: TelegramClient
+  readonly chat: ChatProvider
+  readonly threads: ThreadManager
+  readonly ui: InteractiveUI | null
   readonly observer: Observer
   readonly stats: StatsTracker
   readonly profileStore: ProfileStore

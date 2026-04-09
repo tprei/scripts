@@ -50,12 +50,12 @@ export class CommandHandler {
     const taskSessions = [...this.ctx.sessions.values()]
     const topicSessionList = [...this.ctx.topicSessions.values()]
     const msg = formatStatus(taskSessions, topicSessionList, this.ctx.config.workspace.maxConcurrentSessions, this.ctx.config.telegram.chatId)
-    await this.ctx.telegram.sendMessage(msg)
+    await this.ctx.chat.sendMessage(msg)
   }
 
   async handleStatsCommand(): Promise<void> {
     const agg = await this.ctx.stats.aggregate(7)
-    await this.ctx.telegram.sendMessage(formatStats(agg))
+    await this.ctx.chat.sendMessage(formatStats(agg))
   }
 
   async handleUsageCommand(): Promise<void> {
@@ -65,18 +65,18 @@ export class CommandHandler {
       this.ctx.stats.breakdownByMode(7),
       this.ctx.stats.recentSessions(5),
     ])
-    await this.ctx.telegram.sendMessage(formatUsage(acpUsage, agg, breakdown, recent))
+    await this.ctx.chat.sendMessage(formatUsage(acpUsage, agg, breakdown, recent))
   }
 
   async handleHelpCommand(): Promise<void> {
-    await this.ctx.telegram.sendMessage(formatHelp())
+    await this.ctx.chat.sendMessage(formatHelp())
   }
 
   async handleConfigCommand(args: string): Promise<void> {
     if (!args) {
       const profiles = this.ctx.profileStore.list()
       const defaultId = this.ctx.profileStore.getDefaultId()
-      await this.ctx.telegram.sendMessage(formatProfileList(profiles, defaultId))
+      await this.ctx.chat.sendMessage(formatProfileList(profiles, defaultId))
       return
     }
 
@@ -88,9 +88,9 @@ export class CommandHandler {
       const name = parts.slice(2).join(" ")
       const added = this.ctx.profileStore.add({ id, name })
       if (added) {
-        await this.ctx.telegram.sendMessage(`✅ Added profile <code>${escapeHtml(id)}</code>`)
+        await this.ctx.chat.sendMessage(`✅ Added profile <code>${escapeHtml(id)}</code>`)
       } else {
-        await this.ctx.telegram.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> already exists`)
+        await this.ctx.chat.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> already exists`)
       }
       return
     }
@@ -101,14 +101,14 @@ export class CommandHandler {
       const value = parts.slice(3).join(" ")
       const validFields = ["name", "baseUrl", "authToken", "opusModel", "sonnetModel", "haikuModel"]
       if (!validFields.includes(field)) {
-        await this.ctx.telegram.sendMessage(`❌ Invalid field. Valid: ${validFields.join(", ")}`)
+        await this.ctx.chat.sendMessage(`❌ Invalid field. Valid: ${validFields.join(", ")}`)
         return
       }
       const updated = this.ctx.profileStore.update(id, { [field]: value })
       if (updated) {
-        await this.ctx.telegram.sendMessage(`✅ Updated <code>${escapeHtml(id)}.${escapeHtml(field)}</code>`)
+        await this.ctx.chat.sendMessage(`✅ Updated <code>${escapeHtml(id)}.${escapeHtml(field)}</code>`)
       } else {
-        await this.ctx.telegram.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> not found`)
+        await this.ctx.chat.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> not found`)
       }
       return
     }
@@ -117,9 +117,9 @@ export class CommandHandler {
       const id = parts[1]
       const removed = this.ctx.profileStore.remove(id)
       if (removed) {
-        await this.ctx.telegram.sendMessage(`✅ Removed profile <code>${escapeHtml(id)}</code>`)
+        await this.ctx.chat.sendMessage(`✅ Removed profile <code>${escapeHtml(id)}</code>`)
       } else {
-        await this.ctx.telegram.sendMessage(`❌ Cannot remove <code>${escapeHtml(id)}</code> (not found or is default)`)
+        await this.ctx.chat.sendMessage(`❌ Cannot remove <code>${escapeHtml(id)}</code> (not found or is default)`)
       }
       return
     }
@@ -127,26 +127,26 @@ export class CommandHandler {
     if (subcommand === "default") {
       if (parts.length === 1) {
         this.ctx.profileStore.clearDefault()
-        await this.ctx.telegram.sendMessage(`✅ Cleared default profile`)
+        await this.ctx.chat.sendMessage(`✅ Cleared default profile`)
         return
       }
       const id = parts[1]
       if (id === "clear") {
         this.ctx.profileStore.clearDefault()
-        await this.ctx.telegram.sendMessage(`✅ Cleared default profile`)
+        await this.ctx.chat.sendMessage(`✅ Cleared default profile`)
         return
       }
       const set = this.ctx.profileStore.setDefaultId(id)
       if (set) {
         const p = this.ctx.profileStore.get(id)
-        await this.ctx.telegram.sendMessage(`✅ Default profile set to <code>${escapeHtml(id)}</code> (${escapeHtml(p?.name ?? id)})`)
+        await this.ctx.chat.sendMessage(`✅ Default profile set to <code>${escapeHtml(id)}</code> (${escapeHtml(p?.name ?? id)})`)
       } else {
-        await this.ctx.telegram.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> not found`)
+        await this.ctx.chat.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> not found`)
       }
       return
     }
 
-    await this.ctx.telegram.sendMessage(formatConfigHelp())
+    await this.ctx.chat.sendMessage(formatConfigHelp())
   }
 
   async handleCleanCommand(): Promise<void> {
@@ -171,7 +171,7 @@ export class CommandHandler {
       if (session.cwd && fs.existsSync(session.cwd)) {
         freedBytes += dirSizeBytes(session.cwd)
       }
-      await this.ctx.telegram.deleteForumTopic(threadId)
+      await this.ctx.threads.deleteThread(threadId)
       await this.ctx.removeWorkspace(session)
       this.ctx.topicSessions.delete(threadId)
       removedSessions++
@@ -258,7 +258,7 @@ export class CommandHandler {
 
     const totalItems = removedSessions + removedOrphans + removedRepos
     if (totalItems === 0) {
-      await this.ctx.telegram.sendMessage("🧹 Nothing to clean up — disk is tidy.")
+      await this.ctx.chat.sendMessage("🧹 Nothing to clean up — disk is tidy.")
       return
     }
 
@@ -268,7 +268,7 @@ export class CommandHandler {
     if (removedRepos > 0) itemParts.push(`${removedRepos} cached repo(s)`)
 
     const freedMB = (freedBytes / (1024 * 1024)).toFixed(1)
-    await this.ctx.telegram.sendMessage(`🧹 Cleaned ${itemParts.join(", ")} — freed ~${freedMB} MB.`)
+    await this.ctx.chat.sendMessage(`🧹 Cleaned ${itemParts.join(", ")} — freed ~${freedMB} MB.`)
   }
 
   // ── Session-creating commands ─────────────────────────────────────────
@@ -276,7 +276,7 @@ export class CommandHandler {
   async handleTaskCommand(args: string, replyThreadId?: string, photos?: TelegramPhotoSize[]): Promise<void> {
     if (this.ctx.sessions.size >= this.ctx.config.workspace.maxConcurrentSessions) {
       if (replyThreadId !== undefined) {
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           `⚠️ Max concurrent sessions (${this.ctx.config.workspace.maxConcurrentSessions}) reached. Wait for one to finish.`,
           replyThreadId,
         )
@@ -288,7 +288,7 @@ export class CommandHandler {
 
     if (!task) {
       if (replyThreadId !== undefined) {
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           `Usage: <code>/task [repo] description of the task</code> (alias: <code>/w</code>)\n` +
           `Repos: ${Object.keys(this.ctx.config.repos).map((s) => `<code>${s}</code>`).join(", ")}\n` +
           `Or use a full URL or omit repo entirely.`,
@@ -302,7 +302,7 @@ export class CommandHandler {
       const repoKeys = Object.keys(this.ctx.config.repos)
       if (repoKeys.length > 0) {
         const keyboard = buildRepoKeyboard(repoKeys)
-        const msgId = await this.ctx.telegram.sendMessageWithKeyboard(
+        const msgId = await this.ctx.ui!.sendMessageWithKeyboard(
           `Pick a repo for: <i>${escapeHtml(task)}</i>`,
           keyboard,
           replyThreadId,
@@ -324,7 +324,7 @@ export class CommandHandler {
       const repoKeys = Object.keys(this.ctx.config.repos)
       if (repoKeys.length === 0) {
         if (replyThreadId !== undefined) {
-          await this.ctx.telegram.sendMessage(
+          await this.ctx.chat.sendMessage(
             `Usage: <code>/review [repo] [PR#]</code>\nNo repos configured.`,
             replyThreadId,
           )
@@ -338,7 +338,7 @@ export class CommandHandler {
         return
       }
       const keyboard = buildRepoKeyboard(repoKeys, "review")
-      const msgId = await this.ctx.telegram.sendMessageWithKeyboard(
+      const msgId = await this.ctx.ui!.sendMessageWithKeyboard(
         `Pick a repo to review all unreviewed PRs:`,
         keyboard,
         replyThreadId,
@@ -359,7 +359,7 @@ export class CommandHandler {
       const repoKeys = Object.keys(this.ctx.config.repos)
       if (repoKeys.length > 0) {
         const keyboard = buildRepoKeyboard(repoKeys, "review")
-        const msgId = await this.ctx.telegram.sendMessageWithKeyboard(
+        const msgId = await this.ctx.ui!.sendMessageWithKeyboard(
           `Pick a repo for review: <i>${escapeHtml(parsed.task)}</i>`,
           keyboard,
           replyThreadId,
@@ -390,7 +390,7 @@ export class CommandHandler {
 
     const executionTask = buildExecutionPrompt(topicSession, directive)
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatPlanExecuting(topicSession.slug, "starting…"),
       topicSession.threadId,
     )
@@ -411,7 +411,7 @@ export class CommandHandler {
       topicSession.activeSessionId = undefined
     }
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatDagAnalyzing(topicSession.slug),
       topicSession.threadId,
     )
@@ -423,7 +423,7 @@ export class CommandHandler {
     const result = await extractDagItems(topicSession.conversation, directive, profile)
 
     if (result.error === "system") {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ <b>System error</b> during extraction: <code>${result.errorMessage ?? "Unknown error"}</code>\n\n` +
         `Try <code>/dag</code> again, or use <code>/split</code> for parallel tasks.`,
         topicSession.threadId,
@@ -432,7 +432,7 @@ export class CommandHandler {
     }
 
     if (result.items.length === 0) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ Could not extract work items with dependencies. Try <code>/split</code> or <code>/execute</code> instead.`,
         topicSession.threadId,
       )
@@ -440,7 +440,7 @@ export class CommandHandler {
     }
 
     if (result.items.length === 1) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `Only 1 item found — using <code>/execute</code> instead.`,
         topicSession.threadId,
       )
@@ -460,7 +460,7 @@ export class CommandHandler {
       topicSession.activeSessionId = undefined
     }
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatDoctorAnalyzing(topicSession.slug),
       topicSession.threadId,
     )
@@ -492,7 +492,7 @@ export class CommandHandler {
     const threadId = topicSession.threadId
 
     if (topicSession.parentThreadId || topicSession.dagNodeId) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ <code>/done</code> is not available on child sessions. Use <code>/done</code> or <code>/land</code> from the parent thread.`,
         threadId,
       )
@@ -501,7 +501,7 @@ export class CommandHandler {
 
     const prUrl = topicSession.prUrl ?? this.ctx.extractPRFromConversation(topicSession)
     if (!prUrl) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ No PR found for this session. Nothing to merge.`,
         threadId,
       )
@@ -514,7 +514,7 @@ export class CommandHandler {
     const prNumber = prNumberMatch?.[1]
 
     if (!repo || !prNumber) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ Could not parse PR URL: <code>${escapeHtml(prUrl)}</code>`,
         threadId,
       )
@@ -536,7 +536,7 @@ export class CommandHandler {
         const checks = JSON.parse(checksJson.trim()) as { name: string; state: string; bucket: string }[]
         const pending = checks.filter((c) => c.bucket === "pending")
         if (pending.length > 0) {
-          await this.ctx.telegram.sendMessage(
+          await this.ctx.chat.sendMessage(
             `⚠️ CI checks still running (${pending.length} pending). Wait for CI to finish before using <code>/done</code>.`,
             threadId,
           )
@@ -545,7 +545,7 @@ export class CommandHandler {
         const failed = checks.filter((c) => c.bucket === "fail")
         if (failed.length > 0) {
           const names = failed.map((c) => `<code>${escapeHtml(c.name)}</code>`).join(", ")
-          await this.ctx.telegram.sendMessage(
+          await this.ctx.chat.sendMessage(
             `⚠️ CI is not green — ${failed.length} failed check(s): ${names}. Fix CI before using <code>/done</code>.`,
             threadId,
           )
@@ -555,7 +555,7 @@ export class CommandHandler {
     } catch (err) {
       const errMsg = String((err as Error).message ?? "")
       if (!errMsg.includes("no checks reported")) {
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           `⚠️ Could not verify CI status: <code>${escapeHtml(errMsg.slice(0, 200))}</code>`,
           threadId,
         )
@@ -570,14 +570,14 @@ export class CommandHandler {
       })
     } catch (err) {
       const errMsg = String((err as Error).message ?? "")
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ Failed to merge PR: <code>${escapeHtml(errMsg.slice(0, 300))}</code>`,
         threadId,
       )
       return
     }
 
-    await this.ctx.telegram.sendMessage(`✅ Merged and closed: ${prUrl}`, threadId)
+    await this.ctx.chat.sendMessage(`✅ Merged and closed: ${prUrl}`, threadId)
     log.info({ slug: topicSession.slug, threadId, prUrl }, "/done — merged PR")
 
     await this.ctx.closeChildSessions(topicSession)
@@ -591,7 +591,7 @@ export class CommandHandler {
     this.ctx.broadcastSessionDeleted(topicSession.slug)
     await this.ctx.persistTopicSessions()
     this.ctx.updatePinnedSummary()
-    await this.ctx.telegram.deleteForumTopic(threadId)
+    await this.ctx.threads.deleteThread(threadId)
     log.info({ slug: topicSession.slug, threadId }, "/done — closed topic")
 
     if (topicSession.activeSessionId) {

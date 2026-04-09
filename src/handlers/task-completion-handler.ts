@@ -4,7 +4,7 @@ import type { CompletionHandler, SessionCompletionContext } from "./handler-type
 import { formatTaskComplete } from "../telegram/format.js"
 import { writeSessionLog } from "../session/session-log.js"
 import { loggers } from "../logger.js"
-import type { TelegramClient } from "../telegram/telegram.js"
+import type { ChatProvider } from "../provider/chat-provider.js"
 
 export interface ArtifactCleaner {
   cleanBuildArtifacts(cwd: string): void
@@ -29,7 +29,7 @@ export class TaskCompletionHandler implements CompletionHandler {
   readonly name = "TaskCompletionHandler"
 
   constructor(
-    private readonly telegram: TelegramClient,
+    private readonly chat: ChatProvider,
     private readonly observer: Observer,
     private readonly pinnedMessages: PinnedMessages,
     private readonly artifactCleaner: ArtifactCleaner,
@@ -47,7 +47,7 @@ export class TaskCompletionHandler implements CompletionHandler {
     try {
       await this.observer.flushAndComplete(meta, state, durationMs)
 
-      await this.telegram.sendMessage(
+      await this.chat.sendMessage(
         formatTaskComplete(topicSession.slug, durationMs, meta.totalTokens),
         topicSession.threadId,
       )

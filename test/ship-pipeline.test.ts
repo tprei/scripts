@@ -87,7 +87,7 @@ describe("ShipPipeline", () => {
     it("does nothing when autoAdvance is undefined", async () => {
       const session = makeSession({ autoAdvance: undefined })
       await pipeline.handleShipAdvance(session)
-      expect(ctx.telegram.sendMessage).not.toHaveBeenCalled()
+      expect(ctx.chat.sendMessage).not.toHaveBeenCalled()
     })
 
     it("advances from think to plan phase", async () => {
@@ -100,7 +100,7 @@ describe("ShipPipeline", () => {
 
       expect(session.autoAdvance!.phase).toBe("plan")
       expect(session.mode).toBe("ship-plan")
-      expect(ctx.telegram.sendMessage).toHaveBeenCalled()
+      expect(ctx.chat.sendMessage).toHaveBeenCalled()
       expect(ctx.spawnTopicAgent).toHaveBeenCalled()
     })
 
@@ -114,7 +114,7 @@ describe("ShipPipeline", () => {
       await pipeline.handleShipAdvance(session)
 
       expect(session.autoAdvance!.phase).toBe("dag")
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("skipping judge arena"),
         session.threadId,
       )
@@ -163,7 +163,7 @@ describe("ShipPipeline", () => {
       await pipeline.handleShipAdvance(session)
 
       expect(session.autoAdvance!.phase).toBe("dag")
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("skipping to DAG"),
         session.threadId,
       )
@@ -199,7 +199,7 @@ describe("ShipPipeline", () => {
 
       await pipeline.handleShipAdvance(session)
 
-      expect(ctx.telegram.sendMessage).not.toHaveBeenCalled()
+      expect(ctx.chat.sendMessage).not.toHaveBeenCalled()
     })
   })
 
@@ -219,7 +219,7 @@ describe("ShipPipeline", () => {
 
       expect(session.autoAdvance!.phase).toBe("plan")
       expect(ctx.updateTopicTitle).toHaveBeenCalledWith(session, "⚠️")
-      const msg = (ctx.telegram.sendMessage as ReturnType<typeof vi.fn>).mock.calls.find(
+      const msg = (ctx.chat.sendMessage as ReturnType<typeof vi.fn>).mock.calls.find(
         (c: unknown[]) => typeof c[0] === "string" && c[0].includes("DAG extraction failed"),
       )
       expect(msg).toBeDefined()
@@ -248,7 +248,7 @@ describe("ShipPipeline", () => {
         expect.stringContaining("previous extraction returned zero items"),
         undefined,
       )
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("retrying with enriched prompt"),
         session.threadId,
       )
@@ -271,7 +271,7 @@ describe("ShipPipeline", () => {
       expect(mockExtractDagItems).toHaveBeenCalledTimes(2)
       expect(ctx.handleExecuteCommand).not.toHaveBeenCalled()
       expect(ctx.startDag).not.toHaveBeenCalled()
-      const msg = (ctx.telegram.sendMessage as ReturnType<typeof vi.fn>).mock.calls.find(
+      const msg = (ctx.chat.sendMessage as ReturnType<typeof vi.fn>).mock.calls.find(
         (c: unknown[]) => typeof c[0] === "string" && c[0].includes("Still no work items"),
       )
       expect(msg).toBeDefined()
@@ -318,7 +318,7 @@ describe("ShipPipeline", () => {
       await pipeline.shipAdvanceToVerification(session, graph)
 
       expect(session.autoAdvance!.phase).toBe("done")
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Ship complete"),
         session.threadId,
       )
@@ -411,7 +411,7 @@ describe("ShipPipeline", () => {
       await pipeline.shipFinalize(session)
 
       expect(session.autoAdvance!.phase).toBe("done")
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Ship complete"),
         session.threadId,
       )
@@ -463,7 +463,7 @@ describe("ShipPipeline", () => {
       await pipeline.shipFinalize(session)
 
       expect(ctx.handleLandCommand).not.toHaveBeenCalled()
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("/land"),
         session.threadId,
       )

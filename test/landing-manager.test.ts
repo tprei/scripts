@@ -29,7 +29,7 @@ describe("LandingManager", () => {
 
       await manager.handleLandCommand(session)
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("No DAG or stack found"),
         100,
       )
@@ -42,7 +42,7 @@ describe("LandingManager", () => {
 
       await manager.handleLandCommand(session)
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("No DAG or stack found"),
         100,
       )
@@ -62,7 +62,7 @@ describe("LandingManager", () => {
 
       await manager.handleLandCommand(session)
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("No PRs found"),
         100,
       )
@@ -87,7 +87,7 @@ describe("LandingManager", () => {
 
       await manager.handleLandCommand(session)
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Landing"),
         100,
       )
@@ -109,7 +109,7 @@ describe("LandingManager", () => {
 
       await manager.handleLandCommand(session)
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("No completed PRs to land"),
         100,
       )
@@ -135,7 +135,7 @@ describe("LandingManager", () => {
 
       await manager.handleLandCommand(session)
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("No completed PRs to land"),
         100,
       )
@@ -159,7 +159,7 @@ describe("LandingManager", () => {
 
       await manager.handleLandCommand(session)
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("No completed PRs to land"),
         100,
       )
@@ -177,7 +177,7 @@ describe("LandingManager", () => {
 
       await manager.handleLandCommand(session)
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("No PRs found among child sessions"),
         100,
       )
@@ -199,7 +199,7 @@ describe("LandingManager", () => {
 
       await manager.handleLandCommand(session)
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Landing"),
         100,
       )
@@ -213,7 +213,7 @@ describe("LandingManager", () => {
 
       await manager.handleLandCommand(session)
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("No PRs found"),
         100,
       )

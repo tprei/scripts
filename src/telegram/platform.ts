@@ -22,20 +22,6 @@ import type {
   ChatUpdate,
 } from "../provider/types.js"
 
-// ── ID conversion helpers ────────────────────────────────────────────
-
-function toNumericThread(threadId?: ThreadId): number | undefined {
-  return threadId !== undefined ? Number(threadId) : undefined
-}
-
-function toNumericMessage(messageId: MessageId): number {
-  return Number(messageId)
-}
-
-function toStringId(n: number | null): string | null {
-  return n !== null ? String(n) : null
-}
-
 // ── Update conversion ────────────────────────────────────────────────
 
 function convertUpdate(update: TelegramUpdate): ChatUpdate | null {
@@ -100,24 +86,20 @@ export class TelegramChatProvider implements ChatProvider {
     threadId?: ThreadId,
     replyToMessageId?: MessageId,
   ): Promise<SendResult> {
-    const result = await this.client.sendMessage(
-      content,
-      toNumericThread(threadId),
-      replyToMessageId !== undefined ? toNumericMessage(replyToMessageId) : undefined,
-    )
-    return { ok: result.ok, messageId: toStringId(result.messageId) }
+    const result = await this.client.sendMessage(content, threadId, replyToMessageId)
+    return { ok: result.ok, messageId: result.messageId }
   }
 
   async editMessage(messageId: MessageId, content: string, threadId?: ThreadId): Promise<boolean> {
-    return this.client.editMessage(toNumericMessage(messageId), content, toNumericThread(threadId))
+    return this.client.editMessage(messageId, content, threadId)
   }
 
   async deleteMessage(messageId: MessageId): Promise<void> {
-    await this.client.deleteMessage(toNumericMessage(messageId))
+    await this.client.deleteMessage(messageId)
   }
 
   async pinMessage(messageId: MessageId): Promise<void> {
-    await this.client.pinChatMessage(toNumericMessage(messageId))
+    await this.client.pinChatMessage(messageId)
   }
 }
 
@@ -130,15 +112,15 @@ export class TelegramThreadManager implements ThreadManager {
   }
 
   async editThread(threadId: ThreadId, name: string): Promise<void> {
-    await this.client.editForumTopic(Number(threadId), name)
+    await this.client.editForumTopic(threadId, name)
   }
 
   async closeThread(threadId: ThreadId): Promise<void> {
-    await this.client.closeForumTopic(Number(threadId))
+    await this.client.closeForumTopic(threadId)
   }
 
   async deleteThread(threadId: ThreadId): Promise<void> {
-    await this.client.deleteForumTopic(Number(threadId))
+    await this.client.deleteForumTopic(threadId)
   }
 }
 
@@ -184,12 +166,8 @@ export class TelegramInteractiveUI implements InteractiveUI {
     const telegramKb = keyboard.map((row) =>
       row.map((btn) => ({ text: btn.text, callback_data: btn.callbackData })),
     )
-    const msgId = await this.client.sendMessageWithKeyboard(
-      content,
-      telegramKb,
-      toNumericThread(threadId),
-    )
-    return toStringId(msgId)
+    const msgId = await this.client.sendMessageWithKeyboard(content, telegramKb, threadId)
+    return msgId
   }
 
   async answerCallbackQuery(queryId: string, text?: string): Promise<void> {
@@ -201,8 +179,7 @@ export class TelegramFileHandler implements FileHandler {
   constructor(private readonly client: TelegramClient) {}
 
   async sendPhoto(photoPath: string, threadId?: ThreadId, caption?: string): Promise<MessageId | null> {
-    const msgId = await this.client.sendPhoto(photoPath, toNumericThread(threadId), caption)
-    return toStringId(msgId)
+    return this.client.sendPhoto(photoPath, threadId, caption)
   }
 
   async sendPhotoBuffer(
@@ -211,8 +188,7 @@ export class TelegramFileHandler implements FileHandler {
     threadId?: ThreadId,
     caption?: string,
   ): Promise<MessageId | null> {
-    const msgId = await this.client.sendPhotoBuffer(buffer, filename, toNumericThread(threadId), caption)
-    return toStringId(msgId)
+    return this.client.sendPhotoBuffer(buffer, filename, threadId, caption)
   }
 
   async downloadFile(fileId: string, destPath: string): Promise<boolean> {

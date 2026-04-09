@@ -73,7 +73,7 @@ describe("CommandHandler", () => {
   describe("handleStatusCommand", () => {
     it("sends formatted status message", async () => {
       await handler.handleStatusCommand()
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith("status")
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith("status")
     })
   })
 
@@ -81,21 +81,21 @@ describe("CommandHandler", () => {
     it("sends formatted stats message", async () => {
       await handler.handleStatsCommand()
       expect(ctx.stats.aggregate).toHaveBeenCalledWith(7)
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith("stats")
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith("stats")
     })
   })
 
   describe("handleUsageCommand", () => {
     it("sends formatted usage message", async () => {
       await handler.handleUsageCommand()
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith("usage")
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith("usage")
     })
   })
 
   describe("handleHelpCommand", () => {
     it("sends formatted help message", async () => {
       await handler.handleHelpCommand()
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith("help")
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith("help")
     })
   })
 
@@ -103,7 +103,7 @@ describe("CommandHandler", () => {
     it("lists profiles when called with no args", async () => {
       await handler.handleConfigCommand("")
       expect(ctx.profileStore.list).toHaveBeenCalled()
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith("profiles")
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith("profiles")
     })
 
     it("adds a new profile", async () => {
@@ -118,7 +118,7 @@ describe("CommandHandler", () => {
 
     it("rejects invalid set field", async () => {
       await handler.handleConfigCommand("set test-id invalidField value")
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(expect.stringContaining("Invalid field"))
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(expect.stringContaining("Invalid field"))
     })
 
     it("removes a profile", async () => {
@@ -143,7 +143,7 @@ describe("CommandHandler", () => {
 
     it("shows config help for unknown subcommand", async () => {
       await handler.handleConfigCommand("unknown")
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith("config help")
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith("config help")
     })
   })
 
@@ -155,7 +155,7 @@ describe("CommandHandler", () => {
       ctx.sessions.set(4, makeMockActiveSession())
       ctx.sessions.set(5, makeMockActiveSession())
       await handler.handleTaskCommand("do something", 42)
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Max concurrent sessions"),
         42,
       )
@@ -163,7 +163,7 @@ describe("CommandHandler", () => {
 
     it("shows usage when no task provided", async () => {
       await handler.handleTaskCommand("", 42)
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Usage"),
         42,
       )
@@ -180,7 +180,7 @@ describe("CommandHandler", () => {
       })
       handler = new CommandHandler(ctx)
       await handler.handleTaskCommand("do something", 42)
-      expect(ctx.telegram.sendMessageWithKeyboard).toHaveBeenCalled()
+      expect(ctx.ui!.sendMessageWithKeyboard).toHaveBeenCalled()
     })
 
     it("delegates to startWithProfileSelection when repo resolved", async () => {
@@ -198,7 +198,7 @@ describe("CommandHandler", () => {
   describe("handleReviewCommand", () => {
     it("shows usage when no repos and no args", async () => {
       await handler.handleReviewCommand("", 42)
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Usage"),
         42,
       )
@@ -250,7 +250,7 @@ describe("CommandHandler", () => {
 
       await handler.handleDagCommand(session)
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("System error"),
         100,
       )
@@ -262,7 +262,7 @@ describe("CommandHandler", () => {
 
       await handler.handleDagCommand(session)
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("Could not extract"),
         100,
       )
@@ -276,7 +276,7 @@ describe("CommandHandler", () => {
 
       await handler.handleDagCommand(session)
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("1 item found"),
         100,
       )
@@ -309,7 +309,7 @@ describe("CommandHandler", () => {
       expect(mockHandle.kill).toHaveBeenCalled()
       expect(ctx.sessions.has(100)).toBe(false)
       expect(session.activeSessionId).toBeUndefined()
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("doctor analyzing"),
         100,
       )
@@ -326,7 +326,7 @@ describe("CommandHandler", () => {
 
       await handler.handleDoctorCommand(session)
 
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("doctor analyzing"),
         100,
       )
@@ -382,7 +382,7 @@ describe("CommandHandler", () => {
     it("rejects child sessions", async () => {
       const session = makeSession({ parentThreadId: 50 })
       await handler.handleDoneCommand(session)
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("not available on child sessions"),
         100,
       )
@@ -391,7 +391,7 @@ describe("CommandHandler", () => {
     it("rejects when no PR found", async () => {
       const session = makeSession()
       await handler.handleDoneCommand(session)
-      expect(ctx.telegram.sendMessage).toHaveBeenCalledWith(
+      expect(ctx.chat.sendMessage).toHaveBeenCalledWith(
         expect.stringContaining("No PR found"),
         100,
       )

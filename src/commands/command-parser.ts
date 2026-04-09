@@ -1,7 +1,9 @@
 /**
- * Command parsing utilities for Telegram bot commands.
+ * Command parsing utilities for chat bot commands.
  * Extracts repo URLs, task descriptions, and builds keyboard UIs.
  */
+
+import type { KeyboardButton } from "../provider/types.js"
 
 // Command prefixes
 export const TASK_PREFIX = "/task"
@@ -150,7 +152,7 @@ export function buildReviewAllTask(repoUrl: string): string {
 export function buildRepoKeyboard(
   repoKeys: string[],
   prefix: "repo" | "plan" | "think" | "review" | "ship" = "repo",
-): { text: string; callback_data: string }[][] {
+): KeyboardButton[][] {
   const dataPrefix =
     prefix === "think"
       ? "think-repo"
@@ -161,13 +163,13 @@ export function buildRepoKeyboard(
           : prefix === "ship"
             ? "ship-repo"
             : "repo"
-  const rows: { text: string; callback_data: string }[][] = []
+  const rows: KeyboardButton[][] = []
   for (let i = 0; i < repoKeys.length; i += 2) {
-    const row = [{ text: repoKeys[i], callback_data: `${dataPrefix}:${repoKeys[i]}` }]
+    const row: KeyboardButton[] = [{ text: repoKeys[i], callbackData: `${dataPrefix}:${repoKeys[i]}` }]
     if (i + 1 < repoKeys.length) {
       row.push({
         text: repoKeys[i + 1],
-        callback_data: `${dataPrefix}:${repoKeys[i + 1]}`,
+        callbackData: `${dataPrefix}:${repoKeys[i + 1]}`,
       })
     }
     rows.push(row)
@@ -180,16 +182,16 @@ export function buildRepoKeyboard(
  */
 export function buildProfileKeyboard(
   profiles: { id: string; name: string }[],
-): { text: string; callback_data: string }[][] {
-  const rows: { text: string; callback_data: string }[][] = []
+): KeyboardButton[][] {
+  const rows: KeyboardButton[][] = []
   for (let i = 0; i < profiles.length; i += 2) {
-    const row = [
-      { text: profiles[i].name, callback_data: `profile:${profiles[i].id}` },
+    const row: KeyboardButton[] = [
+      { text: profiles[i].name, callbackData: `profile:${profiles[i].id}` },
     ]
     if (i + 1 < profiles.length) {
       row.push({
         text: profiles[i + 1].name,
-        callback_data: `profile:${profiles[i + 1].id}`,
+        callbackData: `profile:${profiles[i + 1].id}`,
       })
     }
     rows.push(row)
