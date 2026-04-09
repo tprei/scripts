@@ -24,6 +24,7 @@ import {
 } from "../telegram/format.js"
 import { gatherDiagnosticEvidence, buildDoctorPrompt } from "./doctor.js"
 import { fetchClaudeUsage } from "../claude-usage.js"
+import type { CICheckResult } from "../ci/ci-babysit.js"
 import { buildExecutionPrompt } from "../session/session-manager.js"
 import { loggers } from "../logger.js"
 
@@ -533,7 +534,7 @@ export class CommandHandler {
       const { stdout: checksJson } = await execFile("gh", ["pr", "checks", prNumber, "--repo", repo, "--json", "name,state,bucket"], execOpts)
 
       if (checksJson.trim() && checksJson.trim() !== "[]") {
-        const checks = JSON.parse(checksJson.trim()) as { name: string; state: string; bucket: string }[]
+        const checks = JSON.parse(checksJson.trim()) as CICheckResult[]
         const pending = checks.filter((c) => c.bucket === "pending")
         if (pending.length > 0) {
           await this.ctx.telegram.sendMessage(
