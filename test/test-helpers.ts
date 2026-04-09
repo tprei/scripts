@@ -10,6 +10,7 @@ import { vi } from "vitest"
 import type { ChildProcess } from "node:child_process"
 import type { TelegramClient } from "../src/telegram/telegram.js"
 import type { Observer, TextCaptureCallback } from "../src/telegram/observer.js"
+import type { ChatProvider, FileHandler } from "../src/provider/index.js"
 import type { StatsTracker, SessionRecord, AggregateStats } from "../src/stats.js"
 import type { ProfileStore } from "../src/profile-store.js"
 import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
@@ -50,6 +51,29 @@ export function makeMockTelegram(overrides: Partial<TelegramClient> = {}): Teleg
     downloadFile: vi.fn(async () => true),
     ...overrides,
   } as unknown as TelegramClient
+}
+
+// ── ChatProvider ──────────────────────────────────────────────────────
+
+export function makeMockChatProvider(overrides: Partial<ChatProvider> = {}): ChatProvider {
+  return {
+    sendMessage: vi.fn(async () => ({ ok: true, messageId: "1" })),
+    editMessage: vi.fn(async () => true),
+    deleteMessage: vi.fn(async () => {}),
+    pinMessage: vi.fn(async () => {}),
+    ...overrides,
+  }
+}
+
+// ── FileHandler ───────────────────────────────────────────────────────
+
+export function makeMockFileHandler(overrides: Partial<FileHandler> = {}): FileHandler {
+  return {
+    sendPhoto: vi.fn(async () => "1"),
+    sendPhotoBuffer: vi.fn(async () => "1"),
+    downloadFile: vi.fn(async () => true),
+    ...overrides,
+  }
 }
 
 // ── Observer ───────────────────────────────────────────────────────────
