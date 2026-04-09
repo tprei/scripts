@@ -19,6 +19,13 @@ export interface LoopSchedulerProvider {
 
 export interface LoopTelegramNotifier {
   sendMessage(html: string, threadId?: number): Promise<{ ok: boolean; messageId: number | null }>
+  deleteForumTopic(threadId: number): Promise<void>
+}
+
+export interface LoopThreadCleaner {
+  removeWorkspace(topicSession: import("../domain/session-types.js").TopicSession): Promise<void>
+  deleteTopicSession(threadId: number): void
+  broadcastSessionDeleted(slug: string): void
 }
 
 export class LoopCompletionHandler implements CompletionHandler {
@@ -27,6 +34,7 @@ export class LoopCompletionHandler implements CompletionHandler {
   constructor(
     private readonly schedulerProvider: LoopSchedulerProvider,
     private readonly telegram: LoopTelegramNotifier,
+    private readonly cleaner: LoopThreadCleaner,
   ) {}
 
   async handle(ctx: SessionCompletionContext): Promise<void> {
@@ -58,7 +66,21 @@ export class LoopCompletionHandler implements CompletionHandler {
       await this.checkConsecutiveErrors(scheduler, loopId)
     }
 
+    // Auto-close the loop thread — outcome is recorded in scheduler state
+    this.closeThread(topicSession).catch((err) => {
+      log.error({ err, loopId, threadId: topicSession.threadId }, "failed to auto-close loop thread")
+    })
+
     ctx.handled = true
+  }
+
+  private async closeThread(topicSession: SessionCompletionContext["topicSession"]): Promise<void> {
+    const threadId = topicSession.threadId
+    this.cleaner.deleteTopicSession(threadId)
+    this.cleaner.broadcastSessionDeleted(topicSession.slug)
+    await this.telegram.deleteForumTopic(threadId)
+    await this.cleaner.removeWorkspace(topicSession)
+    log.info({ slug: topicSession.slug, threadId }, "auto-closed loop thread")
   }
 
   private extractPR(ctx: SessionCompletionContext): string | null {
