@@ -290,6 +290,23 @@ export class SDKSessionHandle implements SessionPort {
       }
     }
 
+    if (this.sessionConfig.mcp.flyEnabled) {
+      const flyToken = process.env["FLY_API_TOKEN"]
+      if (flyToken) {
+        const flyArgs = ["mcp", "server"]
+        if (this.sessionConfig.mcp.flyOrg) {
+          flyArgs.push("--org", this.sessionConfig.mcp.flyOrg)
+        }
+        servers.fly = {
+          command: "fly",
+          args: flyArgs,
+          env: { FLY_API_TOKEN: flyToken },
+        }
+      } else {
+        this.log.warn("MCP: Fly MCP enabled but FLY_API_TOKEN is not set — skipping")
+      }
+    }
+
     if (this.sessionConfig.mcp.zaiEnabled && this.sessionConfig.goose.provider === "z-ai") {
       const zaiKey = this.sessionConfig.profile?.authToken || process.env["ZAI_API_KEY"]
       if (zaiKey) {

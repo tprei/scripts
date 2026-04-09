@@ -13,6 +13,8 @@ const baseConfig: SessionConfig = {
     sentryProjectSlug: "",
     supabaseEnabled: false,
     supabaseProjectRef: "",
+    flyEnabled: false,
+    flyOrg: "",
     zaiEnabled: false,
   },
 }
@@ -61,6 +63,7 @@ describe("SessionHandle MCP building", () => {
     originalEnv["GITHUB_TOKEN"] = process.env["GITHUB_TOKEN"]
     originalEnv["SENTRY_ACCESS_TOKEN"] = process.env["SENTRY_ACCESS_TOKEN"]
     originalEnv["SUPABASE_ACCESS_TOKEN"] = process.env["SUPABASE_ACCESS_TOKEN"]
+    originalEnv["FLY_API_TOKEN"] = process.env["FLY_API_TOKEN"]
   })
 
   afterEach(() => {
@@ -209,6 +212,56 @@ describe("SessionHandle MCP building", () => {
         env: undefined,
       })
       expect(config.mcpServers["web-search-prime"].type).toBe("http")
+    })
+  })
+
+  describe("Fly MCP", () => {
+    it("does not include Fly when flyEnabled is false", () => {
+      process.env["FLY_API_TOKEN"] = "fo1_test-token"
+      const handle = makeHandle({
+        mcp: { ...baseConfig.mcp, flyEnabled: false },
+      })
+      const servers = getMcpServers(handle)
+
+      expect(servers["fly"]).toBeUndefined()
+    })
+
+    it("does not include Fly when FLY_API_TOKEN is not set", () => {
+      delete process.env["FLY_API_TOKEN"]
+      const handle = makeHandle({
+        mcp: { ...baseConfig.mcp, flyEnabled: true },
+      })
+      const servers = getMcpServers(handle)
+
+      expect(servers["fly"]).toBeUndefined()
+    })
+
+    it("includes Fly when enabled with access token", () => {
+      process.env["FLY_API_TOKEN"] = "fo1_test-token"
+      const handle = makeHandle({
+        mcp: { ...baseConfig.mcp, flyEnabled: true },
+      })
+      const servers = getMcpServers(handle)
+
+      expect(servers["fly"]).toEqual({
+        command: "fly",
+        args: ["mcp", "server"],
+        env: { FLY_API_TOKEN: "fo1_test-token" },
+      })
+    })
+
+    it("includes org in args when configured", () => {
+      process.env["FLY_API_TOKEN"] = "fo1_test-token"
+      const handle = makeHandle({
+        mcp: { ...baseConfig.mcp, flyEnabled: true, flyOrg: "my-org" },
+      })
+      const servers = getMcpServers(handle)
+
+      expect(servers["fly"]).toEqual({
+        command: "fly",
+        args: ["mcp", "server", "--org", "my-org"],
+        env: { FLY_API_TOKEN: "fo1_test-token" },
+      })
     })
   })
 

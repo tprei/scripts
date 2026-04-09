@@ -57,6 +57,8 @@ function makeConfig(overrides?: Partial<MinionConfig>): MinionConfig {
       sentryProjectSlug: "",
       supabaseEnabled: false,
       supabaseProjectRef: "",
+      flyEnabled: false,
+      flyOrg: "",
       zaiEnabled: false,
     },
     ci: {

@@ -209,6 +209,8 @@ export function makeMockConfig(overrides: Partial<MinionConfig> = {}): MinionCon
       sentryProjectSlug: "",
       supabaseEnabled: false,
       supabaseProjectRef: "",
+      flyEnabled: false,
+      flyOrg: "",
       zaiEnabled: false,
     },
     observer: { activityThrottleMs: 0, textFlushDebounceMs: 0, activityEditDebounceMs: 0 },

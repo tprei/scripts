@@ -116,6 +116,8 @@ export function configFromEnv(overrides?: Partial<MinionConfig>): MinionConfig {
       sentryProjectSlug: process.env["SENTRY_PROJECT_SLUG"] ?? "",
       supabaseEnabled: optional("ENABLE_SUPABASE_MCP", "true") === "true",
       supabaseProjectRef: process.env["SUPABASE_PROJECT_REF"] ?? "",
+      flyEnabled: optional("ENABLE_FLY_MCP", "true") === "true",
+      flyOrg: process.env["FLY_ORG"] ?? "",
       zaiEnabled: optional("ENABLE_ZAI_MCP", "true") === "true",
     },
     telegramQueue: {
