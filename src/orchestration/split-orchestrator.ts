@@ -12,7 +12,7 @@ import {
 
 export class SplitOrchestrator {
   private readonly ctx: DispatcherContext
-  private readonly drainingParents = new Set<number>()
+  private readonly drainingParents = new Set<string>()
 
   constructor(ctx: DispatcherContext) {
     this.ctx = ctx
@@ -26,7 +26,7 @@ export class SplitOrchestrator {
       topicSession.activeSessionId = undefined
     }
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatSplitAnalyzing(topicSession.slug),
       topicSession.threadId,
     )
@@ -37,7 +37,7 @@ export class SplitOrchestrator {
     const result = await extractSplitItems(topicSession.conversation, directive)
 
     if (result.error === "system") {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ <b>System error</b> during extraction: <code>${result.errorMessage ?? "Unknown error"}</code>\n\n` +
         `This is likely a transient resource issue. Try <code>/split</code> again in a few seconds, ` +
         `or use <code>/execute</code> to proceed with a single task.`,
@@ -47,7 +47,7 @@ export class SplitOrchestrator {
     }
 
     if (result.items.length === 0) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ Could not extract discrete work items from the conversation. Try <code>/execute</code> instead.`,
         topicSession.threadId,
       )
@@ -57,7 +57,7 @@ export class SplitOrchestrator {
     const items = result.items
 
     if (items.length === 1) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `Only 1 item found — using <code>/execute</code> instead of splitting.`,
         topicSession.threadId,
       )
@@ -98,20 +98,20 @@ export class SplitOrchestrator {
     }
 
     if (childSummaries.length === 0) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `❌ Failed to spawn any sub-tasks. Try <code>/execute</code> instead.`,
         topicSession.threadId,
       )
       return
     }
     if (toQueue.length > 0) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⏳ Spawned ${childSummaries.length}/${items.length} items — ${toQueue.length} queued, will start as slots free up.`,
         topicSession.threadId,
       )
     }
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatSplitStart(topicSession.slug, childSummaries),
       topicSession.threadId,
     )
@@ -128,7 +128,7 @@ export class SplitOrchestrator {
       topicSession.activeSessionId = undefined
     }
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatStackAnalyzing(topicSession.slug),
       topicSession.threadId,
     )
@@ -140,7 +140,7 @@ export class SplitOrchestrator {
     const result = await extractStackItems(topicSession.conversation, directive, profile)
 
     if (result.error === "system") {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ <b>System error</b> during extraction: <code>${result.errorMessage ?? "Unknown error"}</code>\n\n` +
         `Try <code>/stack</code> again, or use <code>/execute</code> for a single task.`,
         topicSession.threadId,
@@ -149,7 +149,7 @@ export class SplitOrchestrator {
     }
 
     if (result.items.length === 0) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ Could not extract sequential work items. Try <code>/execute</code> instead.`,
         topicSession.threadId,
       )
@@ -157,7 +157,7 @@ export class SplitOrchestrator {
     }
 
     if (result.items.length === 1) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `Only 1 item found — using <code>/execute</code> instead.`,
         topicSession.threadId,
       )
@@ -186,7 +186,7 @@ export class SplitOrchestrator {
 
     childSession.conversation = []
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatSplitChildComplete(childSession.slug, state, label, prUrl, childSession.threadId, this.ctx.config.telegram.chatId),
       parent.threadId,
     )
@@ -228,7 +228,7 @@ export class SplitOrchestrator {
         }
       }
 
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatSplitAllDone(succeeded, parent.childThreadIds.length),
         parent.threadId,
       )

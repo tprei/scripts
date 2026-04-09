@@ -74,7 +74,7 @@ export class LandingManager {
     await this.ctx.refreshGitToken()
     if (!topicSession.dagId) {
       if (!topicSession.childThreadIds || topicSession.childThreadIds.length === 0) {
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           `⚠️ No DAG or stack found for this session. Use <code>/stack</code> or <code>/dag</code> first.`,
           topicSession.threadId,
         )
@@ -98,7 +98,7 @@ export class LandingManager {
       .filter((n) => n.status === "done" && n.prUrl)
 
     if (prNodes.length === 0) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ No completed PRs to land.`,
         topicSession.threadId,
       )
@@ -110,7 +110,7 @@ export class LandingManager {
 
     await this.removeChildWorktrees(topicSession, graph)
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatLandStart(topicSession.slug, prNodes.length),
       topicSession.threadId,
     )
@@ -124,7 +124,7 @@ export class LandingManager {
       if (signal.aborted) break
       if (skipNodeIds.has(node.id)) {
         skipped++
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           formatLandSkipped(node.title, "upstream restack failed"),
           topicSession.threadId,
         )
@@ -136,7 +136,7 @@ export class LandingManager {
 
       if (!prNumber) {
         failedTitles.push(node.title)
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           formatLandError(node.title, "could not parse PR number from URL"),
           topicSession.threadId,
         )
@@ -149,7 +149,7 @@ export class LandingManager {
         if (prState === "MERGED") {
           node.status = "landed"
           skipped++
-          await this.ctx.telegram.sendMessage(
+          await this.ctx.chat.sendMessage(
             formatLandSkipped(node.title, prState),
             topicSession.threadId,
           )
@@ -158,7 +158,7 @@ export class LandingManager {
 
         if (prState === "CLOSED") {
           skipped++
-          await this.ctx.telegram.sendMessage(
+          await this.ctx.chat.sendMessage(
             formatLandSkipped(node.title, prState),
             topicSession.threadId,
           )
@@ -183,7 +183,7 @@ export class LandingManager {
           }
         }
 
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           formatLandProgress(node.title, node.prUrl!, succeeded - 1, prNodes.length),
           topicSession.threadId,
         )
@@ -200,7 +200,7 @@ export class LandingManager {
             continue
           }
 
-          await this.ctx.telegram.sendMessage(
+          await this.ctx.chat.sendMessage(
             formatLandRestacking(downstream.title, downstream.branch),
             topicSession.threadId,
           )
@@ -233,7 +233,7 @@ export class LandingManager {
               if (unmerged.length > 0) {
                 const { resolved: phantomResolved, remaining } = await resolvePhantomConflicts(restackCwd)
                 if (remaining.length > 0) {
-                  await this.ctx.telegram.sendMessage(
+                  await this.ctx.chat.sendMessage(
                     `🤖 Attempting conflict resolution for <b>${esc(downstream.title)}</b>…`,
                     topicSession.threadId,
                   )
@@ -255,7 +255,7 @@ export class LandingManager {
                   }
                 }
 
-                await this.ctx.telegram.sendMessage(
+                await this.ctx.chat.sendMessage(
                   formatLandConflictResolution(downstream.title, downstream.branch, conflictResolved),
                   topicSession.threadId,
                 )
@@ -265,7 +265,7 @@ export class LandingManager {
             }
 
             if (!conflictResolved) {
-              await this.ctx.telegram.sendMessage(
+              await this.ctx.chat.sendMessage(
                 `⚠️ Restack failed for <b>${esc(downstream.title)}</b>: <code>${esc(errMsg)}</code>`,
                 topicSession.threadId,
               )
@@ -278,7 +278,7 @@ export class LandingManager {
               skipNodeIds.add(downstream.id)
               if (transitiveSkips.length > 0) {
                 const names = transitiveSkips.map((n) => n.title).join(", ")
-                await this.ctx.telegram.sendMessage(
+                await this.ctx.chat.sendMessage(
                   `⏭️ Skipping ${transitiveSkips.length} downstream node(s) due to restack failure: ${esc(names)}`,
                   topicSession.threadId,
                 )
@@ -291,7 +291,7 @@ export class LandingManager {
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err)
         failedTitles.push(node.title)
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           formatLandError(node.title, errMsg),
           topicSession.threadId,
         )
@@ -300,12 +300,12 @@ export class LandingManager {
     }
 
     if (failedTitles.length === 0 && skipped === 0) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatLandComplete(succeeded, prNodes.length, baseBranch),
         topicSession.threadId,
       )
     } else {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatLandSummary(succeeded, failedTitles.length, skipped, prNodes.length, failedTitles, baseBranch),
         topicSession.threadId,
       )
@@ -348,7 +348,7 @@ export class LandingManager {
       return
     }
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       `🔄 Rebasing <b>${esc(node.title)}</b> to resolve conflicts…`,
       topicSession.threadId,
     )
@@ -365,7 +365,7 @@ export class LandingManager {
       }
       await git(["push", "--force-with-lease", "origin", node.branch], { cwd })
 
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `✅ Rebased <b>${esc(node.title)}</b>`,
         topicSession.threadId,
       )
@@ -378,7 +378,7 @@ export class LandingManager {
           const { resolved: phantomResolved, remaining } = await resolvePhantomConflicts(cwd)
           let allResolved = remaining.length === 0 && phantomResolved.length > 0
           if (remaining.length > 0) {
-            await this.ctx.telegram.sendMessage(
+            await this.ctx.chat.sendMessage(
               `🤖 Attempting conflict resolution for <b>${esc(node.title)}</b>…`,
               topicSession.threadId,
             )
@@ -389,7 +389,7 @@ export class LandingManager {
             await git(["rebase", "--continue"], { cwd, env: { GIT_EDITOR: "true" } })
             await git(["push", "--force-with-lease", "origin", node.branch], { cwd })
 
-            await this.ctx.telegram.sendMessage(
+            await this.ctx.chat.sendMessage(
               formatLandConflictResolution(node.title, node.branch, true),
               topicSession.threadId,
             )
@@ -401,7 +401,7 @@ export class LandingManager {
       } catch { /* fall through */ }
 
       try { await git(["rebase", "--abort"], { cwd }) } catch { /* ignore */ }
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ Could not resolve conflicts for <b>${esc(node.title)}</b>`,
         topicSession.threadId,
       )
@@ -514,14 +514,14 @@ export class LandingManager {
     }
 
     if (prUrls.length === 0) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ No PRs found among child sessions.`,
         topicSession.threadId,
       )
       return
     }
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatLandStart(topicSession.slug, prUrls.length),
       topicSession.threadId,
     )
@@ -538,7 +538,7 @@ export class LandingManager {
 
       if (!prNumber) {
         failedTitles.push(title)
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           formatLandError(title, "could not parse PR number from URL"),
           topicSession.threadId,
         )
@@ -550,7 +550,7 @@ export class LandingManager {
 
         if (prState === "MERGED") {
           skipped++
-          await this.ctx.telegram.sendMessage(
+          await this.ctx.chat.sendMessage(
             formatLandSkipped(title, prState),
             topicSession.threadId,
           )
@@ -559,7 +559,7 @@ export class LandingManager {
 
         if (prState === "CLOSED") {
           skipped++
-          await this.ctx.telegram.sendMessage(
+          await this.ctx.chat.sendMessage(
             formatLandSkipped(title, prState),
             topicSession.threadId,
           )
@@ -573,7 +573,7 @@ export class LandingManager {
         await gh(["pr", "merge", prNumber, ...repoFlag, "--squash", "--delete-branch"])
         succeeded++
 
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           formatLandProgress(title, prUrl, succeeded - 1, prUrls.length),
           topicSession.threadId,
         )
@@ -582,7 +582,7 @@ export class LandingManager {
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err)
         failedTitles.push(title)
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           formatLandError(title, errMsg),
           topicSession.threadId,
         )
@@ -591,12 +591,12 @@ export class LandingManager {
     }
 
     if (failedTitles.length === 0 && skipped === 0) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatLandComplete(succeeded, prUrls.length),
         topicSession.threadId,
       )
     } else {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatLandSummary(succeeded, failedTitles.length, skipped, prUrls.length, failedTitles),
         topicSession.threadId,
       )

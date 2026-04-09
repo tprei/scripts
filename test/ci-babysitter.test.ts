@@ -88,7 +88,7 @@ describe("CIBabysitter", () => {
   describe("runDeferredBabysit", () => {
     it("does nothing when no entries exist", async () => {
       await babysitter.runDeferredBabysit(999)
-      expect(ctx.telegram.sendMessage).not.toHaveBeenCalled()
+      expect(ctx.chat.sendMessage).not.toHaveBeenCalled()
     })
 
     it("processes and clears queued entries", async () => {
@@ -100,7 +100,7 @@ describe("CIBabysitter", () => {
       await babysitter.runDeferredBabysit(1)
 
       expect(babysitter.pendingBabysitPRs.has(1)).toBe(false)
-      expect(ctx.telegram.sendMessage).toHaveBeenCalled()
+      expect(ctx.chat.sendMessage).toHaveBeenCalled()
     })
 
     it("continues processing even if one entry fails", async () => {
@@ -170,7 +170,7 @@ describe("CIBabysitter", () => {
 
       await babysitter.babysitPR(session, "https://github.com/org/repo/pull/1")
 
-      const sendMsg = vi.mocked(ctx.telegram.sendMessage)
+      const sendMsg = vi.mocked(ctx.chat.sendMessage)
       const calls = sendMsg.mock.calls.map((c) => c[0])
       expect(calls.some((c) => typeof c === "string" && c.includes("passed"))).toBe(true)
     })
@@ -182,7 +182,7 @@ describe("CIBabysitter", () => {
 
       await babysitter.babysitPR(session, "https://github.com/org/repo/pull/1")
 
-      const sendMsg = vi.mocked(ctx.telegram.sendMessage)
+      const sendMsg = vi.mocked(ctx.chat.sendMessage)
       expect(sendMsg).toHaveBeenCalled()
     })
 

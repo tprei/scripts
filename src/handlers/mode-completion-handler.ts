@@ -1,4 +1,4 @@
-import type { TelegramClient } from "../telegram/telegram.js"
+import type { ChatProvider } from "../provider/chat-provider.js"
 import type { Observer } from "../telegram/observer.js"
 import type { TopicSession } from "../domain/session-types.js"
 import type { CompletionHandler, SessionCompletionContext } from "./handler-types.js"
@@ -26,7 +26,7 @@ export class ModeCompletionHandler implements CompletionHandler {
   readonly name = "ModeCompletionHandler"
 
   constructor(
-    private readonly telegram: TelegramClient,
+    private readonly chat: ChatProvider,
     private readonly observer: Observer,
     private readonly pinnedMessages: PinnedMessages,
   ) {}
@@ -41,7 +41,7 @@ export class ModeCompletionHandler implements CompletionHandler {
       })
       const formatter = MODE_FORMATTERS[topicSession.mode]
       if (formatter) {
-        this.telegram.sendMessage(
+        this.chat.sendMessage(
           formatter(topicSession.slug),
           topicSession.threadId,
         ).catch(() => {})

@@ -188,7 +188,7 @@ describe("buildRepoKeyboard", () => {
     expect(keyboard).toHaveLength(2)
     expect(keyboard[0]).toHaveLength(2)
     expect(keyboard[0][0].text).toBe("repo1")
-    expect(keyboard[0][0].callback_data).toBe("repo:repo1")
+    expect(keyboard[0][0].callbackData).toBe("repo:repo1")
     expect(keyboard[0][1].text).toBe("repo2")
     expect(keyboard[1][0].text).toBe("repo3")
     expect(keyboard[1]).toHaveLength(1)
@@ -196,22 +196,22 @@ describe("buildRepoKeyboard", () => {
 
   it("builds keyboard with plan prefix", () => {
     const keyboard = buildRepoKeyboard(["repo1"], "plan")
-    expect(keyboard[0][0].callback_data).toBe("plan-repo:repo1")
+    expect(keyboard[0][0].callbackData).toBe("plan-repo:repo1")
   })
 
   it("builds keyboard with think prefix", () => {
     const keyboard = buildRepoKeyboard(["repo1"], "think")
-    expect(keyboard[0][0].callback_data).toBe("think-repo:repo1")
+    expect(keyboard[0][0].callbackData).toBe("think-repo:repo1")
   })
 
   it("builds keyboard with review prefix", () => {
     const keyboard = buildRepoKeyboard(["repo1"], "review")
-    expect(keyboard[0][0].callback_data).toBe("review-repo:repo1")
+    expect(keyboard[0][0].callbackData).toBe("review-repo:repo1")
   })
 
   it("builds keyboard with ship prefix", () => {
     const keyboard = buildRepoKeyboard(["repo1"], "ship")
-    expect(keyboard[0][0].callback_data).toBe("ship-repo:repo1")
+    expect(keyboard[0][0].callbackData).toBe("ship-repo:repo1")
   })
 
   it("handles empty repo list", () => {
@@ -230,7 +230,7 @@ describe("buildProfileKeyboard", () => {
     const keyboard = buildProfileKeyboard(profiles)
     expect(keyboard).toHaveLength(2)
     expect(keyboard[0][0].text).toBe("Profile 1")
-    expect(keyboard[0][0].callback_data).toBe("profile:p1")
+    expect(keyboard[0][0].callbackData).toBe("profile:p1")
     expect(keyboard[0][1].text).toBe("Profile 2")
     expect(keyboard[1][0].text).toBe("Profile 3")
   })

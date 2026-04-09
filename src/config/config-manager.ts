@@ -15,7 +15,7 @@ export class ConfigManager {
     if (!args) {
       const profiles = this.ctx.profileStore.list()
       const defaultId = this.ctx.profileStore.getDefaultId()
-      await this.ctx.telegram.sendMessage(formatProfileList(profiles, defaultId))
+      await this.ctx.chat.sendMessage(formatProfileList(profiles, defaultId))
       return
     }
 
@@ -27,9 +27,9 @@ export class ConfigManager {
       const name = parts.slice(2).join(" ")
       const added = this.ctx.profileStore.add({ id, name })
       if (added) {
-        await this.ctx.telegram.sendMessage(`✅ Added profile <code>${escapeHtml(id)}</code>`)
+        await this.ctx.chat.sendMessage(`✅ Added profile <code>${escapeHtml(id)}</code>`)
       } else {
-        await this.ctx.telegram.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> already exists`)
+        await this.ctx.chat.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> already exists`)
       }
       return
     }
@@ -40,14 +40,14 @@ export class ConfigManager {
       const value = parts.slice(3).join(" ")
       const validFields = ["name", "baseUrl", "authToken", "opusModel", "sonnetModel", "haikuModel"]
       if (!validFields.includes(field)) {
-        await this.ctx.telegram.sendMessage(`❌ Invalid field. Valid: ${validFields.join(", ")}`)
+        await this.ctx.chat.sendMessage(`❌ Invalid field. Valid: ${validFields.join(", ")}`)
         return
       }
       const updated = this.ctx.profileStore.update(id, { [field]: value })
       if (updated) {
-        await this.ctx.telegram.sendMessage(`✅ Updated <code>${escapeHtml(id)}.${escapeHtml(field)}</code>`)
+        await this.ctx.chat.sendMessage(`✅ Updated <code>${escapeHtml(id)}.${escapeHtml(field)}</code>`)
       } else {
-        await this.ctx.telegram.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> not found`)
+        await this.ctx.chat.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> not found`)
       }
       return
     }
@@ -56,9 +56,9 @@ export class ConfigManager {
       const id = parts[1]
       const removed = this.ctx.profileStore.remove(id)
       if (removed) {
-        await this.ctx.telegram.sendMessage(`✅ Removed profile <code>${escapeHtml(id)}</code>`)
+        await this.ctx.chat.sendMessage(`✅ Removed profile <code>${escapeHtml(id)}</code>`)
       } else {
-        await this.ctx.telegram.sendMessage(`❌ Cannot remove <code>${escapeHtml(id)}</code> (not found or is default)`)
+        await this.ctx.chat.sendMessage(`❌ Cannot remove <code>${escapeHtml(id)}</code> (not found or is default)`)
       }
       return
     }
@@ -66,26 +66,26 @@ export class ConfigManager {
     if (subcommand === "default") {
       if (parts.length === 1) {
         this.ctx.profileStore.clearDefault()
-        await this.ctx.telegram.sendMessage(`✅ Cleared default profile`)
+        await this.ctx.chat.sendMessage(`✅ Cleared default profile`)
         return
       }
       const id = parts[1]
       if (id === "clear") {
         this.ctx.profileStore.clearDefault()
-        await this.ctx.telegram.sendMessage(`✅ Cleared default profile`)
+        await this.ctx.chat.sendMessage(`✅ Cleared default profile`)
         return
       }
       const set = this.ctx.profileStore.setDefaultId(id)
       if (set) {
         const profile = this.ctx.profileStore.get(id)
-        await this.ctx.telegram.sendMessage(`✅ Default profile set to <code>${escapeHtml(id)}</code> (${escapeHtml(profile?.name ?? id)})`)
+        await this.ctx.chat.sendMessage(`✅ Default profile set to <code>${escapeHtml(id)}</code> (${escapeHtml(profile?.name ?? id)})`)
       } else {
-        await this.ctx.telegram.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> not found`)
+        await this.ctx.chat.sendMessage(`❌ Profile <code>${escapeHtml(id)}</code> not found`)
       }
       return
     }
 
-    await this.ctx.telegram.sendMessage(formatConfigHelp())
+    await this.ctx.chat.sendMessage(formatConfigHelp())
   }
 
   async handleCleanCommand(): Promise<void> {
@@ -97,7 +97,7 @@ export class ConfigManager {
 
     const now = Date.now()
     const staleTtlMs = this.ctx.config.workspace.staleTtlMs
-    const idle: [number, TopicSession][] = []
+    const idle: [string, TopicSession][] = []
     for (const [threadId, session] of this.ctx.topicSessions) {
       const isIdle = !session.activeSessionId
       const isStaleInterrupted =
@@ -111,7 +111,7 @@ export class ConfigManager {
       if (session.cwd && fs.existsSync(session.cwd)) {
         freedBytes += dirSizeBytes(session.cwd)
       }
-      await this.ctx.telegram.deleteForumTopic(threadId)
+      await this.ctx.threads.deleteThread(threadId)
       await this.ctx.removeWorkspace(session)
       this.ctx.topicSessions.delete(threadId)
       removedSessions++
@@ -130,7 +130,7 @@ export class ConfigManager {
       const entryPath = path.join(root, entry.name)
       if (entryPath === parentHome) continue
       if (activeCwds.has(entryPath)) continue
-      if (this.ctx.sessions.has(Number(entry.name))) continue
+      if (this.ctx.sessions.has(entry.name)) continue
 
       freedBytes += dirSizeBytes(entryPath)
       try {
@@ -173,7 +173,7 @@ export class ConfigManager {
 
     const totalItems = removedSessions + removedOrphans + removedRepos
     if (totalItems === 0) {
-      await this.ctx.telegram.sendMessage("🧹 Nothing to clean up — disk is tidy.")
+      await this.ctx.chat.sendMessage("🧹 Nothing to clean up — disk is tidy.")
       return
     }
 
@@ -183,6 +183,6 @@ export class ConfigManager {
     if (removedRepos > 0) msgParts.push(`${removedRepos} cached repo(s)`)
 
     const freedMB = (freedBytes / (1024 * 1024)).toFixed(1)
-    await this.ctx.telegram.sendMessage(`🧹 Cleaned ${msgParts.join(", ")} — freed ~${freedMB} MB.`)
+    await this.ctx.chat.sendMessage(`🧹 Cleaned ${msgParts.join(", ")} — freed ~${freedMB} MB.`)
   }
 }

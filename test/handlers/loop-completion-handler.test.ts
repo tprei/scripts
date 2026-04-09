@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import type { SessionMeta, TopicSession, SessionDoneState } from "../../src/domain/session-types.js"
 import type { SessionCompletionContext } from "../../src/handlers/handler-types.js"
-import { LoopCompletionHandler, type LoopOutcomeRecorder, type LoopSchedulerProvider, type LoopTelegramNotifier, type LoopThreadCleaner } from "../../src/handlers/loop-completion-handler.js"
+import { LoopCompletionHandler, type LoopOutcomeRecorder, type LoopSchedulerProvider, type LoopChatNotifier, type LoopThreadCleaner } from "../../src/handlers/loop-completion-handler.js"
 import { findPRByBranch } from "../../src/ci/ci-babysit.js"
 import type { LoopState, LoopDefinition } from "../../src/loops/domain-types.js"
 
@@ -41,7 +41,7 @@ vi.mock("node:util", async () => {
 function makeMeta(overrides: Partial<SessionMeta> = {}): SessionMeta {
   return {
     sessionId: "s-1",
-    threadId: 100,
+    threadId: "100",
     topicName: "test-topic",
     repo: "org/repo",
     cwd: "/tmp/repo",
@@ -53,7 +53,7 @@ function makeMeta(overrides: Partial<SessionMeta> = {}): SessionMeta {
 
 function makeTopicSession(overrides: Partial<TopicSession> = {}): TopicSession {
   return {
-    threadId: 100,
+    threadId: "100",
     repo: "org/repo",
     cwd: "/tmp/repo",
     slug: "test-slug",
@@ -116,10 +116,10 @@ function makeProvider(scheduler: LoopOutcomeRecorder | null): LoopSchedulerProvi
   return { get: () => scheduler }
 }
 
-function makeTelegram(): LoopTelegramNotifier {
+function makeChatNotifier(): LoopChatNotifier {
   return {
-    sendMessage: vi.fn().mockResolvedValue({ ok: true, messageId: 1 }),
-    deleteForumTopic: vi.fn().mockResolvedValue(undefined),
+    sendMessage: vi.fn().mockResolvedValue({ ok: true, messageId: "1" }),
+    deleteThread: vi.fn().mockResolvedValue(undefined),
   }
 }
 
@@ -132,11 +132,11 @@ function makeCleaner(): LoopThreadCleaner {
 }
 
 describe("LoopCompletionHandler", () => {
-  let telegram: LoopTelegramNotifier
+  let chatNotifier: LoopChatNotifier
   let cleaner: LoopThreadCleaner
 
   beforeEach(() => {
-    telegram = makeTelegram()
+    chatNotifier = makeChatNotifier()
     cleaner = makeCleaner()
     mockExecFile.mockReset()
     vi.mocked(findPRByBranch).mockReset().mockResolvedValue(null)
@@ -144,7 +144,7 @@ describe("LoopCompletionHandler", () => {
 
   it("skips non-loop sessions", async () => {
     const scheduler = makeScheduler()
-    const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+    const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
     const ctx = makeCtx()
 
     await handler.handle(ctx)
@@ -154,7 +154,7 @@ describe("LoopCompletionHandler", () => {
   })
 
   it("skips when scheduler is null", async () => {
-    const handler = new LoopCompletionHandler(makeProvider(null), telegram, cleaner)
+    const handler = new LoopCompletionHandler(makeProvider(null), chatNotifier, cleaner)
     const ctx = makeCtx({
       topicSession: makeTopicSession({ loopId: "lint-sweep" }),
     })
@@ -167,7 +167,7 @@ describe("LoopCompletionHandler", () => {
   it("records pr_opened when PR found in conversation", async () => {
     const states = new Map([["lint-sweep", makeLoopState()]])
     const scheduler = makeScheduler(states)
-    const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+    const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
     const ctx = makeCtx({
       topicSession: makeTopicSession({
         loopId: "lint-sweep",
@@ -191,7 +191,7 @@ describe("LoopCompletionHandler", () => {
   it("records pr_opened when ctx.prUrl is already set", async () => {
     const states = new Map([["lint-sweep", makeLoopState()]])
     const scheduler = makeScheduler(states)
-    const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+    const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
     const ctx = makeCtx({
       topicSession: makeTopicSession({ loopId: "lint-sweep" }),
       prUrl: "https://github.com/org/repo/pull/99",
@@ -208,7 +208,7 @@ describe("LoopCompletionHandler", () => {
   it("records no_findings when completed without PR", async () => {
     const states = new Map([["lint-sweep", makeLoopState()]])
     const scheduler = makeScheduler(states)
-    const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+    const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
     const ctx = makeCtx({
       topicSession: makeTopicSession({ loopId: "lint-sweep" }),
     })
@@ -225,7 +225,7 @@ describe("LoopCompletionHandler", () => {
   it("records errored on session error", async () => {
     const states = new Map([["lint-sweep", makeLoopState({ consecutiveFailures: 1 })]])
     const scheduler = makeScheduler(states)
-    const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+    const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
     const ctx = makeCtx({
       topicSession: makeTopicSession({ loopId: "lint-sweep" }),
       state: "errored",
@@ -242,7 +242,7 @@ describe("LoopCompletionHandler", () => {
   it("records quota_exhausted", async () => {
     const states = new Map([["lint-sweep", makeLoopState({ consecutiveFailures: 1 })]])
     const scheduler = makeScheduler(states)
-    const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+    const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
     const ctx = makeCtx({
       topicSession: makeTopicSession({ loopId: "lint-sweep" }),
       state: "quota_exhausted",
@@ -268,7 +268,7 @@ describe("LoopCompletionHandler", () => {
     const states = new Map([["lint-sweep", state]])
     const defs = new Map([["lint-sweep", def]])
     const scheduler = makeScheduler(states, defs)
-    const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+    const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
     const ctx = makeCtx({
       topicSession: makeTopicSession({ loopId: "lint-sweep" }),
       state: "errored",
@@ -276,8 +276,8 @@ describe("LoopCompletionHandler", () => {
 
     await handler.handle(ctx)
 
-    expect(telegram.sendMessage).toHaveBeenCalledOnce()
-    const html = (telegram.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
+    expect(chatNotifier.sendMessage).toHaveBeenCalledOnce()
+    const html = (chatNotifier.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
     expect(html).toContain("Loop alert: Lint Sweep")
     expect(html).toContain("3 consecutive failures")
   })
@@ -296,7 +296,7 @@ describe("LoopCompletionHandler", () => {
     const states = new Map([["lint-sweep", state]])
     const defs = new Map([["lint-sweep", def]])
     const scheduler = makeScheduler(states, defs)
-    const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+    const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
     const ctx = makeCtx({
       topicSession: makeTopicSession({ loopId: "lint-sweep" }),
       state: "errored",
@@ -304,7 +304,7 @@ describe("LoopCompletionHandler", () => {
 
     await handler.handle(ctx)
 
-    const html = (telegram.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
+    const html = (chatNotifier.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
     expect(html).toContain("Auto-disabled")
     expect(html).toContain("5/5")
   })
@@ -313,7 +313,7 @@ describe("LoopCompletionHandler", () => {
     const state = makeLoopState({ consecutiveFailures: 2 })
     const states = new Map([["lint-sweep", state]])
     const scheduler = makeScheduler(states)
-    const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+    const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
     const ctx = makeCtx({
       topicSession: makeTopicSession({ loopId: "lint-sweep" }),
       state: "errored",
@@ -321,13 +321,13 @@ describe("LoopCompletionHandler", () => {
 
     await handler.handle(ctx)
 
-    expect(telegram.sendMessage).not.toHaveBeenCalled()
+    expect(chatNotifier.sendMessage).not.toHaveBeenCalled()
   })
 
   it("uses topicSession.prUrl when available", async () => {
     const states = new Map([["lint-sweep", makeLoopState()]])
     const scheduler = makeScheduler(states)
-    const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+    const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
     const ctx = makeCtx({
       topicSession: makeTopicSession({
         loopId: "lint-sweep",
@@ -346,16 +346,16 @@ describe("LoopCompletionHandler", () => {
   it("includes threadId in outcome", async () => {
     const states = new Map([["lint-sweep", makeLoopState()]])
     const scheduler = makeScheduler(states)
-    const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+    const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
     const ctx = makeCtx({
-      topicSession: makeTopicSession({ loopId: "lint-sweep", threadId: 42 }),
-      meta: makeMeta({ threadId: 42 }),
+      topicSession: makeTopicSession({ loopId: "lint-sweep", threadId: "42" }),
+      meta: makeMeta({ threadId: "42" }),
     })
 
     await handler.handle(ctx)
 
     expect(scheduler.recordOutcome).toHaveBeenCalledWith("lint-sweep", expect.objectContaining({
-      threadId: 42,
+      threadId: "42",
     }))
   })
 
@@ -371,8 +371,8 @@ describe("LoopCompletionHandler", () => {
     const states = new Map([["lint-sweep", state]])
     const defs = new Map([["lint-sweep", makeLoopDef()]])
     const scheduler = makeScheduler(states, defs)
-    ;(telegram.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("network error"))
-    const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+    ;(chatNotifier.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("network error"))
+    const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
     const ctx = makeCtx({
       topicSession: makeTopicSession({ loopId: "lint-sweep" }),
       state: "errored",
@@ -386,32 +386,32 @@ describe("LoopCompletionHandler", () => {
   it("auto-closes the loop thread after completion", async () => {
     const states = new Map([["lint-sweep", makeLoopState()]])
     const scheduler = makeScheduler(states)
-    const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+    const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
     const ctx = makeCtx({
-      topicSession: makeTopicSession({ loopId: "lint-sweep", threadId: 42 }),
-      meta: makeMeta({ threadId: 42 }),
+      topicSession: makeTopicSession({ loopId: "lint-sweep", threadId: "42" }),
+      meta: makeMeta({ threadId: "42" }),
     })
 
     await handler.handle(ctx)
 
     // Allow the async closeThread to settle
     await vi.waitFor(() => {
-      expect(cleaner.deleteTopicSession).toHaveBeenCalledWith(42)
+      expect(cleaner.deleteTopicSession).toHaveBeenCalledWith("42")
     })
     expect(cleaner.broadcastSessionDeleted).toHaveBeenCalledWith("test-slug")
-    expect(telegram.deleteForumTopic).toHaveBeenCalledWith(42)
+    expect(chatNotifier.deleteThread).toHaveBeenCalledWith("42")
     expect(cleaner.removeWorkspace).toHaveBeenCalledWith(ctx.topicSession)
   })
 
   it("does not auto-close non-loop sessions", async () => {
     const scheduler = makeScheduler()
-    const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+    const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
     const ctx = makeCtx()
 
     await handler.handle(ctx)
 
     expect(cleaner.deleteTopicSession).not.toHaveBeenCalled()
-    expect(telegram.deleteForumTopic).not.toHaveBeenCalled()
+    expect(chatNotifier.deleteThread).not.toHaveBeenCalled()
   })
 
   describe("ensurePR", () => {
@@ -461,7 +461,7 @@ describe("LoopCompletionHandler", () => {
       setupGitMocks({})
       const states = new Map([["lint-sweep", makeLoopState()]])
       const scheduler = makeScheduler(states)
-      const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+      const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
       const ctx = makeCtx({
         topicSession: makeTopicSession({ loopId: "lint-sweep" }),
       })
@@ -478,7 +478,7 @@ describe("LoopCompletionHandler", () => {
       setupGitMocks({})
       const states = new Map([["lint-sweep", makeLoopState({ consecutiveFailures: 1 })]])
       const scheduler = makeScheduler(states)
-      const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+      const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
       const ctx = makeCtx({
         topicSession: makeTopicSession({ loopId: "lint-sweep" }),
         state: "errored",
@@ -496,7 +496,7 @@ describe("LoopCompletionHandler", () => {
       setupGitMocks({})
       const states = new Map([["lint-sweep", makeLoopState()]])
       const scheduler = makeScheduler(states)
-      const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+      const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
       const ctx = makeCtx({
         topicSession: makeTopicSession({
           loopId: "lint-sweep",
@@ -516,7 +516,7 @@ describe("LoopCompletionHandler", () => {
       vi.mocked(findPRByBranch).mockResolvedValueOnce("https://github.com/org/repo/pull/existing")
       const states = new Map([["lint-sweep", makeLoopState()]])
       const scheduler = makeScheduler(states)
-      const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+      const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
       const ctx = makeCtx({
         topicSession: makeTopicSession({ loopId: "lint-sweep" }),
       })
@@ -533,7 +533,7 @@ describe("LoopCompletionHandler", () => {
       setupGitMocks({ unpushedCount: 0 })
       const states = new Map([["lint-sweep", makeLoopState()]])
       const scheduler = makeScheduler(states)
-      const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+      const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
       const ctx = makeCtx({
         topicSession: makeTopicSession({ loopId: "lint-sweep" }),
       })
@@ -549,7 +549,7 @@ describe("LoopCompletionHandler", () => {
       mockExecFile.mockRejectedValue(new Error("git not found"))
       const states = new Map([["lint-sweep", makeLoopState()]])
       const scheduler = makeScheduler(states)
-      const handler = new LoopCompletionHandler(makeProvider(scheduler), telegram, cleaner)
+      const handler = new LoopCompletionHandler(makeProvider(scheduler), chatNotifier, cleaner)
       const ctx = makeCtx({
         topicSession: makeTopicSession({ loopId: "lint-sweep" }),
       })

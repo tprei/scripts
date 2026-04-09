@@ -52,7 +52,7 @@ export class ShipPipeline {
   }
 
   private async shipAdvanceToPlanning(topicSession: TopicSession): Promise<void> {
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatShipPhaseAdvance(topicSession.slug, "think", "plan"),
       topicSession.threadId,
     )
@@ -83,7 +83,7 @@ export class ShipPipeline {
   private async shipTryJudge(topicSession: TopicSession): Promise<void> {
     topicSession.autoAdvance!.phase = "judge"
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatShipPhaseAdvance(topicSession.slug, "plan", "judge"),
       topicSession.threadId,
     )
@@ -91,14 +91,14 @@ export class ShipPipeline {
     try {
       const ran = await this.judgeOrchestrator.tryJudgeArena(topicSession)
       if (!ran) {
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           `No competing design options detected — skipping judge arena.`,
           topicSession.threadId,
         )
       }
     } catch (err) {
       log.warn({ err, slug: topicSession.slug }, "judge arena failed, continuing to DAG")
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `Judge arena encountered an error — skipping to DAG.`,
         topicSession.threadId,
       )
@@ -108,7 +108,7 @@ export class ShipPipeline {
   }
 
   async shipAdvanceToDag(topicSession: TopicSession): Promise<void> {
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatShipPhaseAdvance(topicSession.slug, "judge", "dag"),
       topicSession.threadId,
     )
@@ -123,7 +123,7 @@ export class ShipPipeline {
 
     if (result.error === "system") {
       topicSession.autoAdvance!.phase = "plan"
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ DAG extraction failed — <code>${result.errorMessage ?? "Unknown error"}</code>\n\nYou can retry with <code>/dag</code>, or fall back to <code>/execute</code> or <code>/split</code>.`,
         topicSession.threadId,
       )
@@ -133,7 +133,7 @@ export class ShipPipeline {
 
     if (result.items.length === 0) {
       log.warn({ slug: topicSession.slug }, "DAG extraction yielded 0 items, retrying with enriched prompt")
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `⚠️ No work items extracted — retrying with enriched prompt…`,
         topicSession.threadId,
       )
@@ -151,7 +151,7 @@ export class ShipPipeline {
       if (retryResult.items.length === 0) {
         log.warn({ slug: topicSession.slug }, "DAG extraction retry also yielded 0 items")
         topicSession.autoAdvance!.phase = "plan"
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           `⚠️ Still no work items after retry.\n\nYou can:\n• <code>/dag</code> — try again\n• <code>/execute</code> — run as a single task\n• <code>/split</code> — extract parallel items\n• <code>/close</code> — cancel`,
           topicSession.threadId,
         )
@@ -168,7 +168,7 @@ export class ShipPipeline {
   }
 
   async shipAdvanceToVerification(topicSession: TopicSession, graph: DagGraph): Promise<void> {
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatShipPhaseAdvance(topicSession.slug, "dag", "verify"),
       topicSession.threadId,
     )
@@ -258,7 +258,7 @@ export class ShipPipeline {
               nodeResults.set(node.id, false)
             }
 
-            this.ctx.telegram.sendMessage(
+            this.ctx.chat.sendMessage(
               `${result.passed ? "✅" : "❌"} Verification ${result.passed ? "passed" : "failed"}: <b>${esc(node.title)}</b>`,
               topicSession.threadId,
             ).catch(() => {})
@@ -306,7 +306,7 @@ export class ShipPipeline {
     await this.shipFinalize(topicSession)
   }
 
-  private findChildSession(parent: TopicSession, threadId?: number): TopicSession | undefined {
+  private findChildSession(parent: TopicSession, threadId?: string): TopicSession | undefined {
     if (!threadId) return undefined
     return this.ctx.topicSessions.get(threadId)
   }
@@ -319,7 +319,7 @@ export class ShipPipeline {
     const failed = vs ? vs.rounds.flatMap((r) => r.checks).filter((c) => c.status === "failed").length : 0
     const total = passed + failed
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatShipComplete(topicSession.slug, passed, failed, total),
       topicSession.threadId,
     )
@@ -327,7 +327,7 @@ export class ShipPipeline {
     if (topicSession.autoAdvance!.autoLand && failed === 0 && topicSession.dagId) {
       await this.ctx.handleLandCommand(topicSession)
     } else if (failed === 0 && topicSession.dagId) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         `Use <code>/land</code> to merge PRs, or <code>/close</code> to clean up.`,
         topicSession.threadId,
       )

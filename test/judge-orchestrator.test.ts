@@ -233,7 +233,7 @@ describe("JudgeOrchestrator.handleJudgeCommand", () => {
       config: {
         workspace: { maxSplitItems: 10, maxConcurrentSessions: 5 },
       },
-      telegram: {
+      chat: {
         sendMessage: vi.fn().mockResolvedValue(undefined),
       },
       sessions: new Map(),
@@ -292,7 +292,7 @@ describe("JudgeOrchestrator.handleJudgeCommand", () => {
 
     await orchestrator.handleJudgeCommand(session)
 
-    const sendMessage = ctx.telegram.sendMessage as ReturnType<typeof vi.fn>
+    const sendMessage = ctx.chat.sendMessage as ReturnType<typeof vi.fn>
     expect(sendMessage).toHaveBeenCalledTimes(2)
     // First call: extraction message
     expect(sendMessage.mock.calls[0][0]).toContain("Extracting options")
@@ -313,7 +313,7 @@ describe("JudgeOrchestrator.handleJudgeCommand", () => {
 
     await orchestrator.handleJudgeCommand(session)
 
-    const sendMessage = ctx.telegram.sendMessage as ReturnType<typeof vi.fn>
+    const sendMessage = ctx.chat.sendMessage as ReturnType<typeof vi.fn>
     // extraction msg + error msg
     expect(sendMessage).toHaveBeenCalledTimes(2)
     expect(sendMessage.mock.calls[1][0]).toContain("at least 2")
@@ -359,7 +359,7 @@ describe("JudgeOrchestrator.handleJudgeCommand", () => {
 
     await orchestrator.handleJudgeCommand(session)
 
-    const sendMessage = ctx.telegram.sendMessage as ReturnType<typeof vi.fn>
+    const sendMessage = ctx.chat.sendMessage as ReturnType<typeof vi.fn>
     // extraction + arena + 2 advocate arguments + verdict = 5
     expect(sendMessage.mock.calls.length).toBeGreaterThanOrEqual(5)
 
@@ -444,7 +444,7 @@ describe("JudgeOrchestrator.handleJudgeCommand", () => {
 
     await orchestrator.handleJudgeCommand(session)
 
-    const sendMessage = ctx.telegram.sendMessage as ReturnType<typeof vi.fn>
+    const sendMessage = ctx.chat.sendMessage as ReturnType<typeof vi.fn>
     const lastMsg = sendMessage.mock.calls[sendMessage.mock.calls.length - 1][0] as string
     expect(lastMsg).toContain("All advocate agents failed")
   })
@@ -482,7 +482,7 @@ describe("JudgeOrchestrator.handleJudgeCommand", () => {
 
     await orchestrator.handleJudgeCommand(session, "Which caching strategy?")
 
-    const sendMessage = ctx.telegram.sendMessage as ReturnType<typeof vi.fn>
+    const sendMessage = ctx.chat.sendMessage as ReturnType<typeof vi.fn>
     const arenaMsg = sendMessage.mock.calls[1][0] as string
     expect(arenaMsg).toContain("Which caching strategy?")
   })

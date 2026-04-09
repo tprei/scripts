@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { Dispatcher } from "../src/orchestration/dispatcher.js"
-import type { TelegramClient } from "../src/telegram/telegram.js"
+import type { ChatPlatform } from "../src/provider/chat-platform.js"
 import { Observer } from "../src/telegram/observer.js"
 import type { MinionConfig } from "../src/config/config-types.js"
 import type { TopicSession, SessionMeta } from "../src/domain/session-types.js"
@@ -11,24 +11,46 @@ import {
   formatQuotaExhausted,
 } from "../src/telegram/format.js"
 
-function makeMockTelegram(): TelegramClient {
-  return {
-    deleteForumTopic: vi.fn().mockResolvedValue(true),
-    sendMessage: vi.fn().mockResolvedValue({ message_id: 1, date: 0, chat: { id: 1, type: "supergroup" } }),
-    editMessage: vi.fn().mockResolvedValue(true),
-    createForumTopic: vi.fn().mockResolvedValue({ message_thread_id: 42, name: "test" }),
-    getUpdates: vi.fn().mockResolvedValue([]),
-    downloadFile: vi.fn().mockResolvedValue(false),
-    answerCallbackQuery: vi.fn().mockResolvedValue(true),
-    pinMessage: vi.fn().mockResolvedValue(true),
-    editForumTopic: vi.fn().mockResolvedValue(true),
-    sendChatAction: vi.fn().mockResolvedValue(true),
-  } as unknown as TelegramClient
+function makeMockPlatform() {
+  const chat = {
+    sendMessage: vi.fn(async () => ({ ok: true, messageId: "1" })),
+    editMessage: vi.fn(async () => true),
+    deleteMessage: vi.fn(async () => {}),
+    pinMessage: vi.fn(async () => {}),
+  }
+  const threads = {
+    createThread: vi.fn(async () => ({ threadId: "42", name: "test" })),
+    editThread: vi.fn(async () => {}),
+    closeThread: vi.fn(async () => {}),
+    deleteThread: vi.fn(async () => {}),
+  }
+  const input = {
+    poll: vi.fn(async () => []),
+    getCursor: vi.fn(() => "0"),
+    advanceCursor: vi.fn(),
+  }
+  const ui = {
+    sendMessageWithKeyboard: vi.fn(async () => "1"),
+    answerCallbackQuery: vi.fn(async () => {}),
+  }
+  const platform = {
+    name: "test",
+    chat,
+    threads,
+    input,
+    ui,
+    files: null,
+    formatter: null,
+    chatId: "1",
+    threadLink: vi.fn(),
+  } as unknown as ChatPlatform
+  return { platform, chat }
 }
 
 function makeConfig(overrides?: Partial<MinionConfig>): MinionConfig {
   return {
-    telegram: { token: "test", chatId: "1", allowedUserIds: [1] },
+    telegram: { botToken: "test", chatId: "1", allowedUserIds: [1] },
+    telegramQueue: { minSendIntervalMs: 0 },
     workspace: {
       root: "/tmp/test-workspace",
       maxConcurrentSessions: 2,
@@ -68,6 +90,7 @@ function makeConfig(overrides?: Partial<MinionConfig>): MinionConfig {
       pollTimeoutMs: 600_000,
       dagCiPolicy: "block",
     },
+    observer: { activityThrottleMs: 0, textFlushDebounceMs: 0, activityEditDebounceMs: 0 },
     quota: {
       retryMax: 3,
       defaultSleepMs: 1_800_000,
@@ -79,7 +102,7 @@ function makeConfig(overrides?: Partial<MinionConfig>): MinionConfig {
 
 function makeTopicSession(overrides?: Partial<TopicSession>): TopicSession {
   return {
-    threadId: 100,
+    threadId: "100",
     repo: "test-repo",
     cwd: "/tmp/test-workspace/test-slug",
     slug: "test-slug",
@@ -92,15 +115,15 @@ function makeTopicSession(overrides?: Partial<TopicSession>): TopicSession {
 }
 
 function getPrivate(dispatcher: Dispatcher): {
-  topicSessions: Map<number, TopicSession>
-  sessions: Map<number, unknown>
-  quotaEvents: Map<number, { resetAt?: number; rawMessage: string }>
-  quotaSleepTimers: Map<number, ReturnType<typeof setTimeout>>
+  topicSessions: Map<string, TopicSession>
+  sessions: Map<string, unknown>
+  quotaEvents: Map<string, { resetAt?: number; rawMessage: string }>
+  quotaSleepTimers: Map<string, ReturnType<typeof setTimeout>>
   eventBus: EventBus
   handleQuotaSleep: (ts: TopicSession, rawMessage: string) => void
   scheduleQuotaResume: (ts: TopicSession, sleepMs: number) => void
   resumeAfterQuotaSleep: (ts: TopicSession) => Promise<void>
-  clearQuotaSleepTimer: (threadId: number) => void
+  clearQuotaSleepTimer: (threadId: string) => void
 } {
   return dispatcher as unknown as ReturnType<typeof getPrivate>
 }
@@ -148,16 +171,19 @@ describe("formatQuotaExhausted", () => {
 })
 
 describe("quota sleep in dispatcher", () => {
-  let telegram: TelegramClient
+  let chat: ReturnType<typeof makeMockPlatform>["chat"]
+  let platform: ChatPlatform
   let dispatcher: Dispatcher
   let priv: ReturnType<typeof getPrivate>
 
   beforeEach(() => {
     vi.useFakeTimers()
-    telegram = makeMockTelegram()
+    const mocks = makeMockPlatform()
+    platform = mocks.platform
+    chat = mocks.chat
     const config = makeConfig()
-    const observer = new Observer(telegram, "1")
-    dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
+    const observer = new Observer(chat, 0)
+    dispatcher = new Dispatcher(platform, observer, config, new EventBus())
     priv = getPrivate(dispatcher)
   })
 
@@ -167,12 +193,12 @@ describe("quota sleep in dispatcher", () => {
 
   it("handleSessionComplete triggers quota sleep when quota event is present", async () => {
     const ts = makeTopicSession({ activeSessionId: "sess-1" })
-    priv.topicSessions.set(100, ts)
-    priv.quotaEvents.set(100, { rawMessage: "Usage limit reached. Resets in 30 minutes.", resetAt: undefined })
+    priv.topicSessions.set("100", ts)
+    priv.quotaEvents.set("100", { rawMessage: "Usage limit reached. Resets in 30 minutes.", resetAt: undefined })
 
     const meta: SessionMeta = {
       sessionId: "sess-1",
-      threadId: 100,
+      threadId: "100",
       topicName: "test-slug",
       repo: "test-repo",
       cwd: "/tmp/test",
@@ -185,21 +211,21 @@ describe("quota sleep in dispatcher", () => {
     expect(ts.lastState).toBe("quota_exhausted")
     expect(ts.quotaRetryCount).toBe(1)
     expect(ts.quotaSleepUntil).toBeGreaterThan(Date.now())
-    expect(priv.quotaSleepTimers.has(100)).toBe(true)
-    expect((telegram.sendMessage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
+    expect(priv.quotaSleepTimers.has("100")).toBe(true)
+    expect((chat.sendMessage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
       expect.stringContaining("Quota exhausted"),
-      100,
+      "100",
     )
   })
 
   it("does not trigger quota sleep on normal errors", async () => {
     const ts = makeTopicSession({ activeSessionId: "sess-1" })
-    priv.topicSessions.set(100, ts)
+    priv.topicSessions.set("100", ts)
     // No quota event set
 
     const meta: SessionMeta = {
       sessionId: "sess-1",
-      threadId: 100,
+      threadId: "100",
       topicName: "test-slug",
       repo: "test-repo",
       cwd: "/tmp/test",
@@ -211,17 +237,17 @@ describe("quota sleep in dispatcher", () => {
 
     expect(ts.lastState).toBe("errored")
     expect(ts.quotaSleepUntil).toBeUndefined()
-    expect(priv.quotaSleepTimers.has(100)).toBe(false)
+    expect(priv.quotaSleepTimers.has("100")).toBe(false)
   })
 
   it("does not trigger quota sleep on completion even if quota event exists", async () => {
     const ts = makeTopicSession({ activeSessionId: "sess-1" })
-    priv.topicSessions.set(100, ts)
-    priv.quotaEvents.set(100, { rawMessage: "quota error", resetAt: undefined })
+    priv.topicSessions.set("100", ts)
+    priv.quotaEvents.set("100", { rawMessage: "quota error", resetAt: undefined })
 
     const meta: SessionMeta = {
       sessionId: "sess-1",
-      threadId: 100,
+      threadId: "100",
       topicName: "test-slug",
       repo: "test-repo",
       cwd: "/tmp/test",
@@ -232,22 +258,22 @@ describe("quota sleep in dispatcher", () => {
     await emitSessionCompleted(priv, meta, "completed")
 
     expect(ts.quotaSleepUntil).toBeUndefined()
-    expect(priv.quotaSleepTimers.has(100)).toBe(false)
+    expect(priv.quotaSleepTimers.has("100")).toBe(false)
   })
 
   it("reports exhaustion when retryMax is exceeded", async () => {
     const config = makeConfig({ quota: { retryMax: 1, defaultSleepMs: 60_000, sleepBufferMs: 60_000 } })
-    const observer = new Observer(telegram, "1")
-    dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
+    const observer = new Observer(chat, 0)
+    dispatcher = new Dispatcher(platform, observer, config, new EventBus())
     priv = getPrivate(dispatcher)
 
     const ts = makeTopicSession({ activeSessionId: "sess-1", quotaRetryCount: 1 })
-    priv.topicSessions.set(100, ts)
-    priv.quotaEvents.set(100, { rawMessage: "usage limit", resetAt: undefined })
+    priv.topicSessions.set("100", ts)
+    priv.quotaEvents.set("100", { rawMessage: "usage limit", resetAt: undefined })
 
     const meta: SessionMeta = {
       sessionId: "sess-1",
-      threadId: 100,
+      threadId: "100",
       topicName: "test-slug",
       repo: "test-repo",
       cwd: "/tmp/test",
@@ -260,67 +286,67 @@ describe("quota sleep in dispatcher", () => {
     expect(ts.lastState).toBe("quota_exhausted")
     expect(ts.quotaRetryCount).toBe(2)
     expect(ts.quotaSleepUntil).toBeUndefined()
-    expect(priv.quotaSleepTimers.has(100)).toBe(false)
-    expect((telegram.sendMessage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
+    expect(priv.quotaSleepTimers.has("100")).toBe(false)
+    expect((chat.sendMessage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
       expect.stringContaining("retries exhausted"),
-      100,
+      "100",
     )
   })
 
   it("stop command cancels quota sleep", async () => {
     const ts = makeTopicSession({ quotaSleepUntil: Date.now() + 60_000, lastState: "quota_exhausted", quotaRetryCount: 1 })
-    priv.topicSessions.set(100, ts)
-    priv.quotaSleepTimers.set(100, setTimeout(() => {}, 60_000))
+    priv.topicSessions.set("100", ts)
+    priv.quotaSleepTimers.set("100", setTimeout(() => {}, 60_000))
 
-    await dispatcher.handleStopCommand(100)
+    await dispatcher.handleStopCommand("100")
 
     expect(ts.quotaSleepUntil).toBeUndefined()
     expect(ts.lastState).toBeUndefined()
-    expect(priv.quotaSleepTimers.has(100)).toBe(false)
-    expect((telegram.sendMessage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
+    expect(priv.quotaSleepTimers.has("100")).toBe(false)
+    expect((chat.sendMessage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
       expect.stringContaining("Quota sleep cancelled"),
-      100,
+      "100",
     )
   })
 
   it("close command clears quota sleep timer", async () => {
     const ts = makeTopicSession({ quotaSleepUntil: Date.now() + 60_000, lastState: "quota_exhausted" })
-    priv.topicSessions.set(100, ts)
+    priv.topicSessions.set("100", ts)
     const timerCb = vi.fn()
-    priv.quotaSleepTimers.set(100, setTimeout(timerCb, 60_000))
+    priv.quotaSleepTimers.set("100", setTimeout(timerCb, 60_000))
 
-    await dispatcher.handleCloseCommand(100)
+    await dispatcher.handleCloseCommand("100")
 
-    expect(priv.quotaSleepTimers.has(100)).toBe(false)
-    expect(priv.topicSessions.has(100)).toBe(false)
+    expect(priv.quotaSleepTimers.has("100")).toBe(false)
+    expect(priv.topicSessions.has("100")).toBe(false)
   })
 
   it("clearQuotaSleepTimer is idempotent for non-existent timers", () => {
-    priv.clearQuotaSleepTimer(999)
-    expect(priv.quotaSleepTimers.has(999)).toBe(false)
+    priv.clearQuotaSleepTimer("999")
+    expect(priv.quotaSleepTimers.has("999")).toBe(false)
   })
 
   it("scheduleQuotaResume replaces existing timer", () => {
     const ts = makeTopicSession()
-    priv.topicSessions.set(100, ts)
+    priv.topicSessions.set("100", ts)
 
     const firstTimer = setTimeout(() => {}, 100_000)
-    priv.quotaSleepTimers.set(100, firstTimer)
+    priv.quotaSleepTimers.set("100", firstTimer)
 
     priv.scheduleQuotaResume(ts, 60_000)
 
-    const newTimer = priv.quotaSleepTimers.get(100)
+    const newTimer = priv.quotaSleepTimers.get("100")
     expect(newTimer).toBeDefined()
     expect(newTimer).not.toBe(firstTimer)
   })
 
   it("stop() clears all quota sleep timers", () => {
     const ts1 = makeTopicSession({ threadId: 100 })
-    const ts2 = makeTopicSession({ threadId: 200 })
-    priv.topicSessions.set(100, ts1)
-    priv.topicSessions.set(200, ts2)
-    priv.quotaSleepTimers.set(100, setTimeout(() => {}, 60_000))
-    priv.quotaSleepTimers.set(200, setTimeout(() => {}, 60_000))
+    const ts2 = makeTopicSession({ threadId: "200" })
+    priv.topicSessions.set("100", ts1)
+    priv.topicSessions.set("200", ts2)
+    priv.quotaSleepTimers.set("100", setTimeout(() => {}, 60_000))
+    priv.quotaSleepTimers.set("200", setTimeout(() => {}, 60_000))
 
     dispatcher.stop()
 
@@ -332,7 +358,7 @@ describe("quota sleep in dispatcher", () => {
       conversation: [{ role: "user", text: "implement feature X" }],
       quotaRetryCount: 1,
     })
-    priv.topicSessions.set(100, ts)
+    priv.topicSessions.set("100", ts)
 
     // Mock spawnTopicAgent to prevent actual process spawning
     const spawnSpy = vi.fn().mockResolvedValue(true)
@@ -343,19 +369,19 @@ describe("quota sleep in dispatcher", () => {
     // Advance timer to trigger resume
     await vi.advanceTimersByTimeAsync(60_000)
 
-    expect(priv.quotaSleepTimers.has(100)).toBe(false)
+    expect(priv.quotaSleepTimers.has("100")).toBe(false)
     expect(ts.quotaSleepUntil).toBeUndefined()
     expect(ts.lastState).toBeUndefined()
-    expect((telegram.sendMessage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
+    expect((chat.sendMessage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
       expect.stringContaining("Resuming"),
-      100,
+      "100",
     )
     expect(spawnSpy).toHaveBeenCalledWith(ts, "implement feature X")
   })
 
   it("resumeAfterQuotaSleep uses fallback task when conversation is empty", async () => {
     const ts = makeTopicSession({ conversation: [], quotaRetryCount: 1 })
-    priv.topicSessions.set(100, ts)
+    priv.topicSessions.set("100", ts)
 
     const spawnSpy = vi.fn().mockResolvedValue(true)
     ;(dispatcher as unknown as { spawnTopicAgent: typeof spawnSpy }).spawnTopicAgent = spawnSpy
@@ -375,7 +401,7 @@ describe("quota sleep in dispatcher", () => {
       ],
       quotaRetryCount: 1,
     })
-    priv.topicSessions.set(100, ts)
+    priv.topicSessions.set("100", ts)
 
     const spawnSpy = vi.fn().mockResolvedValue(true)
     ;(dispatcher as unknown as { spawnTopicAgent: typeof spawnSpy }).spawnTopicAgent = spawnSpy
@@ -387,11 +413,11 @@ describe("quota sleep in dispatcher", () => {
 
   it("resumeAfterQuotaSleep re-sleeps when max concurrent sessions reached", async () => {
     const ts = makeTopicSession({ quotaRetryCount: 1 })
-    priv.topicSessions.set(100, ts)
+    priv.topicSessions.set("100", ts)
 
     // Fill up session slots (maxConcurrentSessions = 2)
-    priv.sessions.set(200, {})
-    priv.sessions.set(300, {})
+    priv.sessions.set("200", {})
+    priv.sessions.set("300", {})
 
     const spawnSpy = vi.fn().mockResolvedValue(true)
     ;(dispatcher as unknown as { spawnTopicAgent: typeof spawnSpy }).spawnTopicAgent = spawnSpy
@@ -403,7 +429,7 @@ describe("quota sleep in dispatcher", () => {
     // Should have re-scheduled a 60s sleep
     expect(ts.quotaSleepUntil).toBeGreaterThan(Date.now())
     expect(ts.lastState).toBe("quota_exhausted")
-    expect(priv.quotaSleepTimers.has(100)).toBe(true)
+    expect(priv.quotaSleepTimers.has("100")).toBe(true)
   })
 
   it("resumeAfterQuotaSleep skips if session was closed during sleep", async () => {
@@ -416,7 +442,7 @@ describe("quota sleep in dispatcher", () => {
     await priv.resumeAfterQuotaSleep(ts)
 
     expect(spawnSpy).not.toHaveBeenCalled()
-    expect((telegram.sendMessage as ReturnType<typeof vi.fn>)).not.toHaveBeenCalledWith(
+    expect((chat.sendMessage as ReturnType<typeof vi.fn>)).not.toHaveBeenCalledWith(
       expect.stringContaining("Resuming"),
       expect.anything(),
     )
@@ -424,7 +450,7 @@ describe("quota sleep in dispatcher", () => {
 
   it("resumeAfterQuotaSleep always re-spawns regardless of retryCount (limit is checked on next error)", async () => {
     const ts = makeTopicSession({ quotaRetryCount: 4 }) // exceeds retryMax but resume doesn't check
-    priv.topicSessions.set(100, ts)
+    priv.topicSessions.set("100", ts)
 
     const spawnSpy = vi.fn().mockResolvedValue(true)
     ;(dispatcher as unknown as { spawnTopicAgent: typeof spawnSpy }).spawnTopicAgent = spawnSpy
@@ -439,12 +465,12 @@ describe("quota sleep in dispatcher", () => {
 
   it("quota event is captured from session event stream", () => {
     const ts = makeTopicSession()
-    priv.topicSessions.set(100, ts)
+    priv.topicSessions.set("100", ts)
 
     // Simulate the event handler that runs when a session emits quota_exhausted
-    priv.quotaEvents.set(100, { resetAt: 300_000, rawMessage: "hit your usage limit" })
+    priv.quotaEvents.set("100", { resetAt: 300_000, rawMessage: "hit your usage limit" })
 
-    expect(priv.quotaEvents.get(100)).toEqual({
+    expect(priv.quotaEvents.get("100")).toEqual({
       resetAt: 300_000,
       rawMessage: "hit your usage limit",
     })
@@ -452,7 +478,7 @@ describe("quota sleep in dispatcher", () => {
 
   it("handleQuotaSleep persists topic sessions", () => {
     const ts = makeTopicSession()
-    priv.topicSessions.set(100, ts)
+    priv.topicSessions.set("100", ts)
 
     const persistSpy = vi.fn().mockResolvedValue(undefined)
     ;(dispatcher as unknown as { persistTopicSessions: typeof persistSpy }).persistTopicSessions = persistSpy
@@ -464,8 +490,8 @@ describe("quota sleep in dispatcher", () => {
 
   it("full cycle: quota error → sleep → timer fires → resume → re-spawn", async () => {
     const ts = makeTopicSession({ activeSessionId: "sess-1" })
-    priv.topicSessions.set(100, ts)
-    priv.quotaEvents.set(100, { rawMessage: "Usage limit reached. Resets in 30 minutes.", resetAt: undefined })
+    priv.topicSessions.set("100", ts)
+    priv.quotaEvents.set("100", { rawMessage: "Usage limit reached. Resets in 30 minutes.", resetAt: undefined })
 
     // Mock spawnTopicAgent
     const spawnSpy = vi.fn().mockResolvedValue(true)
@@ -473,7 +499,7 @@ describe("quota sleep in dispatcher", () => {
 
     const meta: SessionMeta = {
       sessionId: "sess-1",
-      threadId: 100,
+      threadId: "100",
       topicName: "test-slug",
       repo: "test-repo",
       cwd: "/tmp/test",
@@ -486,7 +512,7 @@ describe("quota sleep in dispatcher", () => {
 
     expect(ts.quotaRetryCount).toBe(1)
     expect(ts.lastState).toBe("quota_exhausted")
-    expect(priv.quotaSleepTimers.has(100)).toBe(true)
+    expect(priv.quotaSleepTimers.has("100")).toBe(true)
 
     // Step 2: advance timer to trigger resume
     const sleepMs = ts.quotaSleepUntil! - Date.now()
@@ -496,9 +522,9 @@ describe("quota sleep in dispatcher", () => {
     expect(ts.quotaSleepUntil).toBeUndefined()
     expect(ts.lastState).toBeUndefined()
     expect(spawnSpy).toHaveBeenCalledWith(ts, "fix the bug")
-    expect((telegram.sendMessage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
+    expect((chat.sendMessage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
       expect.stringContaining("Resuming"),
-      100,
+      "100",
     )
   })
 })
@@ -506,10 +532,10 @@ describe("quota sleep in dispatcher", () => {
 describe("quota sleep persistence", () => {
   it("loadPersistedSessions re-arms timer for sessions with quotaSleepUntil in future", async () => {
     vi.useFakeTimers()
-    const telegram = makeMockTelegram()
+    const { platform: p, chat: c } = makeMockPlatform()
     const config = makeConfig()
-    const observer = new Observer(telegram, "1")
-    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
+    const observer = new Observer(c, 0)
+    const dispatcher = new Dispatcher(p, observer, config, new EventBus())
     const priv = getPrivate(dispatcher)
 
     // Mock the store to return a session with quotaSleepUntil
@@ -522,7 +548,7 @@ describe("quota sleep persistence", () => {
 
     const store = (dispatcher as unknown as { store: { load: () => Promise<unknown> } }).store
     vi.spyOn(store, "load").mockResolvedValue({
-      active: new Map([[100, session]]),
+      active: new Map([["100", session]]),
       expired: new Map(),
       offset: 0,
     })
@@ -532,18 +558,18 @@ describe("quota sleep persistence", () => {
 
     await dispatcher.loadPersistedSessions()
 
-    expect(priv.quotaSleepTimers.has(100)).toBe(true)
-    expect(priv.topicSessions.has(100)).toBe(true)
+    expect(priv.quotaSleepTimers.has("100")).toBe(true)
+    expect(priv.topicSessions.has("100")).toBe(true)
 
     vi.useRealTimers()
   })
 
   it("loadPersistedSessions resumes immediately when quotaSleepUntil is in the past", async () => {
     vi.useFakeTimers()
-    const telegram = makeMockTelegram()
+    const { platform: p, chat: c } = makeMockPlatform()
     const config = makeConfig()
-    const observer = new Observer(telegram, "1")
-    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
+    const observer = new Observer(c, 0)
+    const dispatcher = new Dispatcher(p, observer, config, new EventBus())
     const priv = getPrivate(dispatcher)
 
     // Mock spawnTopicAgent
@@ -559,7 +585,7 @@ describe("quota sleep persistence", () => {
 
     const store = (dispatcher as unknown as { store: { load: () => Promise<unknown> } }).store
     vi.spyOn(store, "load").mockResolvedValue({
-      active: new Map([[100, expiredSession]]),
+      active: new Map([["100", expiredSession]]),
       expired: new Map(),
       offset: 0,
     })
@@ -570,7 +596,7 @@ describe("quota sleep persistence", () => {
     await dispatcher.loadPersistedSessions()
 
     // Should have called resumeAfterQuotaSleep immediately (not via timer)
-    expect(priv.topicSessions.has(100)).toBe(true)
+    expect(priv.topicSessions.has("100")).toBe(true)
     // The resume clears sleep state
     expect(expiredSession.quotaSleepUntil).toBeUndefined()
     expect(expiredSession.lastState).toBeUndefined()
@@ -579,9 +605,9 @@ describe("quota sleep persistence", () => {
     await vi.advanceTimersByTimeAsync(0)
 
     expect(spawnSpy).toHaveBeenCalledWith(expiredSession, "continue my work")
-    expect((telegram.sendMessage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
+    expect((c.sendMessage as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
       expect.stringContaining("Resuming"),
-      100,
+      "100",
     )
 
     vi.useRealTimers()
@@ -589,10 +615,10 @@ describe("quota sleep persistence", () => {
 
   it("loadPersistedSessions resumes even if retries are high (limit checked on next error)", async () => {
     vi.useFakeTimers()
-    const telegram = makeMockTelegram()
+    const { platform: p, chat: c } = makeMockPlatform()
     const config = makeConfig({ quota: { retryMax: 2, defaultSleepMs: 60_000, sleepBufferMs: 60_000 } })
-    const observer = new Observer(telegram, "1")
-    const dispatcher = new Dispatcher(telegram, observer, config, new EventBus())
+    const observer = new Observer(c, 0)
+    const dispatcher = new Dispatcher(p, observer, config, new EventBus())
 
     const spawnSpy = vi.fn().mockResolvedValue(true)
     ;(dispatcher as unknown as { spawnTopicAgent: typeof spawnSpy }).spawnTopicAgent = spawnSpy
@@ -605,7 +631,7 @@ describe("quota sleep persistence", () => {
 
     const store = (dispatcher as unknown as { store: { load: () => Promise<unknown> } }).store
     vi.spyOn(store, "load").mockResolvedValue({
-      active: new Map([[100, session]]),
+      active: new Map([["100", session]]),
       expired: new Map(),
       offset: 0,
     })

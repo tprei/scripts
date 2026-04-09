@@ -38,7 +38,7 @@ export interface PendingBabysitEntry {
  * and deferred babysit queuing for split children.
  */
 export class CIBabysitter {
-  readonly pendingBabysitPRs = new Map<number, PendingBabysitEntry[]>()
+  readonly pendingBabysitPRs = new Map<string, PendingBabysitEntry[]>()
   private readonly ctx: DispatcherContext
 
   constructor(ctx: DispatcherContext) {
@@ -48,7 +48,7 @@ export class CIBabysitter {
   /**
    * Queue a child session's PR for deferred babysitting (used by split children).
    */
-  queueDeferredBabysit(parentThreadId: number, entry: PendingBabysitEntry): void {
+  queueDeferredBabysit(parentThreadId: string, entry: PendingBabysitEntry): void {
     const queue = this.pendingBabysitPRs.get(parentThreadId) ?? []
     queue.push(entry)
     this.pendingBabysitPRs.set(parentThreadId, queue)
@@ -57,7 +57,7 @@ export class CIBabysitter {
   /**
    * Run all deferred babysit entries for a parent session in parallel.
    */
-  async runDeferredBabysit(parentThreadId: number): Promise<void> {
+  async runDeferredBabysit(parentThreadId: string): Promise<void> {
     const entries = this.pendingBabysitPRs.get(parentThreadId)
     if (!entries || entries.length === 0) return
     this.pendingBabysitPRs.delete(parentThreadId)
@@ -94,7 +94,7 @@ export class CIBabysitter {
       ? initialQualityReport
       : undefined
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatCIWatching(topicSession.slug, prUrl),
       topicSession.threadId,
     )
@@ -111,7 +111,7 @@ export class CIBabysitter {
     // Auto-resolve merge conflicts if detected
     for (let conflictAttempt = 1; conflictAttempt <= maxRetries && mergeState === "CONFLICTING"; conflictAttempt++) {
       if (signal.aborted) return
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatCIResolvingConflicts(topicSession.slug, prUrl, conflictAttempt, maxRetries),
         topicSession.threadId,
       )
@@ -139,7 +139,7 @@ export class CIBabysitter {
         if (conflictAttempt < maxRetries) {
           log.warn({ prUrl, conflictAttempt }, "PR still has merge conflicts, retrying")
         } else {
-          await this.ctx.telegram.sendMessage(
+          await this.ctx.chat.sendMessage(
             formatCIConflicts(topicSession.slug, prUrl),
             topicSession.threadId,
           )
@@ -159,7 +159,7 @@ export class CIBabysitter {
     if (signal.aborted) return
 
     if (result.passed && localReport == null) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatCIPassed(topicSession.slug, prUrl),
         topicSession.threadId,
       )
@@ -168,7 +168,7 @@ export class CIBabysitter {
     }
 
     if (result.timedOut && result.checks.length === 0 && localReport == null) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatCINoChecks(topicSession.slug, prUrl),
         topicSession.threadId,
       )
@@ -189,7 +189,7 @@ export class CIBabysitter {
         ...failedGateNames.map((g) => `local:${g}`),
       ]
 
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatCIFailed(topicSession.slug, allFailedNames, attempt, maxRetries),
         topicSession.threadId,
       )
@@ -205,7 +205,7 @@ export class CIBabysitter {
         fixPrompt = buildQualityGateFixPrompt(prUrl, localReport!, attempt, maxRetries)
       }
 
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatCIFixing(topicSession.slug, attempt, maxRetries),
         topicSession.threadId,
       )
@@ -240,7 +240,7 @@ export class CIBabysitter {
       // Re-check for merge conflicts before polling CI again
       const retryMergeState = await checkPRMergeability(prUrl, topicSession.cwd)
       if (retryMergeState === "CONFLICTING") {
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           formatCIConflicts(topicSession.slug, prUrl),
           topicSession.threadId,
         )
@@ -254,7 +254,7 @@ export class CIBabysitter {
       if (signal.aborted) return
 
       if (recheck.passed && localFixed) {
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           formatCIPassed(topicSession.slug, prUrl),
           topicSession.threadId,
         )
@@ -270,7 +270,7 @@ export class CIBabysitter {
       }
     }
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatCIGaveUp(topicSession.slug, maxRetries),
       topicSession.threadId,
     )
@@ -296,7 +296,7 @@ export class CIBabysitter {
     if (signal.aborted) return false
 
     if (result.passed) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatCIPassed(childSession.slug, prUrl),
         childSession.threadId,
       )
@@ -304,7 +304,7 @@ export class CIBabysitter {
     }
 
     if (result.timedOut && result.checks.length === 0) {
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatCINoChecks(childSession.slug, prUrl),
         childSession.threadId,
       )
@@ -318,7 +318,7 @@ export class CIBabysitter {
     const maxRetries = this.ctx.config.ci.maxRetries
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       if (signal.aborted) return false
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatCIFailed(childSession.slug, failedChecks.map((c) => c.name), attempt, maxRetries),
         childSession.threadId,
       )
@@ -326,7 +326,7 @@ export class CIBabysitter {
       const failureDetails = await getFailedCheckLogs(prUrl, childSession.cwd)
       const fixPrompt = buildCIFixPrompt(prUrl, failedChecks, failureDetails, attempt, maxRetries)
 
-      await this.ctx.telegram.sendMessage(
+      await this.ctx.chat.sendMessage(
         formatCIFixing(childSession.slug, attempt, maxRetries),
         childSession.threadId,
       )
@@ -342,7 +342,7 @@ export class CIBabysitter {
       const recheck = await waitForCI(prUrl, childSession.cwd, this.ctx.config.ci, signal)
       if (signal.aborted) return false
       if (recheck.passed) {
-        await this.ctx.telegram.sendMessage(
+        await this.ctx.chat.sendMessage(
           formatCIPassed(childSession.slug, prUrl),
           childSession.threadId,
         )
@@ -351,7 +351,7 @@ export class CIBabysitter {
       }
     }
 
-    await this.ctx.telegram.sendMessage(
+    await this.ctx.chat.sendMessage(
       formatCIGaveUp(childSession.slug, maxRetries),
       childSession.threadId,
     )
