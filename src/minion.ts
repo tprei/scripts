@@ -52,10 +52,32 @@ function findUiDistPath(): string {
 
 export function createMinion(config: MinionConfig, options?: MinionOptions): MinionInstance {
   const telegram = new TelegramClient(config.telegram.botToken, config.telegram.chatId, config.telegramQueue.minSendIntervalMs)
-  const observer = new Observer(telegram, config.observer.activityThrottleMs, {
+  // Thin adapter: convert TelegramClient's numeric IDs to the string-based
+  // ChatProvider interface that Observer now expects. Will be replaced when
+  // the full Telegram platform adapter is created.
+  const observerChat = {
+    sendMessage: async (content: string, threadId?: string, replyToMessageId?: string) => {
+      const result = await telegram.sendMessage(content, threadId ? Number(threadId) : undefined, replyToMessageId ? Number(replyToMessageId) : undefined)
+      return { ok: result.ok, messageId: result.messageId != null ? String(result.messageId) : null }
+    },
+    editMessage: (messageId: string, content: string, threadId?: string) =>
+      telegram.editMessage(Number(messageId), content, threadId ? Number(threadId) : undefined),
+  }
+  const observerFiles = {
+    sendPhoto: async (photoPath: string, threadId?: string, caption?: string) => {
+      const id = await telegram.sendPhoto(photoPath, threadId ? Number(threadId) : undefined, caption)
+      return id != null ? String(id) : null
+    },
+    sendPhotoBuffer: async (buffer: Buffer, filename: string, threadId?: string, caption?: string) => {
+      const id = await telegram.sendPhotoBuffer(buffer, filename, threadId ? Number(threadId) : undefined, caption)
+      return id != null ? String(id) : null
+    },
+    downloadFile: (fileId: string, destPath: string) => telegram.downloadFile(fileId, destPath),
+  }
+  const observer = new Observer(observerChat, config.observer.activityThrottleMs, {
     textFlushDebounceMs: config.observer.textFlushDebounceMs,
     activityEditDebounceMs: config.observer.activityEditDebounceMs,
-  })
+  }, observerFiles)
   const broadcaster = new StateBroadcaster()
   const eventBus = new EventBus()
   const tokenProvider = new GitHubTokenProvider(config.githubApp)
