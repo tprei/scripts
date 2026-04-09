@@ -64,6 +64,8 @@ function createValidMinionConfig(): MinionConfig {
       sentryProjectSlug: "",
       supabaseEnabled: true,
       supabaseProjectRef: "",
+      flyEnabled: true,
+      flyOrg: "",
       zaiEnabled: true,
     },
     telegramQueue: {
@@ -359,6 +361,8 @@ describe("validateMcpConfig", () => {
       sentryProjectSlug: "my-project",
       supabaseEnabled: true,
       supabaseProjectRef: "",
+      flyEnabled: true,
+      flyOrg: "",
       zaiEnabled: true,
     })
     expect(result.valid).toBe(true)
@@ -374,6 +378,8 @@ describe("validateMcpConfig", () => {
       sentryProjectSlug: "",
       supabaseEnabled: false,
       supabaseProjectRef: "",
+      flyEnabled: true,
+      flyOrg: "",
       zaiEnabled: true,
     })
     expect(result.valid).toBe(false)

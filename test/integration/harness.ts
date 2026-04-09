@@ -112,6 +112,8 @@ const DEFAULT_SESSION_CONFIG: SessionConfig = {
     sentryProjectSlug: "",
     supabaseEnabled: false,
     supabaseProjectRef: "",
+    flyEnabled: false,
+    flyOrg: "",
     zaiEnabled: false,
   },
 }

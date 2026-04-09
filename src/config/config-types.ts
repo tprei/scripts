@@ -52,6 +52,8 @@ export interface McpConfig {
   sentryProjectSlug: string
   supabaseEnabled: boolean
   supabaseProjectRef: string
+  flyEnabled: boolean
+  flyOrg: string
   zaiEnabled: boolean
 }
 

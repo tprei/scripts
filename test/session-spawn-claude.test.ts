@@ -13,6 +13,8 @@ const baseConfig: SessionConfig = {
     sentryProjectSlug: "",
     supabaseEnabled: false,
     supabaseProjectRef: "",
+    flyEnabled: false,
+    flyOrg: "",
     zaiEnabled: false,
   },
 }

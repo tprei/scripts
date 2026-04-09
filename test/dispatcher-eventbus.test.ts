@@ -65,6 +65,8 @@ function makeConfig(): MinionConfig {
       sentryProjectSlug: "",
       supabaseEnabled: false,
       supabaseProjectRef: "",
+      flyEnabled: false,
+      flyOrg: "",
       zaiEnabled: false,
     },
     goose: { provider: "test", model: "test" },

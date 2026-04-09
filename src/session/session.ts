@@ -200,6 +200,23 @@ export class SessionHandle implements SessionPort {
       }
     }
 
+    if (this.sessionConfig.mcp.flyEnabled) {
+      const flyToken = process.env["FLY_API_TOKEN"]
+      if (flyToken) {
+        const flyArgs = ["mcp", "server"]
+        if (this.sessionConfig.mcp.flyOrg) {
+          flyArgs.push("--org", this.sessionConfig.mcp.flyOrg)
+        }
+        servers.fly = {
+          command: "fly",
+          args: flyArgs,
+          env: { FLY_API_TOKEN: flyToken },
+        }
+      } else {
+        this.log.warn("MCP: Fly MCP enabled but FLY_API_TOKEN is not set — skipping")
+      }
+    }
+
     if (this.sessionConfig.mcp.zaiEnabled && this.sessionConfig.goose.provider === "z-ai") {
       // Prefer profile.authToken for z-ai, fall back to env var
       const zaiKey = this.sessionConfig.profile?.authToken || process.env["ZAI_API_KEY"]
@@ -319,6 +336,7 @@ export class SessionHandle implements SessionPort {
       GITHUB_PERSONAL_ACCESS_TOKEN: process.env["GITHUB_TOKEN"] ?? "",
       SENTRY_ACCESS_TOKEN: process.env["SENTRY_ACCESS_TOKEN"] ?? "",
       SUPABASE_ACCESS_TOKEN: process.env["SUPABASE_ACCESS_TOKEN"] ?? "",
+      FLY_API_TOKEN: process.env["FLY_API_TOKEN"] ?? "",
       ZAI_API_KEY: process.env["ZAI_API_KEY"] ?? "",
 
       // UV / Python — allow sessions to use uv for Python dependency management

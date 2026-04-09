@@ -284,7 +284,7 @@ export function validateMcpConfig(config: unknown, path = "mcp"): ValidationResu
   }
   const c = config as Partial<McpConfig>
 
-  for (const field of ["browserEnabled", "githubEnabled", "context7Enabled", "sentryEnabled", "supabaseEnabled", "zaiEnabled"] as const) {
+  for (const field of ["browserEnabled", "githubEnabled", "context7Enabled", "sentryEnabled", "supabaseEnabled", "flyEnabled", "zaiEnabled"] as const) {
     const err = validateBoolean(c[field], `${path}.${field}`)
     if (err) errors.push(err)
   }
@@ -297,6 +297,9 @@ export function validateMcpConfig(config: unknown, path = "mcp"): ValidationResu
 
   const supabaseRefErr = validateOptionalString(c.supabaseProjectRef, `${path}.supabaseProjectRef`)
   if (supabaseRefErr) errors.push(supabaseRefErr)
+
+  const flyOrgErr = validateOptionalString(c.flyOrg, `${path}.flyOrg`)
+  if (flyOrgErr) errors.push(flyOrgErr)
 
   return { valid: errors.length === 0, errors }
 }
