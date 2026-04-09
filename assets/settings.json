@@ -20,6 +20,7 @@
       "Agent(explorer)",
       "Agent(planner)",
       "Agent(technical-architect)",
+      "Agent(post-task-router)",
       "Agent(git-commit-specialist)",
       "mcp__playwright__*",
       "mcp__github__*",
