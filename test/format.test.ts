@@ -65,6 +65,14 @@ import {
   formatLandSummary,
   formatLandConflictResolution,
   formatLandRestacking,
+  formatThinkStart,
+  formatThinkIteration,
+  formatThinkComplete,
+  formatQuotaSleep,
+  formatStats,
+  formatDagNodeSkipped,
+  formatDagAllDone,
+  formatConfigHelp,
 } from "../src/telegram/format.js"
 import type { ClaudeUsageResponse } from "../src/claude-usage.js"
 import type { AggregateStats, SessionRecord, ModeBreakdown } from "../src/stats.js"
@@ -2016,6 +2024,151 @@ describe("formatPinnedDagStatus", () => {
       expect(result).toContain("cool-fox")
       expect(result).toContain("3/3 attempts")
       expect(result).toContain("/reply")
+    })
+  })
+
+  describe("formatThinkStart", () => {
+    it("includes repo, slug, and task", () => {
+      const result = formatThinkStart("my-repo", "cool-fox", "Research the auth flow")
+      expect(result).toContain("Deep research started")
+      expect(result).toContain("my-repo")
+      expect(result).toContain("cool-fox")
+      expect(result).toContain("Research the auth flow")
+    })
+
+    it("truncates long tasks", () => {
+      const longTask = "x".repeat(300)
+      const result = formatThinkStart("repo", "slug", longTask)
+      expect(result).not.toContain(longTask)
+      expect(result).toContain("…")
+    })
+
+    it("escapes HTML in inputs", () => {
+      const result = formatThinkStart("repo<br>", "slug&", "task<script>")
+      expect(result).toContain("repo&lt;br&gt;")
+      expect(result).toContain("slug&amp;")
+      expect(result).toContain("task&lt;script&gt;")
+    })
+
+    it("includes /reply instructions", () => {
+      const result = formatThinkStart("repo", "slug", "task")
+      expect(result).toContain("/reply")
+    })
+  })
+
+  describe("formatThinkIteration", () => {
+    it("includes slug and iteration number", () => {
+      const result = formatThinkIteration("cool-fox", 3)
+      expect(result).toContain("Thinking deeper")
+      expect(result).toContain("cool-fox")
+      expect(result).toContain("iteration 3")
+    })
+  })
+
+  describe("formatThinkComplete", () => {
+    it("includes slug and next-step hints", () => {
+      const result = formatThinkComplete("cool-fox")
+      expect(result).toContain("Research complete")
+      expect(result).toContain("cool-fox")
+      expect(result).toContain("/reply")
+      expect(result).toContain("/execute")
+    })
+  })
+
+  describe("formatQuotaSleep", () => {
+    it("includes slug, sleep duration, and retry info", () => {
+      const result = formatQuotaSleep("cool-fox", 1800000, 1, 3)
+      expect(result).toContain("Quota exhausted")
+      expect(result).toContain("cool-fox")
+      expect(result).toContain("30 min")
+      expect(result).toContain("attempt 1/3")
+      expect(result).toContain("resume automatically")
+    })
+
+    it("escapes HTML in slug", () => {
+      const result = formatQuotaSleep("slug<br>", 60000, 1, 2)
+      expect(result).toContain("slug&lt;br&gt;")
+    })
+  })
+
+  describe("formatStats", () => {
+    it("includes all stat fields", () => {
+      const result = formatStats({
+        totalSessions: 10,
+        completedSessions: 8,
+        erroredSessions: 2,
+        totalTokens: 50000,
+        totalDurationMs: 3600000,
+        avgDurationMs: 360000,
+      })
+      expect(result).toContain("Aggregate stats")
+      expect(result).toContain("10 total")
+      expect(result).toContain("8 completed")
+      expect(result).toContain("2 errored")
+      expect(result).toContain("50,000")
+    })
+
+    it("shows n/a for avg when no completed sessions", () => {
+      const result = formatStats({
+        totalSessions: 0,
+        completedSessions: 0,
+        erroredSessions: 0,
+        totalTokens: 0,
+        totalDurationMs: 0,
+        avgDurationMs: 0,
+      })
+      expect(result).toContain("n/a")
+    })
+  })
+
+  describe("formatDagNodeSkipped", () => {
+    it("includes title and reason", () => {
+      const result = formatDagNodeSkipped("Build frontend", "upstream failed")
+      expect(result).toContain("Skipped")
+      expect(result).toContain("Build frontend")
+      expect(result).toContain("upstream failed")
+    })
+
+    it("escapes HTML in title and reason", () => {
+      const result = formatDagNodeSkipped("node<br>", "reason&")
+      expect(result).toContain("node&lt;br&gt;")
+      expect(result).toContain("reason&amp;")
+    })
+  })
+
+  describe("formatDagAllDone", () => {
+    it("shows succeeded count", () => {
+      const result = formatDagAllDone(3, 5, 0)
+      expect(result).toContain("DAG complete")
+      expect(result).toContain("3/5 succeeded")
+    })
+
+    it("includes failed count when present", () => {
+      const result = formatDagAllDone(3, 5, 2)
+      expect(result).toContain("2 failed")
+    })
+
+    it("omits failed count when zero", () => {
+      const result = formatDagAllDone(5, 5, 0)
+      expect(result).not.toContain("failed")
+    })
+  })
+
+  describe("formatConfigHelp", () => {
+    it("includes config subcommands", () => {
+      const result = formatConfigHelp()
+      expect(result).toContain("Config commands")
+      expect(result).toContain("/config")
+      expect(result).toContain("default")
+      expect(result).toContain("add")
+      expect(result).toContain("remove")
+    })
+
+    it("lists available fields", () => {
+      const result = formatConfigHelp()
+      expect(result).toContain("baseUrl")
+      expect(result).toContain("authToken")
+      expect(result).toContain("haikuModel")
     })
   })
 })
