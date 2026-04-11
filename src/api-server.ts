@@ -97,6 +97,40 @@ export type MinionCommand =
   | { action: "close"; sessionId: string }
   | { action: "plan_action"; sessionId: string; planAction: PlanActionType }
 
+const VALID_ACTIONS = new Set(["reply", "stop", "close", "plan_action"])
+const VALID_PLAN_ACTIONS = new Set<string>(["execute", "split", "stack", "dag"])
+
+function parseMinionCommand(raw: unknown): MinionCommand {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("expected object")
+  }
+  const obj = raw as Record<string, unknown>
+  if (typeof obj.action !== "string" || !VALID_ACTIONS.has(obj.action)) {
+    throw new Error(`invalid action: ${String(obj.action)}`)
+  }
+  if (typeof obj.sessionId !== "string" || obj.sessionId.length === 0) {
+    throw new Error("missing or invalid sessionId")
+  }
+  switch (obj.action) {
+    case "reply":
+      if (typeof obj.message !== "string") {
+        throw new Error("reply command requires a string message")
+      }
+      return { action: "reply", sessionId: obj.sessionId, message: obj.message }
+    case "plan_action":
+      if (typeof obj.planAction !== "string" || !VALID_PLAN_ACTIONS.has(obj.planAction)) {
+        throw new Error(`invalid planAction: ${String(obj.planAction)}`)
+      }
+      return { action: "plan_action", sessionId: obj.sessionId, planAction: obj.planAction as PlanActionType }
+    case "stop":
+      return { action: "stop", sessionId: obj.sessionId }
+    case "close":
+      return { action: "close", sessionId: obj.sessionId }
+    default:
+      throw new Error(`unknown action: ${obj.action}`)
+  }
+}
+
 export interface DispatcherApi {
   getSessions(): Map<number, { handle: unknown; meta: { sessionId: string; threadId: number }; task: string }>
   getTopicSessions(): Map<number, TopicSession>
@@ -446,7 +480,14 @@ async function handleApiRoute(
     // POST /api/commands
     if (pathname === "/api/commands" && req.method === "POST") {
       const body = await readBody(req)
-      const command = JSON.parse(body) as MinionCommand
+      let command: MinionCommand
+      try {
+        command = parseMinionCommand(JSON.parse(body))
+      } catch (err) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ success: false, error: `Invalid command: ${err instanceof Error ? err.message : String(err)}` }))
+        return
+      }
 
       // Find the thread ID from the session ID (slug)
       const topicSessions = dispatcher.getTopicSessions()
