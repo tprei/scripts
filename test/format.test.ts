@@ -65,6 +65,9 @@ import {
   formatLandSummary,
   formatLandConflictResolution,
   formatLandRestacking,
+  formatQuotaSleep,
+  formatStats,
+  formatPinnedStatus,
 } from "../src/telegram/format.js"
 import type { ClaudeUsageResponse } from "../src/claude-usage.js"
 import type { AggregateStats, SessionRecord, ModeBreakdown } from "../src/stats.js"
@@ -2016,6 +2019,123 @@ describe("formatPinnedDagStatus", () => {
       expect(result).toContain("cool-fox")
       expect(result).toContain("3/3 attempts")
       expect(result).toContain("/reply")
+    })
+  })
+
+  describe("formatQuotaSleep", () => {
+    it("includes slug and sleep duration in minutes", () => {
+      const result = formatQuotaSleep("cool-fox", 600_000, 1, 3)
+      expect(result).toContain("Quota exhausted")
+      expect(result).toContain("cool-fox")
+      expect(result).toContain("~10 min")
+      expect(result).toContain("attempt 1/3")
+    })
+
+    it("includes UTC time string", () => {
+      const result = formatQuotaSleep("cool-fox", 3_600_000, 2, 5)
+      expect(result).toContain("UTC")
+    })
+
+    it("mentions automatic resume", () => {
+      const result = formatQuotaSleep("cool-fox", 300_000, 1, 3)
+      expect(result).toContain("resume automatically")
+    })
+
+    it("escapes HTML in slug", () => {
+      const result = formatQuotaSleep("<b>xss</b>", 60_000, 1, 1)
+      expect(result).toContain("&lt;b&gt;xss&lt;/b&gt;")
+      expect(result).not.toContain("<b>xss</b>")
+    })
+  })
+
+  describe("formatStats", () => {
+    it("includes all aggregate fields", () => {
+      const result = formatStats({
+        totalSessions: 10,
+        completedSessions: 8,
+        erroredSessions: 2,
+        totalTokens: 50000,
+        totalDurationMs: 600_000,
+        avgDurationMs: 60_000,
+      })
+      expect(result).toContain("Aggregate stats")
+      expect(result).toContain("10 total")
+      expect(result).toContain("8 completed")
+      expect(result).toContain("2 errored")
+      expect(result).toContain("50,000")
+      expect(result).toContain("10m 0s")
+      expect(result).toContain("1m 0s")
+    })
+
+    it("shows n/a for avg when no completed sessions", () => {
+      const result = formatStats({
+        totalSessions: 0,
+        completedSessions: 0,
+        erroredSessions: 0,
+        totalTokens: 0,
+        totalDurationMs: 0,
+        avgDurationMs: 0,
+      })
+      expect(result).toContain("n/a")
+    })
+
+    it("formats duration in seconds when under a minute", () => {
+      const result = formatStats({
+        totalSessions: 1,
+        completedSessions: 1,
+        erroredSessions: 0,
+        totalTokens: 100,
+        totalDurationMs: 45_000,
+        avgDurationMs: 45_000,
+      })
+      expect(result).toContain("45s")
+    })
+  })
+
+  describe("formatPinnedStatus", () => {
+    it("shows completed status with check icon", () => {
+      const result = formatPinnedStatus("cool-fox", "org/repo", "completed")
+      expect(result).toContain("✅")
+      expect(result).toContain("Complete")
+      expect(result).toContain("cool-fox")
+      expect(result).toContain("org/repo")
+    })
+
+    it("shows errored status with cross icon", () => {
+      const result = formatPinnedStatus("cool-fox", "org/repo", "errored")
+      expect(result).toContain("❌")
+      expect(result).toContain("Error")
+    })
+
+    it("shows working status with lightning icon", () => {
+      const result = formatPinnedStatus("cool-fox", "org/repo", "working")
+      expect(result).toContain("⚡")
+      expect(result).toContain("Working")
+    })
+
+    it("includes PR link when prUrl is provided", () => {
+      const result = formatPinnedStatus("cool-fox", "org/repo", "completed", "https://github.com/org/repo/pull/42")
+      expect(result).toContain("PR:")
+      expect(result).toContain("#42")
+      expect(result).toContain("https://github.com/org/repo/pull/42")
+    })
+
+    it("falls back to PR URL when number cannot be extracted", () => {
+      const result = formatPinnedStatus("cool-fox", "org/repo", "completed", "https://custom-gh.com/pr")
+      expect(result).toContain("PR:")
+      expect(result).toContain("https://custom-gh.com/pr")
+    })
+
+    it("shows extra label/state when no PR URL", () => {
+      const result = formatPinnedStatus("cool-fox", "org/repo", "working", undefined, { label: "step-2", state: "running" })
+      expect(result).toContain("running")
+      expect(result).toContain("step-2")
+    })
+
+    it("escapes HTML in slug and repo", () => {
+      const result = formatPinnedStatus("<b>xss</b>", "org/<repo>", "completed")
+      expect(result).toContain("&lt;b&gt;xss&lt;/b&gt;")
+      expect(result).toContain("&lt;repo&gt;")
     })
   })
 })
