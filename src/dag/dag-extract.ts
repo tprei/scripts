@@ -199,7 +199,11 @@ export function buildDagChildPrompt(
   conflictFiles: string[] = [],
   defaultBranch = "main",
 ): string {
-  const originalRequest = parentConversation[0]?.text ?? ""
+  const MAX_ORIGINAL_REQUEST_CHARS = 4000
+  const rawRequest = parentConversation[0]?.text ?? ""
+  const originalRequest = rawRequest.length > MAX_ORIGINAL_REQUEST_CHARS
+    ? rawRequest.slice(0, MAX_ORIGINAL_REQUEST_CHARS) + "\n\n[…truncated]"
+    : rawRequest
 
   const lines: string[] = [
     "## Original request",
