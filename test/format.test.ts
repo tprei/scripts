@@ -8,7 +8,6 @@ import {
   formatSessionStart,
   formatSessionComplete,
   formatSessionError,
-  formatSessionInterrupted,
   formatAssistantText,
   formatAssistantTextChunks,
   formatPlanStart,
@@ -236,14 +235,6 @@ describe("formatSessionError", () => {
     const longErr = "e".repeat(500)
     const msg = formatSessionError("slug", longErr)
     expect(msg).toContain("…")
-  })
-})
-
-describe("formatSessionInterrupted", () => {
-  it("includes slug", () => {
-    const msg = formatSessionInterrupted("bold-arc")
-    expect(msg).toContain("bold-arc")
-    expect(msg).toContain("interrupted")
   })
 })
 
