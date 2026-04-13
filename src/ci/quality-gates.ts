@@ -13,6 +13,10 @@ export interface QualityReport {
   allPassed: boolean
 }
 
+interface PackageJson {
+  scripts?: Record<string, string>
+}
+
 const GATE_TIMEOUT_MS = 300_000
 
 function run(cmd: string, cwd: string): { ok: boolean; output: string } {
@@ -37,7 +41,7 @@ function detectTestCommand(cwd: string): string | null {
   if (!fs.existsSync(pkgPath)) return null
 
   try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
+    const pkg: PackageJson = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
     const scripts = pkg.scripts ?? {}
     if (scripts.test && scripts.test !== 'echo "Error: no test specified" && exit 1') {
       return "npm test"
@@ -54,7 +58,7 @@ function detectTypecheckCommand(cwd: string): string | null {
   if (!fs.existsSync(pkgPath)) return null
 
   try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
+    const pkg: PackageJson = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
     const scripts = pkg.scripts ?? {}
     if (scripts.typecheck) return "npm run typecheck"
     if (scripts["type-check"]) return "npm run type-check"
@@ -74,7 +78,7 @@ function detectLintCommand(cwd: string): string | null {
   if (!fs.existsSync(pkgPath)) return null
 
   try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
+    const pkg: PackageJson = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
     const scripts = pkg.scripts ?? {}
     if (scripts.lint) return "npm run lint"
   } catch {
