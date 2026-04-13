@@ -209,8 +209,9 @@ export function topologicalSort(graph: DagGraph): string[] {
   }
 
   const sorted: string[] = []
-  while (queue.length > 0) {
-    const id = queue.shift()!
+  let head = 0
+  while (head < queue.length) {
+    const id = queue[head++]
     sorted.push(id)
     for (const neighbor of adjacency.get(id)!) {
       const newDegree = inDegree.get(neighbor)! - 1
