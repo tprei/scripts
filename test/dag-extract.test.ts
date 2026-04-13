@@ -194,6 +194,29 @@ describe("buildDagChildPrompt", () => {
     // If there are no siblings, scope constraints section may not appear or be empty
   })
 
+  it("truncates long original request to ~4000 chars", () => {
+    const longConversation: TopicMessage[] = [
+      { role: "user", text: "x".repeat(6000) },
+    ]
+    const node: DagInput = { id: "a", title: "A", description: "Do A", dependsOn: [] }
+    const prompt = buildDagChildPrompt(longConversation, node, [node], [], false)
+    expect(prompt).toContain("[…truncated]")
+    // The original request section should not contain the full 6000-char string
+    expect(prompt).not.toContain("x".repeat(5000))
+    // But it should contain the first 4000 chars
+    expect(prompt).toContain("x".repeat(4000))
+  })
+
+  it("does not truncate original request under 4000 chars", () => {
+    const shortConversation: TopicMessage[] = [
+      { role: "user", text: "x".repeat(3999) },
+    ]
+    const node: DagInput = { id: "a", title: "A", description: "Do A", dependsOn: [] }
+    const prompt = buildDagChildPrompt(shortConversation, node, [node], [], false)
+    expect(prompt).not.toContain("[…truncated]")
+    expect(prompt).toContain("x".repeat(3999))
+  })
+
   it("truncates long assistant messages", () => {
     const longConversation: TopicMessage[] = [
       { role: "user", text: "Plan this" },
