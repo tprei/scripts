@@ -11,7 +11,6 @@ import {
   getUpstreamBranches,
   getDownstreamNodes,
   needsRestack,
-  criticalPathLength,
   dagProgress,
   transitiveReduction,
   renderDagStatus,
@@ -687,34 +686,6 @@ describe("mergeBase field", () => {
 
     expect(graph.nodes[0].mergeBase).toBe("abc123")
     expect(graph.nodes[1].mergeBase).toBe("def456")
-  })
-})
-
-describe("criticalPathLength", () => {
-  it("returns 1 for a single node", () => {
-    const graph = buildDag("test", [
-      { id: "a", title: "A", description: "A", dependsOn: [] },
-    ], 1, "repo")
-    expect(criticalPathLength(graph)).toBe(1)
-  })
-
-  it("returns chain length for linear DAG", () => {
-    const graph = buildDag("test", [
-      { id: "a", title: "A", description: "A", dependsOn: [] },
-      { id: "b", title: "B", description: "B", dependsOn: ["a"] },
-      { id: "c", title: "C", description: "C", dependsOn: ["b"] },
-    ], 1, "repo")
-    expect(criticalPathLength(graph)).toBe(3)
-  })
-
-  it("returns depth of diamond DAG", () => {
-    const graph = buildDag("test", [
-      { id: "a", title: "A", description: "A", dependsOn: [] },
-      { id: "b", title: "B", description: "B", dependsOn: ["a"] },
-      { id: "c", title: "C", description: "C", dependsOn: ["a"] },
-      { id: "d", title: "D", description: "D", dependsOn: ["b", "c"] },
-    ], 1, "repo")
-    expect(criticalPathLength(graph)).toBe(3) // a -> b/c -> d
   })
 })
 
