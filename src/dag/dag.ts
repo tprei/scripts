@@ -365,24 +365,6 @@ export function needsRestack(graph: DagGraph, changedNodeId: string, opts?: { in
 }
 
 /**
- * Compute the critical path length (longest path through the DAG).
- */
-export function criticalPathLength(graph: DagGraph): number {
-  const sorted = topologicalSort(graph)
-  const dist = new Map<string, number>()
-
-  for (const id of sorted) {
-    const node = graph.nodes.find((n) => n.id === id)!
-    const maxDepDist = node.dependsOn.length > 0
-      ? Math.max(...node.dependsOn.map((d) => dist.get(d) ?? 0))
-      : 0
-    dist.set(id, maxDepDist + 1)
-  }
-
-  return dist.size > 0 ? Math.max(...dist.values()) : 0
-}
-
-/**
  * Get DAG progress summary.
  */
 export function dagProgress(graph: DagGraph): {
