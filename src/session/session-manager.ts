@@ -360,6 +360,10 @@ export function resolveDefaultBranch(bareDir: string, gitOpts: GitOpts, repoUrl?
 
 const CACHE_VERSION = "v2"
 
+const HARDLINK_COPY_TIMEOUT_MS = 300_000
+const NPM_INSTALL_TIMEOUT_MS = 600_000
+const NPM_INSTALL_MAX_ATTEMPTS = 2
+
 function bootstrapOnePackage(
   pkgDir: string, reposDir: string, cacheKey: string, label: string,
 ): void {
@@ -382,12 +386,7 @@ function bootstrapOnePackage(
       log.debug({ label }, "node_modules already present and cache hash matches, skipping")
       return
     }
-    try {
-      execSync(`chmod -R u+w ${JSON.stringify(nmDir)}`, {
-        stdio: ["ignore", "pipe", "pipe"], timeout: 30_000,
-      })
-    } catch { /* best-effort */ }
-    fs.rmSync(nmDir, { recursive: true, force: true })
+    forceRemoveDir(nmDir, label)
   }
 
   const stdio: import("node:child_process").StdioOptions = ["ignore", "pipe", "pipe"]
@@ -395,37 +394,112 @@ function bootstrapOnePackage(
   if (currentHash && cachedHash === currentHash && fs.existsSync(cacheDir)) {
     try {
       execSync(`cp -al ${JSON.stringify(cacheDir)} ${JSON.stringify(nmDir)}`, {
-        stdio, timeout: 120_000,
+        stdio, timeout: HARDLINK_COPY_TIMEOUT_MS,
       })
       log.debug({ label }, "hardlinked node_modules")
       makeNodeModulesReadOnly(nmDir, label)
       return
     } catch (err) {
-      log.warn({ err, label }, "hardlink copy failed, falling back to npm ci")
+      log.warn(
+        { err: errMeta(err), label, timeoutMs: HARDLINK_COPY_TIMEOUT_MS },
+        "hardlink copy failed, falling back to npm install",
+      )
+      // Clean up any partial copy before retry
+      if (fs.existsSync(nmDir)) forceRemoveDir(nmDir, label)
     }
   }
 
-  try {
-    const installCmd = fs.existsSync(lockFile) ? "npm ci --prefer-offline" : "npm install --prefer-offline"
-    log.debug({ installCmd, label }, "running package install")
-    execSync(installCmd, {
-      cwd: pkgDir, stdio, timeout: 300_000,
-      env: { ...process.env, NODE_ENV: "development" },
-    })
+  const installCmd = fs.existsSync(lockFile) ? "npm ci --prefer-offline" : "npm install --prefer-offline"
+  let installed = false
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= NPM_INSTALL_MAX_ATTEMPTS; attempt++) {
+    try {
+      log.debug({ installCmd, label, attempt }, "running package install")
+      execSync(installCmd, {
+        cwd: pkgDir, stdio, timeout: NPM_INSTALL_TIMEOUT_MS,
+        env: { ...process.env, NODE_ENV: "development" },
+      })
+      installed = true
+      break
+    } catch (err) {
+      lastErr = err
+      log.warn(
+        { err: errMeta(err), label, attempt, timeoutMs: NPM_INSTALL_TIMEOUT_MS },
+        "package install attempt failed",
+      )
+      if (fs.existsSync(nmDir)) forceRemoveDir(nmDir, label)
+    }
+  }
 
+  if (!installed) {
+    log.error(
+      { err: errMeta(lastErr), label, attempts: NPM_INSTALL_MAX_ATTEMPTS },
+      "dependency bootstrap failed — session will start without node_modules",
+    )
+    return
+  }
+
+  try {
     if (fs.existsSync(cacheDir)) {
-      fs.rmSync(cacheDir, { recursive: true, force: true })
+      forceRemoveDir(cacheDir, `${label}-cache`)
     }
     execSync(`cp -al ${JSON.stringify(nmDir)} ${JSON.stringify(cacheDir)}`, {
-      stdio, timeout: 120_000,
+      stdio, timeout: HARDLINK_COPY_TIMEOUT_MS,
     })
     if (currentHash) {
       fs.writeFileSync(cacheLockHash, currentHash)
     }
     log.debug({ label }, "cached node_modules")
-    makeNodeModulesReadOnly(nmDir, label)
   } catch (err) {
-    log.warn({ err, label }, "dependency bootstrap failed (non-fatal)")
+    log.warn({ err: errMeta(err), label }, "failed to cache node_modules (non-fatal)")
+  }
+
+  makeNodeModulesReadOnly(nmDir, label)
+}
+
+/**
+ * Pull the relevant fields off a thrown error/Buffer error so structured logs
+ * carry the exit code, signal, and a stderr tail without dragging the entire
+ * Buffer payload into the log line.
+ */
+function errMeta(err: unknown): Record<string, unknown> {
+  if (!err || typeof err !== "object") return { value: String(err) }
+  const e = err as NodeJS.ErrnoException & { signal?: string; status?: number; stderr?: Buffer | string }
+  const stderrRaw = e.stderr
+  const stderr = stderrRaw == null
+    ? undefined
+    : (Buffer.isBuffer(stderrRaw) ? stderrRaw.toString("utf-8") : String(stderrRaw))
+  return {
+    message: e.message,
+    code: e.code,
+    signal: e.signal,
+    status: e.status,
+    stderrTail: stderr ? stderr.slice(-1500) : undefined,
+  }
+}
+
+/**
+ * Remove a directory tree, fixing up permissions first so chmod-protected
+ * caches and node_modules/.bin hardlinks don't trip EACCES on unlink.
+ *
+ * Why a+rwX: the lowercase u+w flag only flips write on the owner and does
+ * not restore execute on directories that lost it (which blocks both reads
+ * and unlinks of children). Capital X means "execute only where it's already
+ * needed" (directories), which is what we want.
+ */
+function forceRemoveDir(target: string, label: string): void {
+  try {
+    execSync(`chmod -R a+rwX ${JSON.stringify(target)}`, {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 60_000,
+    })
+  } catch (err) {
+    log.warn({ err: errMeta(err), target, label }, "chmod before rm failed (continuing)")
+  }
+  try {
+    fs.rmSync(target, { recursive: true, force: true })
+  } catch (err) {
+    log.error({ err: errMeta(err), target, label }, "failed to remove directory")
   }
 }
 
@@ -440,9 +514,9 @@ function restoreWritePermissions(cwd: string): void {
     const target = path.join(cwd, name)
     try {
       if (fs.existsSync(target)) {
-        execSync(`chmod -R u+w ${JSON.stringify(target)}`, {
+        execSync(`chmod -R a+rwX ${JSON.stringify(target)}`, {
           stdio: ["ignore", "pipe", "pipe"],
-          timeout: 30_000,
+          timeout: 60_000,
         })
       }
     } catch { /* best-effort */ }
@@ -454,9 +528,9 @@ function restoreWritePermissions(cwd: string): void {
       const nested = path.join(cwd, entry.name, "node_modules")
       try {
         if (fs.existsSync(nested)) {
-          execSync(`chmod -R u+w ${JSON.stringify(nested)}`, {
+          execSync(`chmod -R a+rwX ${JSON.stringify(nested)}`, {
             stdio: ["ignore", "pipe", "pipe"],
-            timeout: 30_000,
+            timeout: 60_000,
           })
         }
       } catch { /* best-effort */ }
@@ -721,20 +795,9 @@ export function cleanBuildArtifacts(cwd: string): void {
   const artifacts = ["node_modules", ".next", ".turbo", ".cache", "dist", ".npm", ".venv"]
   for (const name of artifacts) {
     const target = path.join(cwd, name)
-    try {
-      if (fs.existsSync(target)) {
-        // Restore write permissions before removal (node_modules may be read-only)
-        try {
-          execSync(`chmod -R u+w ${JSON.stringify(target)}`, {
-            stdio: ["ignore", "pipe", "pipe"],
-            timeout: 30_000,
-          })
-        } catch { /* best-effort */ }
-        fs.rmSync(target, { recursive: true, force: true })
-        log.debug({ name, cwd }, "cleaned artifact")
-      }
-    } catch (err) {
-      log.error({ err, name, cwd }, "failed to clean artifact")
+    if (fs.existsSync(target)) {
+      forceRemoveDir(target, `${cwd}/${name}`)
+      log.debug({ name, cwd }, "cleaned artifact")
     }
   }
   try {
@@ -743,40 +806,26 @@ export function cleanBuildArtifacts(cwd: string): void {
       if (!entry.isDirectory() || entry.name === "node_modules" || entry.name.startsWith(".")) continue
       const nested = path.join(cwd, entry.name, "node_modules")
       if (fs.existsSync(nested)) {
-        try {
-          execSync(`chmod -R u+w ${JSON.stringify(nested)}`, {
-            stdio: ["ignore", "pipe", "pipe"],
-            timeout: 30_000,
-          })
-        } catch { /* best-effort */ }
-        fs.rmSync(nested, { recursive: true, force: true })
+        forceRemoveDir(nested, `${cwd}/${entry.name}/node_modules`)
         log.debug({ name: `${entry.name}/node_modules`, cwd }, "cleaned nested artifact")
       }
       const nestedVenv = path.join(cwd, entry.name, ".venv")
       if (fs.existsSync(nestedVenv)) {
-        fs.rmSync(nestedVenv, { recursive: true, force: true })
+        forceRemoveDir(nestedVenv, `${cwd}/${entry.name}/.venv`)
         log.debug({ name: `${entry.name}/.venv`, cwd }, "cleaned nested artifact")
       }
     }
   } catch { /* non-fatal */ }
   cleanPycache(cwd)
   const homeUvCache = path.join(cwd, ".home", ".cache", "uv")
-  try {
-    if (fs.existsSync(homeUvCache)) {
-      fs.rmSync(homeUvCache, { recursive: true, force: true })
-      log.debug({ cwd }, "cleaned .home/.cache/uv")
-    }
-  } catch {
-    /* best effort */
+  if (fs.existsSync(homeUvCache)) {
+    forceRemoveDir(homeUvCache, `${cwd}/.home/.cache/uv`)
+    log.debug({ cwd }, "cleaned .home/.cache/uv")
   }
   const homeCacheDir = path.join(cwd, ".home", ".npm")
-  try {
-    if (fs.existsSync(homeCacheDir)) {
-      fs.rmSync(homeCacheDir, { recursive: true, force: true })
-      log.debug({ cwd }, "cleaned .home/.npm")
-    }
-  } catch {
-    /* best effort */
+  if (fs.existsSync(homeCacheDir)) {
+    forceRemoveDir(homeCacheDir, `${cwd}/.home/.npm`)
+    log.debug({ cwd }, "cleaned .home/.npm")
   }
 }
 
