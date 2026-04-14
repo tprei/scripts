@@ -45,6 +45,12 @@ export interface TopicMessage {
   images?: string[]
 }
 
+export interface WorkspaceRef {
+  cwd: string
+  repoUrl?: string
+  branch?: string
+}
+
 export interface TopicSession {
   threadId: number
   repo: string
