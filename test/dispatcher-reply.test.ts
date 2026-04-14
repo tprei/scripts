@@ -237,16 +237,16 @@ describe("ActiveSession handle type compatibility", () => {
 })
 
 describe("SDK_MODES set", () => {
-  const sdkModes = new Set(["plan", "think", "review", "ship-think", "ship-plan", "ship-verify"])
-  const cliModes = ["task", "ci-fix", "dag-review"]
+  const sdkModes = new Set(["plan", "think", "review", "dag-review", "ship-think", "ship-plan", "ship-verify", "task"])
+  const cliModes = ["ci-fix"]
 
   it("includes all interactive Claude modes", () => {
-    for (const mode of ["plan", "think", "review", "ship-think", "ship-plan", "ship-verify"]) {
+    for (const mode of ["plan", "think", "review", "dag-review", "ship-think", "ship-plan", "ship-verify", "task"]) {
       expect(sdkModes.has(mode)).toBe(true)
     }
   })
 
-  it("excludes task and ci-fix modes", () => {
+  it("excludes ci-fix mode", () => {
     for (const mode of cliModes) {
       expect(sdkModes.has(mode)).toBe(false)
     }

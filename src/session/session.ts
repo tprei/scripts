@@ -120,6 +120,10 @@ export class SessionHandle implements SessionPort {
       model: cfg.claude.reviewModel,
       detached: true,
     }),
+    task: (cfg) => ({
+      systemPrompt: DEFAULT_TASK_PROMPT,
+      model: cfg.claude.thinkModel,
+    }),
   }
 
   start(task: string, systemPrompt?: string): void {
