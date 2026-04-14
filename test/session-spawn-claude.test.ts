@@ -36,7 +36,7 @@ describe("SessionHandle.claudeModeConfigs", () => {
 
   it("has entries for all claude modes", () => {
     expect(Object.keys(configs).sort()).toEqual([
-      "dag-review", "plan", "review", "ship-plan", "ship-think", "ship-verify", "think",
+      "dag-review", "plan", "review", "ship-plan", "ship-think", "ship-verify", "task", "think",
     ])
   })
 
