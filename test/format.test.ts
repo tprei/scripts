@@ -65,6 +65,16 @@ import {
   formatLandSummary,
   formatLandConflictResolution,
   formatLandRestacking,
+  formatPinnedStatus,
+  formatQuotaSleep,
+  formatStats,
+  formatDagAnalyzing,
+  formatDagStart,
+  formatDagNodeSkipped,
+  formatDagAllDone,
+  formatDagReviewStart,
+  formatDagReviewComplete,
+  formatThinkStart, formatThinkComplete, formatThinkIteration,
 } from "../src/telegram/format.js"
 import type { ClaudeUsageResponse } from "../src/claude-usage.js"
 import type { AggregateStats, SessionRecord, ModeBreakdown } from "../src/stats.js"
@@ -2016,6 +2026,140 @@ describe("formatPinnedDagStatus", () => {
       expect(result).toContain("cool-fox")
       expect(result).toContain("3/3 attempts")
       expect(result).toContain("/reply")
+    })
+  })
+
+  describe("formatPinnedStatus", () => {
+    it("maps status to correct icon and label", () => {
+      expect(formatPinnedStatus("s", "r", "completed")).toContain("✅")
+      expect(formatPinnedStatus("s", "r", "errored")).toContain("❌")
+      expect(formatPinnedStatus("s", "r", "working")).toContain("⚡")
+    })
+
+    it("includes slug, repo, and PR link", () => {
+      const result = formatPinnedStatus("bold-arc", "org/repo", "completed", "https://github.com/org/repo/pull/42")
+      expect(result).toContain("bold-arc")
+      expect(result).toContain("org/repo")
+      expect(result).toContain("#42")
+    })
+
+    it("shows extra label/state when no PR", () => {
+      const result = formatPinnedStatus("s", "r", "working", undefined, { label: "auth", state: "Planning" })
+      expect(result).toContain("Planning")
+      expect(result).toContain("auth")
+    })
+
+    it("escapes HTML entities", () => {
+      const result = formatPinnedStatus("a<b", "r&p", "completed")
+      expect(result).toContain("a&lt;b")
+      expect(result).toContain("r&amp;p")
+    })
+  })
+
+  describe("formatQuotaSleep", () => {
+    it("includes slug, minutes, and attempt info", () => {
+      const result = formatQuotaSleep("cool-fox", 30 * 60_000, 2, 5)
+      expect(result).toContain("Quota exhausted")
+      expect(result).toContain("cool-fox")
+      expect(result).toContain("~30 min")
+      expect(result).toContain("attempt 2/5")
+      expect(result).toContain("resume automatically")
+    })
+  })
+
+  describe("formatStats", () => {
+    it("formats aggregate stats with counts and tokens", () => {
+      const result = formatStats({ totalSessions: 10, completedSessions: 8, erroredSessions: 2, totalTokens: 50000, totalDurationMs: 3600_000, avgDurationMs: 360_000 })
+      expect(result).toContain("10 total")
+      expect(result).toContain("8 completed")
+      expect(result).toContain("50,000")
+    })
+
+    it("shows n/a avg when no completed sessions", () => {
+      const result = formatStats({ totalSessions: 1, completedSessions: 0, erroredSessions: 1, totalTokens: 0, totalDurationMs: 0, avgDurationMs: 0 })
+      expect(result).toContain("n/a")
+    })
+  })
+
+  describe("formatDagAnalyzing", () => {
+    it("includes slug and analyzing message", () => {
+      const result = formatDagAnalyzing("cool-fox")
+      expect(result).toContain("Analyzing conversation")
+      expect(result).toContain("cool-fox")
+      expect(result).toContain("dependencies")
+    })
+  })
+
+  describe("formatDagStart", () => {
+    it("formats DAG mode with children and dependencies", () => {
+      const children = [{ slug: "a", title: "Add auth", dependsOn: [] as string[] }, { slug: "b", title: "Add tests", dependsOn: ["a"] }]
+      const result = formatDagStart("cool-fox", children, false)
+      expect(result).toContain("DAG: 2 tasks")
+      expect(result).toContain("← a")
+      expect(result).toContain("parallel")
+    })
+
+    it("formats stack mode with sequential message", () => {
+      const result = formatDagStart("s", [{ slug: "a", title: "Step 1", dependsOn: [] }], true)
+      expect(result).toContain("Stack: 1 tasks")
+      expect(result).toContain("sequentially")
+    })
+  })
+
+  describe("formatDagNodeSkipped", () => {
+    it("includes title and reason", () => {
+      const result = formatDagNodeSkipped("Add tests", "dependency failed")
+      expect(result).toContain("Skipped")
+      expect(result).toContain("Add tests")
+      expect(result).toContain("dependency failed")
+    })
+  })
+
+  describe("formatDagAllDone", () => {
+    it("shows success count", () => {
+      const result = formatDagAllDone(3, 3, 0)
+      expect(result).toContain("DAG complete")
+      expect(result).toContain("3/3 succeeded")
+      expect(result).not.toContain("failed")
+    })
+
+    it("shows failure count when present", () => {
+      const result = formatDagAllDone(2, 3, 1)
+      expect(result).toContain("2/3 succeeded")
+      expect(result).toContain("1 failed")
+    })
+  })
+
+  describe("formatDagReviewStart", () => {
+    it("includes slug, repo, and task", () => {
+      const result = formatDagReviewStart("org/repo", "cool-fox", "review the dag")
+      expect(result).toContain("cool-fox")
+      expect(result).toContain("org/repo")
+      expect(result).toContain("review the dag")
+    })
+  })
+
+  describe("formatThinkStart / formatThinkComplete / formatThinkIteration", () => {
+    it("formatThinkStart includes slug and repo", () => {
+      const result = formatThinkStart("org/repo", "cool-fox", "analyze auth flow")
+      expect(result).toContain("cool-fox")
+      expect(result).toContain("org/repo")
+    })
+
+    it("formatThinkComplete includes slug", () => {
+      expect(formatThinkComplete("cool-fox")).toContain("cool-fox")
+    })
+
+    it("formatThinkIteration includes slug and iteration", () => {
+      const result = formatThinkIteration("cool-fox", 3)
+      expect(result).toContain("cool-fox")
+      expect(result).toContain("3")
+    })
+  })
+
+  describe("formatDagReviewComplete", () => {
+    it("includes slug", () => {
+      expect(formatDagReviewComplete("cool-fox")).toContain("cool-fox")
     })
   })
 })
