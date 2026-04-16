@@ -75,6 +75,12 @@ import {
   formatDagReviewStart,
   formatDagReviewComplete,
   formatThinkStart, formatThinkComplete, formatThinkIteration,
+  formatDagCIWaiting,
+  formatDagCIFailed,
+  formatDagForceAdvance,
+  formatLandPreflightStart,
+  formatLandPreflightPassed,
+  formatLandPreflightFailed,
 } from "../src/telegram/format.js"
 import type { ClaudeUsageResponse } from "../src/claude-usage.js"
 import type { AggregateStats, SessionRecord, ModeBreakdown } from "../src/stats.js"
@@ -2160,6 +2166,116 @@ describe("formatPinnedDagStatus", () => {
   describe("formatDagReviewComplete", () => {
     it("includes slug", () => {
       expect(formatDagReviewComplete("cool-fox")).toContain("cool-fox")
+    })
+  })
+
+  describe("formatDagCIWaiting", () => {
+    it("includes slug, node title, and PR link", () => {
+      const result = formatDagCIWaiting("cool-fox", "Add auth", "https://github.com/org/repo/pull/42")
+      expect(result).toContain("cool-fox")
+      expect(result).toContain("Add auth")
+      expect(result).toContain("https://github.com/org/repo/pull/42")
+    })
+
+    it("escapes HTML in node title", () => {
+      const result = formatDagCIWaiting("slug", "Fix <script>", "https://github.com/org/repo/pull/1")
+      expect(result).toContain("Fix &lt;script&gt;")
+      expect(result).not.toContain("<script>")
+    })
+  })
+
+  describe("formatDagCIFailed", () => {
+    it("includes slug, node title, and PR link", () => {
+      const result = formatDagCIFailed("cool-fox", "Add auth", "https://github.com/org/repo/pull/42", "block")
+      expect(result).toContain("cool-fox")
+      expect(result).toContain("Add auth")
+      expect(result).toContain("https://github.com/org/repo/pull/42")
+    })
+
+    it("shows block message when policy is block", () => {
+      const result = formatDagCIFailed("slug", "node", "https://github.com/org/repo/pull/1", "block")
+      expect(result).toContain("Dependents blocked")
+      expect(result).toContain("/force")
+      expect(result).toContain("/retry")
+    })
+
+    it("shows proceed message when policy is warn", () => {
+      const result = formatDagCIFailed("slug", "node", "https://github.com/org/repo/pull/1", "warn")
+      expect(result).toContain("Proceeding with dependents")
+      expect(result).toContain("warn")
+    })
+  })
+
+  describe("formatDagForceAdvance", () => {
+    it("includes node title and node ID", () => {
+      const result = formatDagForceAdvance("Add auth middleware", "auth-node")
+      expect(result).toContain("Add auth middleware")
+      expect(result).toContain("auth-node")
+    })
+
+    it("escapes HTML in arguments", () => {
+      const result = formatDagForceAdvance("Fix <b>", "node-<id>")
+      expect(result).toContain("Fix &lt;b&gt;")
+      expect(result).toContain("node-&lt;id&gt;")
+    })
+  })
+
+  describe("formatLandPreflightStart", () => {
+    it("includes slug and count", () => {
+      const result = formatLandPreflightStart("cool-fox", 3)
+      expect(result).toContain("cool-fox")
+      expect(result).toContain("3 PRs")
+    })
+
+    it("uses singular for count of 1", () => {
+      const result = formatLandPreflightStart("cool-fox", 1)
+      expect(result).toContain("1 PR")
+      expect(result).not.toContain("1 PRs")
+    })
+  })
+
+  describe("formatLandPreflightPassed", () => {
+    it("includes count with plural", () => {
+      const result = formatLandPreflightPassed(4)
+      expect(result).toContain("4 nodes")
+      expect(result).toContain("Pre-flight passed")
+    })
+
+    it("uses singular for count of 1", () => {
+      const result = formatLandPreflightPassed(1)
+      expect(result).toContain("1 node")
+      expect(result).not.toContain("1 nodes")
+    })
+  })
+
+  describe("formatLandPreflightFailed", () => {
+    it("shows conflict files", () => {
+      const result = formatLandPreflightFailed("Add auth", ["src/auth.ts", "src/config.ts"])
+      expect(result).toContain("Pre-flight failed")
+      expect(result).toContain("Add auth")
+      expect(result).toContain("src/auth.ts")
+      expect(result).toContain("src/config.ts")
+      expect(result).toContain("Conflicts in")
+    })
+
+    it("shows error message when no conflict files", () => {
+      const result = formatLandPreflightFailed("Add auth", [], "branch not found")
+      expect(result).toContain("Pre-flight failed")
+      expect(result).toContain("branch not found")
+    })
+
+    it("shows unknown reason when no files and no error", () => {
+      const result = formatLandPreflightFailed("Add auth", [])
+      expect(result).toContain("unknown")
+    })
+
+    it("caps conflict files at 10 with overflow message", () => {
+      const files = Array.from({ length: 15 }, (_, i) => `file${i}.ts`)
+      const result = formatLandPreflightFailed("node", files)
+      expect(result).toContain("file0.ts")
+      expect(result).toContain("file9.ts")
+      expect(result).not.toContain("file10.ts")
+      expect(result).toContain("5 more")
     })
   })
 })
