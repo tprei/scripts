@@ -922,7 +922,13 @@ export class MinionEngine {
 
     const message = update.message
     const userId = message.from?.id
-    if (!userId || !this.config.telegram.allowedUserIds.includes(Number(userId))) return
+    // Telegram auth is enforced at the Telegram poll boundary: if allowedUserIds
+    // is populated, every message must come from one of them. HTTP-sourced
+    // updates (PWA) are authed at the bearer-token layer instead; when
+    // allowedUserIds is empty we trust that boundary and don't re-gate here.
+    if (this.config.telegram.allowedUserIds.length > 0) {
+      if (!userId || !this.config.telegram.allowedUserIds.includes(Number(userId))) return
+    }
 
     const text = (message.text ?? message.caption)?.trim()
     const photos = toTelegramPhotos(message.photos)
@@ -2053,9 +2059,12 @@ export class MinionEngine {
 
     // Slash commands always route through handleChatUpdate so /stop, /close,
     // /execute, /split, /stack, /dag, /doctor, /ship are parsed as commands
-    // rather than reply-injected as session feedback.
+    // rather than reply-injected as session feedback. HTTP-sourced messages
+    // (no Telegram configured) synthesize an "http" userId; the auth gate in
+    // handleChatUpdate skips the allowedUserIds check when the list is empty.
     const userId = this.config.telegram.allowedUserIds[0]
-    if (!userId) return
+      ? String(this.config.telegram.allowedUserIds[0])
+      : "http"
 
     const update: import("../provider/types.js").ChatUpdate = {
       type: "message",
