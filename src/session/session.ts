@@ -122,7 +122,7 @@ export class SessionHandle implements SessionPort {
     }),
     task: (cfg) => ({
       systemPrompt: DEFAULT_TASK_PROMPT,
-      model: cfg.claude.thinkModel,
+      model: cfg.claude.taskModel,
     }),
   }
 

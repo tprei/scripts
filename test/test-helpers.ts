@@ -215,7 +215,7 @@ export function makeMockConfig(overrides: Partial<MinionConfig> = {}): MinionCon
     telegram: { botToken: "test", chatId: "123", allowedUserIds: [1] },
     telegramQueue: { minSendIntervalMs: 0 },
     goose: { provider: "test", model: "test" },
-    claude: { planModel: "test", thinkModel: "test", reviewModel: "test" },
+    claude: { planModel: "test", thinkModel: "test", reviewModel: "test", taskModel: "test" },
     workspace: {
       root: "/tmp/test",
       maxConcurrentSessions: 5,
