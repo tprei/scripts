@@ -43,6 +43,12 @@ export interface DispatcherContext {
   /** Pending task selections waiting for repo/profile keyboard callbacks. */
   readonly pendingTasks: Map<number, PendingTask>
 
+  /** Set a pending task entry with automatic TTL expiry. */
+  setPendingTask(msgId: number, entry: PendingTask): void
+
+  /** Clear a pending task entry and its TTL timer. Returns the entry if found. */
+  clearPendingTask(msgId: number): PendingTask | undefined
+
   // ── Abort management ───────────────────────────────────────────────
   /** Map of threadId → AbortController for cancellable long-running operations. */
   readonly abortControllers: Map<number, AbortController>
