@@ -13,6 +13,7 @@ export interface ClaudeConfig {
   planModel: string
   thinkModel: string
   reviewModel: string
+  taskModel: string
 }
 
 export interface WorkspaceConfig {

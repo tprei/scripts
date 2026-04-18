@@ -102,7 +102,7 @@ export interface CreateSessionOptions {
 
 const DEFAULT_SESSION_CONFIG: SessionConfig = {
   goose: { provider: "mock", model: "mock-model" },
-  claude: { planModel: "mock-plan", thinkModel: "mock-think", reviewModel: "mock-review" },
+  claude: { planModel: "mock-plan", thinkModel: "mock-think", reviewModel: "mock-review", taskModel: "mock-task" },
   mcp: {
     browserEnabled: false,
     githubEnabled: false,

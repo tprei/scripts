@@ -68,7 +68,7 @@ function makeConfig(): MinionConfig {
       zaiEnabled: false,
     },
     goose: { provider: "test", model: "test" },
-    claude: { planModel: "test", thinkModel: "test", reviewModel: "test" },
+    claude: { planModel: "test", thinkModel: "test", reviewModel: "test", taskModel: "test" },
     observer: { activityThrottleMs: 0, textFlushDebounceMs: 0, activityEditDebounceMs: 0 },
     repos: {},
     quota: { retryMax: 3, defaultSleepMs: 60000 },

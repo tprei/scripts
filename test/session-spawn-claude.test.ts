@@ -3,7 +3,7 @@ import { SessionHandle, type SessionConfig } from "../src/session/session.js"
 import type { SessionMeta } from "../src/domain/session-types.js"
 const baseConfig: SessionConfig = {
   goose: { provider: "test", model: "test" },
-  claude: { planModel: "plan-model", thinkModel: "think-model", reviewModel: "review-model" },
+  claude: { planModel: "plan-model", thinkModel: "think-model", reviewModel: "review-model", taskModel: "task-model" },
   mcp: {
     browserEnabled: false,
     githubEnabled: false,
@@ -36,7 +36,7 @@ describe("SessionHandle.claudeModeConfigs", () => {
 
   it("has entries for all claude modes", () => {
     expect(Object.keys(configs).sort()).toEqual([
-      "dag-review", "plan", "review", "ship-plan", "ship-think", "ship-verify", "think",
+      "dag-review", "plan", "review", "ship-plan", "ship-think", "ship-verify", "task", "think",
     ])
   })
 
@@ -81,6 +81,12 @@ describe("SessionHandle.claudeModeConfigs", () => {
     expect(result.model).toBe("review-model")
     expect(result.disallowedTools).toBeUndefined()
     expect(result.detached).toBe(true)
+  })
+
+  it("task mode uses taskModel and allows writes", () => {
+    const result = configs["task"](baseConfig)
+    expect(result.model).toBe("task-model")
+    expect(result.disallowedTools).toBeUndefined()
   })
 
   it("all modes have a systemPrompt string", () => {

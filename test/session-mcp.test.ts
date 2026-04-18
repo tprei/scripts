@@ -3,7 +3,7 @@ import { SessionHandle, type SessionConfig } from "../src/session/session.js"
 import type { SessionMeta } from "../src/domain/session-types.js"
 const baseConfig: SessionConfig = {
   goose: { provider: "test", model: "test" },
-  claude: { planModel: "test", thinkModel: "test", reviewModel: "test" },
+  claude: { planModel: "test", thinkModel: "test", reviewModel: "test", taskModel: "test" },
   mcp: {
     browserEnabled: false,
     githubEnabled: false,

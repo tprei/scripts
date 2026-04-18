@@ -5,7 +5,7 @@ import type { GooseStreamEvent } from "../src/domain/goose-types.js"
 import type { SessionMeta, SessionPort } from "../src/domain/session-types.js"
 const baseConfig: SessionConfig = {
   goose: { provider: "test", model: "test" },
-  claude: { planModel: "plan-model", thinkModel: "think-model", reviewModel: "review-model" },
+  claude: { planModel: "plan-model", thinkModel: "think-model", reviewModel: "review-model", taskModel: "task-model" },
   mcp: {
     browserEnabled: false,
     githubEnabled: false,
@@ -95,7 +95,7 @@ describe("SDKSessionHandle", () => {
 
     it("has entries for all claude modes", () => {
       expect(Object.keys(configs).sort()).toEqual([
-        "dag-review", "plan", "review", "ship-plan", "ship-think", "ship-verify", "think",
+        "dag-review", "plan", "review", "ship-plan", "ship-think", "ship-verify", "task", "think",
       ])
     })
 
@@ -120,6 +120,12 @@ describe("SDKSessionHandle", () => {
     it("ship-verify mode uses reviewModel", () => {
       const result = configs["ship-verify"](baseConfig)
       expect(result.model).toBe("review-model")
+    })
+
+    it("task mode uses taskModel and allows writes", () => {
+      const result = configs["task"](baseConfig)
+      expect(result.model).toBe("task-model")
+      expect(result.disallowedTools).toBeUndefined()
     })
   })
 

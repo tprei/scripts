@@ -33,7 +33,7 @@ function makeConfig(): MinionConfig {
     repos: {},
     session: {
       goose: { provider: "test", model: "test" },
-      claude: { planModel: "test", thinkModel: "test" },
+      claude: { planModel: "test", thinkModel: "test", reviewModel: "test", taskModel: "test" },
       mcp: {
         browserEnabled: false,
         githubEnabled: false,

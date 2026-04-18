@@ -6,7 +6,7 @@ import type { GooseStreamEvent } from "../src/domain/goose-types.js"
 import type { SessionMeta, SessionDoneState } from "../src/domain/session-types.js"
 const stubConfig: SessionConfig = {
   goose: { provider: "test", model: "test" },
-  claude: { planModel: "test", thinkModel: "test", reviewModel: "test" },
+  claude: { planModel: "test", thinkModel: "test", reviewModel: "test", taskModel: "test" },
   mcp: {
     browserEnabled: false,
     githubEnabled: false,

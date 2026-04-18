@@ -106,6 +106,10 @@ export class SDKSessionHandle implements SessionPort {
       systemPrompt: DEFAULT_SHIP_VERIFY_PROMPT,
       model: cfg.claude.reviewModel,
     }),
+    task: (cfg) => ({
+      systemPrompt: DEFAULT_TASK_PROMPT,
+      model: cfg.claude.taskModel,
+    }),
   }
 
   start(task: string, systemPrompt?: string): void {
