@@ -2,7 +2,7 @@
 //
 // Platforms that support sending and receiving files implement this
 // interface. Used by the Observer to send screenshots and by the
-// Dispatcher to download user-attached images.
+// MinionEngine to download user-attached images.
 
 import type { MessageId, ThreadId } from "./types.js"
 

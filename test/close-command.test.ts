@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { Dispatcher } from "../src/orchestration/dispatcher.js"
+import { MinionEngine } from "../src/engine/engine.js"
 import type { TelegramClient } from "../src/telegram/telegram.js"
 import { TelegramPlatform } from "../src/telegram/telegram-platform.js"
 import { Observer } from "../src/telegram/observer.js"
@@ -84,7 +84,7 @@ describe("handleCloseCommand ordering", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const callOrder: string[] = []
     // Track call order
@@ -118,7 +118,7 @@ describe("handleCloseCommand ordering", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
     const callOrder: string[] = []
     ;(telegram.deleteForumTopic as ReturnType<typeof vi.fn>).mockImplementation(async () => {
       callOrder.push("deleteForumTopic")
@@ -168,7 +168,7 @@ describe("closeChildSessions warning for high child count", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
     // Create parent session
     const parentSession: TopicSession = {
@@ -215,7 +215,7 @@ describe("closeChildSessions warning for high child count", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
     // Create parent session
     const parentSession: TopicSession = {
@@ -257,7 +257,7 @@ describe("closeChildSessions orphan detection", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
     // Create parent session
     const parentSession: TopicSession = {
@@ -349,7 +349,7 @@ describe("closeChildSessions orphan detection", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
     // Create parent session
     const parentSession: TopicSession = {
@@ -407,7 +407,7 @@ describe("apiCloseSession delegates to handleCloseCommandInternal", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const topicSession: TopicSession = {
       threadId: 300,
@@ -443,7 +443,7 @@ describe("apiCloseSession delegates to handleCloseCommandInternal", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
 
@@ -486,7 +486,7 @@ describe("apiCloseSession delegates to handleCloseCommandInternal", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
     const dags = (dispatcher as unknown as { dags: Map<string, unknown> }).dags
@@ -518,7 +518,7 @@ describe("apiCloseSession delegates to handleCloseCommandInternal", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     await expect(dispatcher.apiCloseSession(99999)).rejects.toThrow(SessionNotFoundError)
   })
@@ -528,7 +528,7 @@ describe("apiCloseSession delegates to handleCloseCommandInternal", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
     const ciBabysitter = (dispatcher as unknown as { ciBabysitter: CIBabysitter }).ciBabysitter
@@ -562,7 +562,7 @@ describe("handleCloseCommand clears pendingBabysitPRs", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
     const ciBabysitter = (dispatcher as unknown as { ciBabysitter: CIBabysitter }).ciBabysitter

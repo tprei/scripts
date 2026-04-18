@@ -48,14 +48,14 @@ import {
   rebootstrapDependencies,
   downloadPhotos, prepareFanInBranch, mergeUpstreamBranches,
 } from "../session/session-manager.js"
-import { buildSplitChildPrompt } from "./split.js"
+import { buildSplitChildPrompt } from "../orchestration/split.js"
 import { advanceDag, failNode, readyNodes, renderDagStatus, type DagGraph } from "../dag/dag.js"
-import type { DispatcherContext } from "./dispatcher-context.js"
+import type { EngineContext } from "./engine-context.js"
 import { CIBabysitter } from "../ci/ci-babysitter.js"
 import { LandingManager } from "../dag/landing-manager.js"
 import { DagOrchestrator } from "../dag/dag-orchestrator.js"
-import { ShipPipeline } from "./ship-pipeline.js"
-import { SplitOrchestrator } from "./split-orchestrator.js"
+import { ShipPipeline } from "../orchestration/ship-pipeline.js"
+import { SplitOrchestrator } from "../orchestration/split-orchestrator.js"
 import { JudgeOrchestrator } from "../judge/judge-orchestrator.js"
 import { PinnedMessageManager } from "../telegram/pinned-message-manager.js"
 import { routeCommand } from "../commands/command-router.js"
@@ -112,7 +112,7 @@ function toTelegramPhotos(photos?: ChatPhoto[]): TelegramPhotoSize[] | undefined
 /** Modes that use Claude CLI (not Goose) and support mid-execution reply injection via SDK */
 const SDK_MODES: Set<SessionMode> = new Set(["plan", "think", "review", "dag-review", "ship-think", "ship-plan", "ship-verify", "task"])
 
-export class Dispatcher {
+export class MinionEngine {
   private readonly sessions = new Map<number, ActiveSession>()
   private readonly topicSessions = new Map<number, TopicSession>()
   private readonly replyQueues = new Map<number, ReplyQueue>()
@@ -175,7 +175,7 @@ export class Dispatcher {
     })
 
     // Build context for extracted orchestrator modules
-    const ctx: DispatcherContext = {
+    const ctx: EngineContext = {
       config: this.config,
       platform: this.platform,
       telegram: telegramCompat,
@@ -1565,7 +1565,7 @@ export class Dispatcher {
     handle.start(task, DEFAULT_CI_FIX_PROMPT)
   }
 
-  // ── Feedback & commands that stay in Dispatcher ───────────────────────
+  // ── Feedback & commands that stay in MinionEngine ───────────────────────
 
   private getReplyQueue(topicSession: TopicSession): ReplyQueue {
     let queue = this.replyQueues.get(topicSession.threadId)

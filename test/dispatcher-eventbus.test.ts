@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { Dispatcher } from "../src/orchestration/dispatcher.js"
+import { MinionEngine } from "../src/engine/engine.js"
 import type { TelegramClient } from "../src/telegram/telegram.js"
 import { TelegramPlatform } from "../src/telegram/telegram-platform.js"
 import { Observer } from "../src/telegram/observer.js"
@@ -110,14 +110,14 @@ beforeEach(async () => {
   try { await fs.unlink(path.join(WORKSPACE_ROOT, ".sessions.json")) } catch {}
 })
 
-describe("Dispatcher EventBus integration", () => {
+describe("MinionEngine EventBus integration", () => {
   it("accepts EventBus in constructor", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 123)
     const eventBus = new EventBus()
-    const dispatcher = new Dispatcher(platform, observer, config, eventBus)
+    const dispatcher = new MinionEngine(platform, observer, config, eventBus)
 
     expect(dispatcher).toBeDefined()
   })
@@ -128,7 +128,7 @@ describe("Dispatcher EventBus integration", () => {
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 123)
     const eventBus = new EventBus()
-    const dispatcher = new Dispatcher(platform, observer, config, eventBus)
+    const dispatcher = new MinionEngine(platform, observer, config, eventBus)
 
     const d = dispatcher as unknown as { completionChain: unknown }
     expect(d.completionChain).toBeDefined()
@@ -140,7 +140,7 @@ describe("Dispatcher EventBus integration", () => {
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 123)
     const eventBus = new EventBus()
-    new Dispatcher(platform, observer, config, eventBus)
+    new MinionEngine(platform, observer, config, eventBus)
 
     // The chain subscribes to session.completed
     expect(eventBus.listenerCountFor("session.completed")).toBeGreaterThanOrEqual(1)
@@ -152,7 +152,7 @@ describe("Dispatcher EventBus integration", () => {
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 123)
     const eventBus = new EventBus()
-    const dispatcher = new Dispatcher(platform, observer, config, eventBus)
+    const dispatcher = new MinionEngine(platform, observer, config, eventBus)
 
     const d = dispatcher as unknown as {
       topicSessions: Map<number, TopicSession>
@@ -190,7 +190,7 @@ describe("Dispatcher EventBus integration", () => {
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 123)
     const eventBus = new EventBus()
-    const dispatcher = new Dispatcher(platform, observer, config, eventBus)
+    const dispatcher = new MinionEngine(platform, observer, config, eventBus)
 
     const d = dispatcher as unknown as {
       topicSessions: Map<number, TopicSession>
@@ -249,7 +249,7 @@ describe("Dispatcher EventBus integration", () => {
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 123)
     const eventBus = new EventBus()
-    new Dispatcher(platform, observer, config, eventBus)
+    new MinionEngine(platform, observer, config, eventBus)
 
     // Emit event for unknown threadId — should not throw
     await eventBus.emit({
@@ -266,7 +266,7 @@ describe("Dispatcher EventBus integration", () => {
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 123)
     const eventBus = new EventBus()
-    const dispatcher = new Dispatcher(platform, observer, config, eventBus)
+    const dispatcher = new MinionEngine(platform, observer, config, eventBus)
 
     const d = dispatcher as unknown as {
       topicSessions: Map<number, TopicSession>
@@ -294,7 +294,7 @@ describe("Dispatcher EventBus integration", () => {
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 123)
     const eventBus = new EventBus()
-    const dispatcher = new Dispatcher(platform, observer, config, eventBus)
+    const dispatcher = new MinionEngine(platform, observer, config, eventBus)
 
     const d = dispatcher as unknown as {
       topicSessions: Map<number, TopicSession>

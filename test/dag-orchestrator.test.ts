@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { DagOrchestrator } from "../src/dag/dag-orchestrator.js"
-import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
+import type { EngineContext } from "../src/engine/engine-context.js"
 import type { TopicSession } from "../src/domain/session-types.js"
 import type { DagGraph, DagNode } from "../src/dag/dag.js"
 import { createMockContext, makeMockConfig, makeMockTelegram } from "./test-helpers.js"
@@ -37,7 +37,7 @@ function makeSession(overrides: Partial<TopicSession> = {}): TopicSession {
   }
 }
 
-function makeContext(overrides: Partial<DispatcherContext> = {}): DispatcherContext {
+function makeContext(overrides: Partial<EngineContext> = {}): EngineContext {
   return createMockContext({
     config: makeMockConfig({
       telegram: { botToken: "test", chatId: "-1001234567890", allowedUserIds: [1] },
@@ -51,7 +51,7 @@ function makeContext(overrides: Partial<DispatcherContext> = {}): DispatcherCont
 }
 
 describe("DagOrchestrator", () => {
-  let ctx: DispatcherContext
+  let ctx: EngineContext
   let orchestrator: DagOrchestrator
 
   beforeEach(() => {
@@ -931,7 +931,7 @@ describe("DagOrchestrator", () => {
 })
 
 describe("DagOrchestrator — DAG review", () => {
-  let ctx: DispatcherContext
+  let ctx: EngineContext
   let orchestrator: DagOrchestrator
 
   beforeEach(() => {
@@ -1381,7 +1381,7 @@ describe("DagOrchestrator — DAG review", () => {
   })
 })
 
-function setupCompleteDag(ctx: DispatcherContext) {
+function setupCompleteDag(ctx: EngineContext) {
   const parent = makeSession({ threadId: 100 })
   const graph: DagGraph = {
     id: "dag-test",

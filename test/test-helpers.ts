@@ -2,7 +2,7 @@
  * ObjectMother test helper factories.
  *
  * Centralised mock constructors for TelegramClient, Observer, StatsTracker,
- * ProfileStore, DispatcherContext, ActiveSession, TopicSession, and execFile
+ * ProfileStore, EngineContext, ActiveSession, TopicSession, and execFile
  * patterns. Eliminates repetitive type casts across the test suite.
  */
 
@@ -12,7 +12,7 @@ import type { TelegramClient } from "../src/telegram/telegram.js"
 import type { Observer, TextCaptureCallback } from "../src/telegram/observer.js"
 import type { StatsTracker, SessionRecord, AggregateStats } from "../src/stats.js"
 import type { ProfileStore } from "../src/profile-store.js"
-import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
+import type { EngineContext } from "../src/engine/engine-context.js"
 import type { ActiveSession, PendingTask, MergeResult } from "../src/session/session-manager.js"
 import type {
   SessionPort,
@@ -259,11 +259,11 @@ export function makeMockConfig(overrides: Partial<MinionConfig> = {}): MinionCon
   }
 }
 
-// ── DispatcherContext ──────────────────────────────────────────────────
+// ── EngineContext ──────────────────────────────────────────────────
 
-export function createMockContext(overrides: Partial<DispatcherContext> = {}): DispatcherContext {
+export function createMockContext(overrides: Partial<EngineContext> = {}): EngineContext {
   const pendingTasks = new Map<number, import("../src/session/session-manager.js").PendingTask>()
-  const ctx: DispatcherContext = {
+  const ctx: EngineContext = {
     config: makeMockConfig(),
     telegram: makeMockTelegram(),
     observer: makeMockObserver(),

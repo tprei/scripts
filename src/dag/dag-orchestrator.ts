@@ -1,7 +1,7 @@
 import { execFile as execFileCb, spawn } from "node:child_process"
 import { promisify } from "node:util"
 import crypto from "node:crypto"
-import type { DispatcherContext } from "../orchestration/dispatcher-context.js"
+import type { EngineContext } from "../engine/engine-context.js"
 import type { TopicSession } from "../domain/session-types.js"
 import { generateSlug } from "../slugs.js"
 import { DEFAULT_RECOVERY_PROMPT, DEFAULT_DAG_REVIEW_PROMPT } from "../config/prompts.js"
@@ -103,15 +103,15 @@ export function buildDagReviewChildPrompt(
 }
 
 /**
- * DagOrchestrator — extracted from Dispatcher.
+ * DagOrchestrator — extracted from MinionEngine.
  *
  * Owns DAG graph creation, node scheduling, child spawning,
  * and child completion handling.
  */
 export class DagOrchestrator {
-  private readonly ctx: DispatcherContext
+  private readonly ctx: EngineContext
 
-  constructor(ctx: DispatcherContext) {
+  constructor(ctx: EngineContext) {
     this.ctx = ctx
   }
 

@@ -6,7 +6,7 @@ import type { MinionConfig } from "./config/config-types.js"
 import { TelegramClient } from "./telegram/telegram.js"
 import { TelegramPlatform } from "./telegram/telegram-platform.js"
 import { Observer } from "./telegram/observer.js"
-import { Dispatcher } from "./orchestration/dispatcher.js"
+import { MinionEngine } from "./engine/engine.js"
 import { createApiServer, StateBroadcaster, type DispatcherApi } from "./api-server.js"
 import { loggers } from "./logger.js"
 import { initSentry } from "./sentry.js"
@@ -62,7 +62,7 @@ export function createMinion(config: MinionConfig, options?: MinionOptions): Min
   const eventBus = new EventBus()
   const tokenProvider = new GitHubTokenProvider(config.githubApp)
   tokenProvider.setTokenFilePath(path.join(config.workspace.root, ".github-token"))
-  const dispatcher = new Dispatcher(platform, observer, config, eventBus, broadcaster, tokenProvider)
+  const dispatcher = new MinionEngine(platform, observer, config, eventBus, broadcaster, tokenProvider)
 
   let apiServer: http.Server | undefined
 

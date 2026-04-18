@@ -7,7 +7,7 @@ import {
   makeMockDagNode,
 } from "./test-helpers.js"
 
-describe("DispatcherContext", () => {
+describe("EngineContext", () => {
   it("can be constructed with createMockContext", () => {
     const ctx = createMockContext()
     expect(ctx.config).toBeDefined()

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { Dispatcher } from "../src/orchestration/dispatcher.js"
+import { MinionEngine } from "../src/engine/engine.js"
 import type { TelegramClient } from "../src/telegram/telegram.js"
 import { TelegramPlatform } from "../src/telegram/telegram-platform.js"
 import { Observer } from "../src/telegram/observer.js"
@@ -92,7 +92,7 @@ function makeTopicSession(overrides?: Partial<TopicSession>): TopicSession {
   }
 }
 
-function getPrivate(dispatcher: Dispatcher): {
+function getPrivate(dispatcher: MinionEngine): {
   topicSessions: Map<number, TopicSession>
   sessions: Map<number, unknown>
   quotaEvents: Map<number, { resetAt?: number; rawMessage: string }>
@@ -150,7 +150,7 @@ describe("formatQuotaExhausted", () => {
 
 describe("quota sleep in dispatcher", () => {
   let telegram: TelegramClient
-  let dispatcher: Dispatcher
+  let dispatcher: MinionEngine
   let priv: ReturnType<typeof getPrivate>
 
   beforeEach(() => {
@@ -159,7 +159,7 @@ describe("quota sleep in dispatcher", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, "1")
-    dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    dispatcher = new MinionEngine(platform, observer, config, new EventBus())
     priv = getPrivate(dispatcher)
   })
 
@@ -241,7 +241,7 @@ describe("quota sleep in dispatcher", () => {
     const config = makeConfig({ quota: { retryMax: 1, defaultSleepMs: 60_000, sleepBufferMs: 60_000 } })
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, "1")
-    dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    dispatcher = new MinionEngine(platform, observer, config, new EventBus())
     priv = getPrivate(dispatcher)
 
     const ts = makeTopicSession({ activeSessionId: "sess-1", quotaRetryCount: 1 })
@@ -513,7 +513,7 @@ describe("quota sleep persistence", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, "1")
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
     const priv = getPrivate(dispatcher)
 
     // Mock the store to return a session with quotaSleepUntil
@@ -548,7 +548,7 @@ describe("quota sleep persistence", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, "1")
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
     const priv = getPrivate(dispatcher)
 
     // Mock spawnTopicAgent
@@ -598,7 +598,7 @@ describe("quota sleep persistence", () => {
     const config = makeConfig({ quota: { retryMax: 2, defaultSleepMs: 60_000, sleepBufferMs: 60_000 } })
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, "1")
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const spawnSpy = vi.fn().mockResolvedValue(true)
     ;(dispatcher as unknown as { spawnTopicAgent: typeof spawnSpy }).spawnTopicAgent = spawnSpy

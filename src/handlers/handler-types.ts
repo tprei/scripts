@@ -29,7 +29,7 @@ export interface SessionCompletionContext {
  * A single-responsibility handler for one aspect of session completion.
  *
  * Each handler receives narrow dependencies at construction time
- * (not the full DispatcherContext) and implements this interface.
+ * (not the full EngineContext) and implements this interface.
  */
 export interface CompletionHandler {
   readonly name: string

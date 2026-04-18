@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { ShipPipeline } from "../src/orchestration/ship-pipeline.js"
-import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
+import type { EngineContext } from "../src/engine/engine-context.js"
 import type { TopicSession } from "../src/domain/session-types.js"
 import type { AutoAdvance } from "../src/domain/workflow-types.js"
 import type { DagGraph, DagNode } from "../src/dag/dag.js"
@@ -69,12 +69,12 @@ function makeSession(overrides: Partial<TopicSession> = {}): TopicSession {
   }
 }
 
-function makeContext(overrides: Partial<DispatcherContext> = {}): DispatcherContext {
+function makeContext(overrides: Partial<EngineContext> = {}): EngineContext {
   return createMockContext(overrides)
 }
 
 describe("ShipPipeline", () => {
-  let ctx: DispatcherContext
+  let ctx: EngineContext
   let pipeline: ShipPipeline
 
   beforeEach(() => {

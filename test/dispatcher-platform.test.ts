@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { Dispatcher } from "../src/orchestration/dispatcher.js"
+import { MinionEngine } from "../src/engine/engine.js"
 import type { TelegramClient } from "../src/telegram/telegram.js"
 import { TelegramPlatform } from "../src/telegram/telegram-platform.js"
 import { Observer } from "../src/telegram/observer.js"
@@ -80,13 +80,13 @@ beforeEach(async () => {
   try { await fs.unlink(path.join(WORKSPACE_ROOT, ".sessions.json")) } catch {}
 })
 
-describe("Dispatcher ChatPlatform integration", () => {
+describe("MinionEngine ChatPlatform integration", () => {
   it("constructs with ChatPlatform and exposes getPlatform()", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 0)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     expect(dispatcher).toBeDefined()
     expect(dispatcher.getPlatform()).toBe(platform)
@@ -98,7 +98,7 @@ describe("Dispatcher ChatPlatform integration", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 0)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     await dispatcher.handleReplyCommand(999, "hello")
 
@@ -114,7 +114,7 @@ describe("Dispatcher ChatPlatform integration", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 0)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     // Set up a topic session to close
     const topicSessions = dispatcher.getTopicSessions()
@@ -141,7 +141,7 @@ describe("Dispatcher ChatPlatform integration", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 0)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     await dispatcher.handleStopCommand(999)
 
@@ -151,14 +151,14 @@ describe("Dispatcher ChatPlatform integration", () => {
     )
   })
 
-  it("provides backward-compat shim via DispatcherContext for downstream modules", () => {
+  it("provides backward-compat shim via MinionEngineContext for downstream modules", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 0)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
-    // Dispatcher should construct without errors and expose the same API
+    // MinionEngine should construct without errors and expose the same API
     expect(typeof dispatcher.handleReplyCommand).toBe("function")
     expect(typeof dispatcher.handleStopCommand).toBe("function")
     expect(typeof dispatcher.handleCloseCommand).toBe("function")
@@ -167,7 +167,7 @@ describe("Dispatcher ChatPlatform integration", () => {
   })
 })
 
-describe("Dispatcher poll uses platform.input", () => {
+describe("MinionEngine poll uses platform.input", () => {
   it("polls through platform.input and processes ChatUpdate messages", async () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
@@ -186,7 +186,7 @@ describe("Dispatcher poll uses platform.input", () => {
 
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 0)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     // Access private poll method via internal cast
     const pollMethod = (dispatcher as unknown as { poll: () => Promise<void> }).poll.bind(dispatcher)
@@ -216,7 +216,7 @@ describe("Dispatcher poll uses platform.input", () => {
 
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 0)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const pollMethod = (dispatcher as unknown as { poll: () => Promise<void> }).poll.bind(dispatcher)
     await pollMethod()
@@ -241,7 +241,7 @@ describe("Dispatcher poll uses platform.input", () => {
 
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 0)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const pollMethod = (dispatcher as unknown as { poll: () => Promise<void> }).poll.bind(dispatcher)
     await pollMethod()

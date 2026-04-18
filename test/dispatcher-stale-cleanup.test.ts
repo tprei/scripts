@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { Dispatcher } from "../src/orchestration/dispatcher.js"
+import { MinionEngine } from "../src/engine/engine.js"
 import type { TelegramClient } from "../src/telegram/telegram.js"
 import { TelegramPlatform } from "../src/telegram/telegram-platform.js"
 import { Observer } from "../src/telegram/observer.js"
@@ -86,7 +86,7 @@ describe("cleanupStaleSessions deletes replyQueues for stale parent sessions", (
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const d = dispatcher as unknown as {
       topicSessions: Map<number, TopicSession>
@@ -122,7 +122,7 @@ describe("cleanupStaleSessions deletes replyQueues for stale parent sessions", (
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const d = dispatcher as unknown as {
       topicSessions: Map<number, TopicSession>
@@ -160,7 +160,7 @@ describe("cleanupStaleSessions deletes replyQueues for stale parent sessions", (
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const d = dispatcher as unknown as {
       topicSessions: Map<number, TopicSession>
@@ -224,7 +224,7 @@ describe("cleanupStaleSessions deletes replyQueues for stale parent sessions", (
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const d = dispatcher as unknown as {
       topicSessions: Map<number, TopicSession>

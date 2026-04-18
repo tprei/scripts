@@ -40,7 +40,7 @@ export type { ValidationResult } from "./config/config-validator.js"
 export { DEFAULT_PROMPTS, DEFAULT_TASK_PROMPT, DEFAULT_PLAN_PROMPT, DEFAULT_THINK_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_SHIP_PLAN_PROMPT, DEFAULT_SHIP_VERIFY_PROMPT } from "./config/prompts.js"
 export { TelegramClient } from "./telegram/telegram.js"
 export { Observer } from "./telegram/observer.js"
-export { Dispatcher } from "./orchestration/dispatcher.js"
+export { MinionEngine } from "./engine/engine.js"
 export { SessionHandle } from "./session/session.js"
 export type { SessionConfig } from "./session/session.js"
 export type {

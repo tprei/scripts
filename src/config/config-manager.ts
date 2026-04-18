@@ -4,12 +4,12 @@ import { loggers } from "../logger.js"
 import { formatProfileList, formatConfigHelp } from "../telegram/format.js"
 import { escapeHtml, extractRepoName } from "../commands/command-parser.js"
 import { dirSizeBytes } from "../session/session-manager.js"
-import type { DispatcherContext } from "../orchestration/dispatcher-context.js"
+import type { EngineContext } from "../engine/engine-context.js"
 import type { TopicSession } from "../domain/session-types.js"
 const log = loggers.dispatcher
 
 export class ConfigManager {
-  constructor(private readonly ctx: DispatcherContext) {}
+  constructor(private readonly ctx: EngineContext) {}
 
   async handleConfigCommand(args: string): Promise<void> {
     if (!args) {

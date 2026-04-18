@@ -2,7 +2,7 @@ import { execFile as execFileCb } from "node:child_process"
 import { promisify } from "node:util"
 import path from "node:path"
 import fs from "node:fs"
-import type { DispatcherContext } from "../orchestration/dispatcher-context.js"
+import type { EngineContext } from "../engine/engine-context.js"
 import type { TopicSession } from "../domain/session-types.js"
 import type { TelegramPhotoSize } from "../domain/telegram-types.js"
 import { dirSizeBytes } from "../session/session-manager.js"
@@ -31,16 +31,16 @@ const log = loggers.dispatcher
 const execFile = promisify(execFileCb)
 
 /**
- * CommandHandler — extracted from Dispatcher.
+ * CommandHandler — extracted from MinionEngine.
  *
  * Owns global commands (status, stats, usage, help, config, clean),
  * session-creating commands (task, review),
  * and topic-scoped commands (dag, done, execute).
  */
 export class CommandHandler {
-  private readonly ctx: DispatcherContext
+  private readonly ctx: EngineContext
 
-  constructor(ctx: DispatcherContext) {
+  constructor(ctx: EngineContext) {
     this.ctx = ctx
   }
 

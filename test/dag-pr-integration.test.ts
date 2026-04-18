@@ -50,7 +50,7 @@ describe("DAG PR integration — full lifecycle", () => {
     const graph = buildDag("lifecycle", diamondItems, 1, "repo")
     const prBodies = new Map<string, string>()
 
-    // Dispatcher spawns schema node, it completes and opens a PR
+    // MinionEngine spawns schema node, it completes and opens a PR
     graph.nodes[0].status = "done"
     graph.nodes[0].prUrl = "https://github.com/org/repo/pull/10"
     graph.nodes[0].branch = "minion/schema-slug"
@@ -58,7 +58,7 @@ describe("DAG PR integration — full lifecycle", () => {
     // Simulate initial PR body (what the child agent wrote)
     prBodies.set("schema", "## DB Schema\n\nAdds migration for new tables.")
 
-    // Dispatcher calls updateDagPRDescriptions
+    // MinionEngine calls updateDagPRDescriptions
     updateAllPRBodies(graph, prBodies)
 
     const body = prBodies.get("schema")!
