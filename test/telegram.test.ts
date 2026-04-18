@@ -318,4 +318,49 @@ describe("TelegramClient retry logic", () => {
       expect(fetchMock).toHaveBeenCalledTimes(2)
     })
   })
+
+  describe("queue interval", () => {
+    it("defaults to 1200ms between successive calls", async () => {
+      fetchMock
+        .mockResolvedValueOnce(ok({ message_id: 1 }))
+        .mockResolvedValueOnce(ok({ message_id: 2 }))
+
+      const client = new TelegramClient(TOKEN, CHAT_ID)
+      const p1 = client.sendMessage("a")
+      const p2 = client.sendMessage("b")
+
+      // Let the first call settle
+      await vi.advanceTimersByTimeAsync(0)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      // Under 1200ms: second call must not have fired yet
+      await vi.advanceTimersByTimeAsync(1100)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      // Cross the 1200ms threshold: second call fires
+      await vi.advanceTimersByTimeAsync(200)
+      await Promise.all([p1, p2])
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it("respects custom minSendIntervalMs", async () => {
+      fetchMock
+        .mockResolvedValueOnce(ok({ message_id: 1 }))
+        .mockResolvedValueOnce(ok({ message_id: 2 }))
+
+      const client = new TelegramClient(TOKEN, CHAT_ID, 500)
+      const p1 = client.sendMessage("a")
+      const p2 = client.sendMessage("b")
+
+      await vi.advanceTimersByTimeAsync(0)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(400)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(150)
+      await Promise.all([p1, p2])
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+  })
 })

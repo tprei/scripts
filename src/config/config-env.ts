@@ -121,7 +121,7 @@ export function configFromEnv(overrides?: Partial<MinionConfig>): MinionConfig {
       zaiEnabled: optional("ENABLE_ZAI_MCP", "true") === "true",
     },
     telegramQueue: {
-      minSendIntervalMs: optionalNumber("MIN_SEND_INTERVAL_MS", 3500),
+      minSendIntervalMs: optionalNumber("MIN_SEND_INTERVAL_MS", 1200),
     },
     observer: {
       activityThrottleMs: optionalNumber("ACTIVITY_THROTTLE_MS", 3000),

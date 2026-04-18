@@ -92,15 +92,21 @@ interface QueueEntry {
   resolve: (value: unknown) => void
   reject: (reason: unknown) => void
   editKey?: string
+  enqueuedAt: number
 }
+
+const QUEUE_LATENCY_SAMPLE_SIZE = 100
+const QUEUE_LATENCY_REPORT_INTERVAL_MS = 60_000
 
 export class TelegramClient {
   private readonly baseUrl: string
   private readonly queue: QueueEntry[] = []
   private processing = false
   private readonly minSendIntervalMs: number
+  private readonly waitSamples: number[] = []
+  private lastLatencyReportAt = 0
 
-  constructor(private readonly token: string, private readonly chatId: string, minSendIntervalMs = 3500) {
+  constructor(private readonly token: string, private readonly chatId: string, minSendIntervalMs = 1200) {
     this.baseUrl = `${BASE}/bot${token}`
     this.minSendIntervalMs = minSendIntervalMs
   }
@@ -124,6 +130,7 @@ export class TelegramClient {
         resolve: resolve as (value: unknown) => void,
         reject,
         editKey,
+        enqueuedAt: Date.now(),
       })
       if (!this.processing) {
         this.processing = true
@@ -132,9 +139,34 @@ export class TelegramClient {
     })
   }
 
+  private recordWait(waitMs: number): void {
+    this.waitSamples.push(waitMs)
+    if (this.waitSamples.length > QUEUE_LATENCY_SAMPLE_SIZE) this.waitSamples.shift()
+
+    const now = Date.now()
+    if (now - this.lastLatencyReportAt < QUEUE_LATENCY_REPORT_INTERVAL_MS) return
+    if (this.waitSamples.length < 10) return
+    this.lastLatencyReportAt = now
+
+    const sorted = [...this.waitSamples].sort((a, b) => a - b)
+    const pick = (p: number): number => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))]
+    log.info(
+      {
+        samples: sorted.length,
+        p50: pick(0.5),
+        p90: pick(0.9),
+        p99: pick(0.99),
+        max: sorted[sorted.length - 1],
+        queueDepth: this.queue.length,
+      },
+      "telegram queue latency",
+    )
+  }
+
   private async processQueue(): Promise<void> {
     while (this.queue.length > 0) {
       const entry = this.queue.shift()!
+      this.recordWait(Date.now() - entry.enqueuedAt)
       try {
         const result = await entry.fn()
         entry.resolve(result)
