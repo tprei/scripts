@@ -162,4 +162,121 @@ describe("translateClaudeEvents", () => {
     const events = translateClaudeEvents({ type: "ping" })
     expect(events).toEqual([])
   })
+
+  it("translates user message with tool_result blocks into toolResponse events", () => {
+    const events = translateClaudeEvents({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          { type: "tool_result", id: "tr-1", content: "file contents here" },
+          { type: "tool_result", id: "tr-2", input: { key: "value" } },
+        ],
+      },
+    })
+
+    expect(events).toHaveLength(2)
+    expect(events[0].type).toBe("message")
+    if (events[0].type === "message") {
+      expect(events[0].message.role).toBe("user")
+      const block = events[0].message.content[0]
+      expect(block.type).toBe("toolResponse")
+      if (block.type === "toolResponse") {
+        expect(block.id).toBe("tr-1")
+        expect(block.toolResult).toBe("file contents here")
+      }
+    }
+    if (events[1].type === "message") {
+      const block = events[1].message.content[0]
+      if (block.type === "toolResponse") {
+        expect(block.id).toBe("tr-2")
+        expect(block.toolResult).toEqual({ key: "value" })
+      }
+    }
+  })
+
+  it("returns empty array for user message with no tool_result blocks", () => {
+    const events = translateClaudeEvents({
+      type: "user",
+      message: {
+        role: "user",
+        content: [{ type: "text", text: "just text" }],
+      },
+    })
+    expect(events).toEqual([])
+  })
+
+  it("returns empty array for user message with wrong role", () => {
+    const events = translateClaudeEvents({
+      type: "user",
+      message: { role: "assistant", content: [] },
+    })
+    expect(events).toEqual([])
+  })
+
+  it("returns empty array for user message with no message", () => {
+    const events = translateClaudeEvents({ type: "user" })
+    expect(events).toEqual([])
+  })
+
+  it("handles tool_result with null content falling back to input", () => {
+    const events = translateClaudeEvents({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          { type: "tool_result", id: "tr-3", input: { fallback: true } },
+        ],
+      },
+    })
+
+    expect(events).toHaveLength(1)
+    if (events[0].type === "message") {
+      const block = events[0].message.content[0]
+      if (block.type === "toolResponse") {
+        expect(block.toolResult).toEqual({ fallback: true })
+      }
+    }
+  })
+
+  it("handles tool_result with neither content nor input", () => {
+    const events = translateClaudeEvents({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          { type: "tool_result", id: "tr-4" },
+        ],
+      },
+    })
+
+    expect(events).toHaveLength(1)
+    if (events[0].type === "message") {
+      const block = events[0].message.content[0]
+      if (block.type === "toolResponse") {
+        expect(block.toolResult).toBeNull()
+      }
+    }
+  })
+
+  it("handles tool_result with missing id", () => {
+    const events = translateClaudeEvents({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          { type: "tool_result", content: "result data" },
+        ],
+      },
+    })
+
+    expect(events).toHaveLength(1)
+    if (events[0].type === "message") {
+      const block = events[0].message.content[0]
+      if (block.type === "toolResponse") {
+        expect(block.id).toBe("")
+        expect(block.toolResult).toBe("result data")
+      }
+    }
+  })
 })
