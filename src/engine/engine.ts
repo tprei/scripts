@@ -1220,7 +1220,7 @@ export class MinionEngine {
     photos?: TelegramPhotoSize[],
     profileId?: string,
     autoAdvance?: AutoAdvance,
-  ): Promise<void> {
+  ): Promise<{ slug: string; threadId: number } | null> {
     const sessionId = crypto.randomUUID()
     const slug = generateSlug(sessionId)
     const repo = repoUrl ? extractRepoName(repoUrl) : "local"
@@ -1244,14 +1244,14 @@ export class MinionEngine {
     } catch (err) {
       log.error({ err, topicName }, "failed to create topic")
       captureException(err, { operation: "createForumTopic" })
-      return
+      return null
     }
 
     const cwd = await this.prepareWorkspace(slug, repoUrl)
     if (!cwd) {
       await this.platform.chat.sendMessage(`❌ Failed to prepare workspace.`, String(threadId))
       await this.platform.threads.deleteThread(String(threadId))
-      return
+      return null
     }
 
     const imagePaths = await this.downloadPhotos(photos, cwd)
@@ -1278,6 +1278,7 @@ export class MinionEngine {
     this.pinnedMessages.updatePinnedSummary()
 
     await this.spawnTopicAgent(topicSession, fullTask)
+    return { slug, threadId }
   }
 
   private async updateTopicTitle(topicSession: TopicSession, stateEmoji: string): Promise<void> {
@@ -2043,6 +2044,42 @@ export class MinionEngine {
     }
 
     await this.handleCloseCommandInternal(topicSession)
+  }
+
+  /**
+   * Create a new session directly, without parsing a /task-style command string.
+   *
+   * - `repo` accepts either a full URL or a repo alias from `config.repos`.
+   * - `mode` defaults to "task".
+   * - `profileId` overrides the default profile; falls back to the store's
+   *   default, then the first registered profile, then undefined.
+   *
+   * Returns the session's slug and threadId on success. Throws when workspace
+   * preparation or topic/thread creation fails.
+   */
+  async createSession(opts: {
+    repo?: string
+    prompt: string
+    mode?: SessionMode
+    profileId?: string
+  }): Promise<{ slug: string; threadId: number }> {
+    const prompt = opts.prompt.trim()
+    if (!prompt) throw new Error("prompt is required")
+
+    const mode = opts.mode ?? "task"
+    const repoUrl = opts.repo
+      ? (this.config.repos[opts.repo] ?? opts.repo)
+      : undefined
+
+    const profileId = opts.profileId
+      ?? this.profileStore.getDefaultId()
+      ?? this.profileStore.list()[0]?.id
+
+    const result = await this.startTopicSession(repoUrl, prompt, mode, undefined, profileId)
+    if (!result) {
+      throw new Error("Failed to create session — workspace or thread setup failed")
+    }
+    return result
   }
 
   async handleIncomingText(text: string, sessionSlug?: string): Promise<void> {

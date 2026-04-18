@@ -85,6 +85,7 @@ export class HttpConnector implements Connector {
       stopSession: (threadId) => engine.apiStopSession(threadId),
       closeSession: (threadId) => engine.apiCloseSession(threadId),
       handleIncomingText: (text, sessionSlug) => engine.handleIncomingText(text, sessionSlug),
+      createSession: (request) => engine.createSession(request),
     }
 
     this.server = createApiServer(dispatcherApi, {

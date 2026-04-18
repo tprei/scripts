@@ -99,6 +99,15 @@ export type MinionCommand =
   | { action: "close"; sessionId: string }
   | { action: "plan_action"; sessionId: string; planAction: PlanActionType }
 
+export type CreateSessionMode = "task" | "plan" | "think" | "review" | "ship-think"
+
+export interface CreateSessionRequest {
+  repo?: string
+  prompt: string
+  mode?: CreateSessionMode
+  profileId?: string
+}
+
 export interface DispatcherApi {
   getSessions(): Map<number, ActiveSession>
   getTopicSessions(): Map<number, TopicSession>
@@ -108,6 +117,7 @@ export interface DispatcherApi {
   stopSession(threadId: number): void
   closeSession(threadId: number): Promise<void>
   handleIncomingText(text: string, sessionSlug?: string): Promise<void>
+  createSession(request: CreateSessionRequest): Promise<{ slug: string; threadId: number }>
 }
 
 export class StateBroadcaster extends EventEmitter {
@@ -564,6 +574,49 @@ async function handleApiRoute(
       return
     }
 
+    // POST /api/sessions — create a session without parsing a /task string.
+    if (pathname === "/api/sessions" && req.method === "POST") {
+      const body = await readBody(req)
+      let parsed: Partial<CreateSessionRequest>
+      try {
+        parsed = JSON.parse(body) as Partial<CreateSessionRequest>
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "invalid JSON body" }))
+        return
+      }
+
+      const prompt = typeof parsed.prompt === "string" ? parsed.prompt.trim() : ""
+      if (!prompt) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "prompt is required" }))
+        return
+      }
+
+      const allowedModes: CreateSessionMode[] = ["task", "plan", "think", "review", "ship-think"]
+      const mode = parsed.mode
+      if (mode !== undefined && !allowedModes.includes(mode)) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: `mode must be one of ${allowedModes.join(", ")}` }))
+        return
+      }
+
+      try {
+        const { slug, threadId } = await dispatcher.createSession({
+          repo: typeof parsed.repo === "string" ? parsed.repo : undefined,
+          prompt,
+          mode,
+          profileId: typeof parsed.profileId === "string" ? parsed.profileId : undefined,
+        })
+        res.writeHead(201, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: { sessionId: slug, slug, threadId } }))
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: err instanceof Error ? err.message : String(err) }))
+      }
+      return
+    }
+
     // POST /api/messages
     if (pathname === "/api/messages" && req.method === "POST") {
       const body = await readBody(req)
@@ -591,7 +644,7 @@ async function handleApiRoute(
         data: {
           apiVersion: "1",
           libraryVersion: pkg.version,
-          features: ["messages", "auth", "cors-allowlist", "repos"],
+          features: ["messages", "auth", "cors-allowlist", "repos", "sessions-create"],
           repos: repoList,
         },
       }))
