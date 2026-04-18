@@ -48,6 +48,53 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+// Extract the tool name and arguments from a toolCall payload, tolerating the
+// various shapes providers emit. Goose native uses {name, arguments}; some
+// proxied paths wrap the data under {function: {...}}, {tool: {...}}, or use
+// tool_name / input instead of name / arguments.
+export function extractToolCallFields(toolCall: unknown): {
+  name: string
+  args: Record<string, unknown>
+} {
+  if (!toolCall || typeof toolCall !== "object") return { name: "unknown", args: {} }
+  const obj = toolCall as Record<string, unknown>
+  const nested =
+    (obj["function"] && typeof obj["function"] === "object" ? obj["function"] : null)
+    ?? (obj["tool"] && typeof obj["tool"] === "object" ? obj["tool"] : null)
+  const nestedObj = nested as Record<string, unknown> | null
+
+  const rawName =
+    (typeof obj["name"] === "string" && obj["name"]) ||
+    (typeof obj["tool_name"] === "string" && obj["tool_name"]) ||
+    (nestedObj && typeof nestedObj["name"] === "string" && nestedObj["name"]) ||
+    null
+  const rawArgs =
+    (obj["arguments"] && typeof obj["arguments"] === "object" ? obj["arguments"] : null)
+    ?? (obj["input"] && typeof obj["input"] === "object" ? obj["input"] : null)
+    ?? (nestedObj && nestedObj["arguments"] && typeof nestedObj["arguments"] === "object" ? nestedObj["arguments"] : null)
+    ?? (nestedObj && nestedObj["input"] && typeof nestedObj["input"] === "object" ? nestedObj["input"] : null)
+    ?? null
+
+  return {
+    name: rawName && rawName.length > 0 ? rawName : "unknown",
+    args: (rawArgs as Record<string, unknown> | null) ?? {},
+  }
+}
+
+// Produce a shallow shape summary of an object, useful for diagnosing
+// unknown-tool payloads in production logs without dumping full args.
+export function summarizeShape(obj: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === null) out[key] = "null"
+    else if (Array.isArray(value)) out[key] = `array(${value.length})`
+    else if (typeof value === "object") out[key] = `object{${Object.keys(value as Record<string, unknown>).join(",")}}`
+    else if (typeof value === "string") out[key] = value.length > 40 ? `string(len=${value.length})` : `string:${value}`
+    else out[key] = typeof value
+  }
+  return out
+}
+
 interface SessionState {
   // Text buffering: Goose streams text token-by-token; we accumulate and flush.
   textBuffer: string
@@ -324,11 +371,18 @@ export class Observer {
   ): Promise<void> {
     if ("error" in block.toolCall) return
 
-    const { name: rawName, arguments: rawArgs } = block.toolCall
-    const name = typeof rawName === "string" && rawName.length > 0 ? rawName : "unknown"
-    const args: Record<string, unknown> = rawArgs && typeof rawArgs === "object" ? rawArgs as Record<string, unknown> : {}
+    const { name, args } = extractToolCallFields(block.toolCall)
     if (name === "unknown") {
-      log.warn({ sessionId: meta.sessionId, toolCallId: block.id }, "toolRequest missing name — treating as 'unknown'")
+      const toolCallRaw = block.toolCall as unknown as Record<string, unknown>
+      log.warn(
+        {
+          sessionId: meta.sessionId,
+          toolCallId: block.id,
+          toolCallKeys: Object.keys(toolCallRaw),
+          toolCallShape: summarizeShape(toolCallRaw),
+        },
+        "toolRequest missing name — treating as 'unknown'",
+      )
     }
     const now = Date.now()
     const state = this.sessions.get(meta.sessionId)

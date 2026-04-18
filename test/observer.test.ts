@@ -531,7 +531,6 @@ describe("Observer", () => {
           content: [{
             type: "toolRequest",
             id: "t1",
-            // simulates a malformed payload where the provider drops the tool name
             toolCall: { name: undefined as unknown as string, arguments: { command: "ls" } },
           }],
         },
@@ -564,6 +563,96 @@ describe("Observer", () => {
       })).resolves.not.toThrow()
 
       expect(platform.chat.sendMessage).toHaveBeenCalledOnce()
+    })
+
+    it("extracts tool_name when provider emits snake_case shape", async () => {
+      const platform = makeMockPlatform()
+      const observer = new Observer(platform, 3000, { textFlushDebounceMs: 1500, activityEditDebounceMs: 2000 })
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      ;(platform.chat.sendMessage as ReturnType<typeof vi.fn>).mockClear()
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{
+            type: "toolRequest",
+            id: "t1",
+            toolCall: { tool_name: "Bash", input: { command: "ls" } } as unknown as { name: string; arguments: Record<string, unknown> },
+          }],
+        },
+      })
+
+      const msg = (platform.chat.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(msg).not.toContain("unknown")
+      expect(msg).toContain("ls")
+    })
+
+    it("extracts nested name when provider emits {function: {...}} shape", async () => {
+      const platform = makeMockPlatform()
+      const observer = new Observer(platform, 3000, { textFlushDebounceMs: 1500, activityEditDebounceMs: 2000 })
+      const meta = makeMeta()
+
+      await observer.onSessionStart(meta, "task")
+      ;(platform.chat.sendMessage as ReturnType<typeof vi.fn>).mockClear()
+
+      await observer.onEvent(meta, {
+        type: "message",
+        message: {
+          role: "assistant",
+          created: 0,
+          content: [{
+            type: "toolRequest",
+            id: "t1",
+            toolCall: { function: { name: "Read", arguments: { file_path: "/a.ts" } } } as unknown as { name: string; arguments: Record<string, unknown> },
+          }],
+        },
+      })
+
+      const msg = (platform.chat.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(msg).not.toContain("unknown")
+      expect(msg).toContain("/a.ts")
+    })
+  })
+
+  describe("extractToolCallFields", () => {
+    it("reads {name, arguments} canonical shape", async () => {
+      const { extractToolCallFields } = await import("../src/telegram/observer.js")
+      expect(extractToolCallFields({ name: "Bash", arguments: { command: "ls" } }))
+        .toEqual({ name: "Bash", args: { command: "ls" } })
+    })
+
+    it("reads {tool_name, input} shape", async () => {
+      const { extractToolCallFields } = await import("../src/telegram/observer.js")
+      expect(extractToolCallFields({ tool_name: "Read", input: { file_path: "/a" } }))
+        .toEqual({ name: "Read", args: { file_path: "/a" } })
+    })
+
+    it("reads nested {function: {name, arguments}} shape", async () => {
+      const { extractToolCallFields } = await import("../src/telegram/observer.js")
+      expect(extractToolCallFields({ function: { name: "Edit", arguments: { x: 1 } } }))
+        .toEqual({ name: "Edit", args: { x: 1 } })
+    })
+
+    it("reads nested {tool: {name, input}} shape", async () => {
+      const { extractToolCallFields } = await import("../src/telegram/observer.js")
+      expect(extractToolCallFields({ tool: { name: "Grep", input: { pattern: "foo" } } }))
+        .toEqual({ name: "Grep", args: { pattern: "foo" } })
+    })
+
+    it("falls back to 'unknown' when no recognizable name", async () => {
+      const { extractToolCallFields } = await import("../src/telegram/observer.js")
+      expect(extractToolCallFields({ weird: "shape" })).toEqual({ name: "unknown", args: {} })
+    })
+
+    it("tolerates null or non-object input", async () => {
+      const { extractToolCallFields } = await import("../src/telegram/observer.js")
+      expect(extractToolCallFields(null)).toEqual({ name: "unknown", args: {} })
+      expect(extractToolCallFields(undefined)).toEqual({ name: "unknown", args: {} })
+      expect(extractToolCallFields("just a string")).toEqual({ name: "unknown", args: {} })
     })
   })
 
