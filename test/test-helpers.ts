@@ -262,7 +262,8 @@ export function makeMockConfig(overrides: Partial<MinionConfig> = {}): MinionCon
 // ── DispatcherContext ──────────────────────────────────────────────────
 
 export function createMockContext(overrides: Partial<DispatcherContext> = {}): DispatcherContext {
-  return {
+  const pendingTasks = new Map<number, import("../src/session/session-manager.js").PendingTask>()
+  const ctx: DispatcherContext = {
     config: makeMockConfig(),
     telegram: makeMockTelegram(),
     observer: makeMockObserver(),
@@ -272,7 +273,15 @@ export function createMockContext(overrides: Partial<DispatcherContext> = {}): D
     sessions: new Map(),
     topicSessions: new Map(),
     dags: new Map(),
-    pendingTasks: new Map(),
+    pendingTasks,
+    setPendingTask: vi.fn((msgId: number, entry: import("../src/session/session-manager.js").PendingTask) => {
+      pendingTasks.set(msgId, entry)
+    }),
+    clearPendingTask: vi.fn((msgId: number) => {
+      const entry = pendingTasks.get(msgId)
+      if (entry) pendingTasks.delete(msgId)
+      return entry
+    }),
     abortControllers: new Map(),
     refreshGitToken: vi.fn(async () => {}),
     spawnTopicAgent: vi.fn(async () => true),
@@ -314,6 +323,7 @@ export function createMockContext(overrides: Partial<DispatcherContext> = {}): D
     spawnDagChild: vi.fn(async () => null),
     ...overrides,
   }
+  return ctx
 }
 
 // ── DagNode ───────────────────────────────────────────────────────────

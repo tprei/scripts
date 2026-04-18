@@ -83,6 +83,7 @@ import { writeSessionLog } from "../session/session-log.js"
 const log = loggers.dispatcher
 
 const POLL_TIMEOUT = 30
+const PENDING_KEYBOARD_TTL_MS = 60 * 60 * 1000 // 1 hour
 
 // ── Platform boundary conversion helpers ──────────────────────────────
 
@@ -117,6 +118,7 @@ export class Dispatcher {
   private readonly replyQueues = new Map<number, ReplyQueue>()
   private readonly pendingTasks = new Map<number, PendingTask>()
   private readonly pendingProfiles = new Map<number, PendingTask>()
+  private readonly pendingTimers = new Map<number, ReturnType<typeof setTimeout>>()
   private readonly store: SessionStore
   private readonly dagStore: DagStore
   private readonly profileStore: ProfileStore
@@ -186,6 +188,8 @@ export class Dispatcher {
       dags: this.dags,
       abortControllers: this.abortControllers,
       pendingTasks: this.pendingTasks,
+      setPendingTask: (msgId, entry) => this.setPendingWithTTL(this.pendingTasks, msgId, entry),
+      clearPendingTask: (msgId) => this.clearPending(this.pendingTasks, msgId),
       refreshGitToken: () => this.refreshGitToken(),
       spawnTopicAgent: (ts, task, mcp, sp) => this.spawnTopicAgent(ts, task, mcp, sp),
       spawnCIFixAgent: (ts, task, cb) => this.spawnCIFixAgent(ts, task, cb),
@@ -499,11 +503,48 @@ export class Dispatcher {
       clearTimeout(timer)
     }
     this.quotaSleepTimers.clear()
+    for (const timer of this.pendingTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.pendingTimers.clear()
     for (const { handle } of this.sessions.values()) {
       handle.interrupt()
     }
     this.persistTopicSessions(true).catch(() => {})
     log.info("stopped")
+  }
+
+  // ── Pending keyboard TTL helpers ────────────────────────────────────
+
+  private setPendingWithTTL(
+    map: Map<number, PendingTask>,
+    msgId: number,
+    entry: PendingTask,
+  ): void {
+    map.set(msgId, entry)
+    const timer = setTimeout(() => {
+      map.delete(msgId)
+      this.pendingTimers.delete(msgId)
+      this.platform.chat.deleteMessage(String(msgId)).catch(() => {})
+      log.debug({ msgId }, "pending keyboard expired")
+    }, PENDING_KEYBOARD_TTL_MS)
+    this.pendingTimers.set(msgId, timer)
+  }
+
+  private clearPending(
+    map: Map<number, PendingTask>,
+    msgId: number,
+  ): PendingTask | undefined {
+    const entry = map.get(msgId)
+    if (entry) {
+      map.delete(msgId)
+      const timer = this.pendingTimers.get(msgId)
+      if (timer) {
+        clearTimeout(timer)
+        this.pendingTimers.delete(msgId)
+      }
+    }
+    return entry
   }
 
   // ── Public command handlers (called by tests and external API) ────────
@@ -954,9 +995,8 @@ export class Dispatcher {
     const messageId = query.messageId
 
     if (messageId) {
-      const pending = this.pendingTasks.get(Number(messageId))
+      const pending = this.clearPending(this.pendingTasks, Number(messageId))
       if (pending) {
-        this.pendingTasks.delete(Number(messageId))
         await this.platform.ui?.answerCallbackQuery(query.queryId, `Selected: ${repoSlug}`)
         await this.platform.chat.deleteMessage(messageId)
 
@@ -980,7 +1020,7 @@ export class Dispatcher {
               str(pending.threadId),
             )
             if (msgId) {
-              this.pendingProfiles.set(Number(msgId), pending)
+              this.setPendingWithTTL(this.pendingProfiles, Number(msgId), pending)
             }
           } else {
             await this.startTopicSession(repoUrl, pending.task, pending.mode, undefined, undefined, pending.autoAdvance)
@@ -1002,9 +1042,8 @@ export class Dispatcher {
 
     const messageId = query.messageId
     if (messageId) {
-      const pending = this.pendingProfiles.get(Number(messageId))
+      const pending = this.clearPending(this.pendingProfiles, Number(messageId))
       if (pending) {
-        this.pendingProfiles.delete(Number(messageId))
         await this.platform.ui?.answerCallbackQuery(query.queryId, `Selected: ${profile.name}`)
         await this.platform.chat.deleteMessage(messageId)
         await this.startTopicSession(pending.repoUrl, pending.task, pending.mode, undefined, profileId, pending.autoAdvance)
@@ -1037,7 +1076,7 @@ export class Dispatcher {
           str(replyThreadId),
         )
         if (msgId) {
-          this.pendingTasks.set(Number(msgId), { task, threadId: replyThreadId, mode: "plan" })
+          this.setPendingWithTTL(this.pendingTasks, Number(msgId), { task, threadId: replyThreadId, mode: "plan" })
         }
         return
       }
@@ -1066,7 +1105,7 @@ export class Dispatcher {
           str(replyThreadId),
         )
         if (msgId) {
-          this.pendingTasks.set(Number(msgId), { task, threadId: replyThreadId, mode: "think" })
+          this.setPendingWithTTL(this.pendingTasks, Number(msgId), { task, threadId: replyThreadId, mode: "think" })
         }
         return
       }
@@ -1100,7 +1139,7 @@ export class Dispatcher {
           str(replyThreadId),
         )
         if (msgId) {
-          this.pendingTasks.set(Number(msgId), { task, threadId: replyThreadId, mode: "ship-think", autoAdvance })
+          this.setPendingWithTTL(this.pendingTasks, Number(msgId), { task, threadId: replyThreadId, mode: "ship-think", autoAdvance })
         }
         return
       }
@@ -1133,7 +1172,7 @@ export class Dispatcher {
         str(replyThreadId),
       )
       if (msgId) {
-        this.pendingProfiles.set(Number(msgId), { task, threadId: replyThreadId, repoUrl, mode, autoAdvance })
+        this.setPendingWithTTL(this.pendingProfiles, Number(msgId), { task, threadId: replyThreadId, repoUrl, mode, autoAdvance })
       }
       return
     }

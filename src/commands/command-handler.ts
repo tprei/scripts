@@ -308,7 +308,7 @@ export class CommandHandler {
           replyThreadId,
         )
         if (msgId) {
-          this.ctx.pendingTasks.set(msgId, { task, threadId: replyThreadId, mode: "task" })
+          this.ctx.setPendingTask(msgId, { task, threadId: replyThreadId, mode: "task" })
         }
         return
       }
@@ -344,7 +344,7 @@ export class CommandHandler {
         replyThreadId,
       )
       if (msgId) {
-        this.ctx.pendingTasks.set(msgId, { task: "", threadId: replyThreadId, mode: "review" })
+        this.ctx.setPendingTask(msgId, { task: "", threadId: replyThreadId, mode: "review" })
       }
       return
     }
@@ -365,7 +365,7 @@ export class CommandHandler {
           replyThreadId,
         )
         if (msgId) {
-          this.ctx.pendingTasks.set(msgId, { task: parsed.task, threadId: replyThreadId, mode: "review" })
+          this.ctx.setPendingTask(msgId, { task: parsed.task, threadId: replyThreadId, mode: "review" })
         }
         return
       }
