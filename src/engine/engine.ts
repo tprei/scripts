@@ -2082,6 +2082,37 @@ export class MinionEngine {
     return result
   }
 
+  /**
+   * Spawn N parallel variants of the same prompt. Each variant gets its own
+   * slug, worktree, and branch — Conductor-style fan-out for comparing a
+   * prompt against multiple runs of the agent.
+   *
+   * Runs session creation concurrently. Any failures are returned as nulls;
+   * the caller decides whether to accept partial success.
+   */
+  async createSessionVariants(
+    opts: {
+      repo?: string
+      prompt: string
+      mode?: SessionMode
+      profileId?: string
+    },
+    count: number,
+  ): Promise<Array<{ slug: string; threadId: number } | { error: string }>> {
+    if (!Number.isInteger(count) || count < 1) {
+      throw new Error("count must be a positive integer")
+    }
+    const results = await Promise.all(
+      Array.from({ length: count }, () =>
+        this.createSession(opts).then(
+          (ok) => ok,
+          (err: unknown) => ({ error: err instanceof Error ? err.message : String(err) }),
+        ),
+      ),
+    )
+    return results
+  }
+
   async handleIncomingText(text: string, sessionSlug?: string): Promise<void> {
     const topicSession = sessionSlug
       ? [...this.topicSessions.values()].find((s) => s.slug === sessionSlug)

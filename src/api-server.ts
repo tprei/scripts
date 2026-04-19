@@ -111,6 +111,10 @@ export interface CreateSessionRequest {
   profileId?: string
 }
 
+export type CreateSessionVariantResult =
+  | { slug: string; threadId: number }
+  | { error: string }
+
 export interface DispatcherApi {
   getSessions(): Map<number, ActiveSession>
   getTopicSessions(): Map<number, TopicSession>
@@ -121,6 +125,7 @@ export interface DispatcherApi {
   closeSession(threadId: number): Promise<void>
   handleIncomingText(text: string, sessionSlug?: string): Promise<void>
   createSession(request: CreateSessionRequest): Promise<{ slug: string; threadId: number }>
+  createSessionVariants(request: CreateSessionRequest, count: number): Promise<CreateSessionVariantResult[]>
 }
 
 export class StateBroadcaster extends EventEmitter {
@@ -679,6 +684,64 @@ async function handleApiRoute(
       return
     }
 
+    // POST /api/sessions/variants — spawn N parallel variants of one prompt.
+    if (pathname === "/api/sessions/variants" && req.method === "POST") {
+      const body = await readBody(req)
+      let parsed: Partial<CreateSessionRequest & { count?: unknown }>
+      try {
+        parsed = JSON.parse(body) as Partial<CreateSessionRequest & { count?: unknown }>
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "invalid JSON body" }))
+        return
+      }
+
+      const prompt = typeof parsed.prompt === "string" ? parsed.prompt.trim() : ""
+      if (!prompt) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "prompt is required" }))
+        return
+      }
+
+      const count = typeof parsed.count === "number" ? parsed.count : 0
+      if (!Number.isInteger(count) || count < 2 || count > 10) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "count must be an integer between 2 and 10" }))
+        return
+      }
+
+      const allowedModes: CreateSessionMode[] = ["task", "plan", "think", "review", "ship-think"]
+      const mode = parsed.mode
+      if (mode !== undefined && !allowedModes.includes(mode)) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: `mode must be one of ${allowedModes.join(", ")}` }))
+        return
+      }
+
+      try {
+        const results = await dispatcher.createSessionVariants(
+          {
+            repo: typeof parsed.repo === "string" ? parsed.repo : undefined,
+            prompt,
+            mode,
+            profileId: typeof parsed.profileId === "string" ? parsed.profileId : undefined,
+          },
+          count,
+        )
+        const sessions = results.map((r) =>
+          "slug" in r
+            ? { sessionId: r.slug, slug: r.slug, threadId: r.threadId }
+            : { error: r.error },
+        )
+        res.writeHead(201, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: { sessions } }))
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: err instanceof Error ? err.message : String(err) }))
+      }
+      return
+    }
+
     // POST /api/sessions — create a session without parsing a /task string.
     if (pathname === "/api/sessions" && req.method === "POST") {
       const body = await readBody(req)
@@ -758,6 +821,7 @@ async function handleApiRoute(
             "diff-viewer",
             "screenshots-http",
             "pr-preview",
+            "parallel-variants",
           ],
           repos: repoList,
         },

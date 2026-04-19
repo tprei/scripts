@@ -27,6 +27,7 @@ describe("POST /api/messages", () => {
       closeSession: vi.fn().mockResolvedValue(undefined),
       handleIncomingText,
       createSession: vi.fn().mockResolvedValue({ slug: "unused", threadId: 0 }),
+      createSessionVariants: vi.fn().mockResolvedValue([]),
     }
   })
 
@@ -141,6 +142,7 @@ describe("POST /api/sessions", () => {
       closeSession: vi.fn().mockResolvedValue(undefined),
       handleIncomingText: vi.fn().mockResolvedValue(undefined),
       createSession,
+      createSessionVariants: vi.fn().mockResolvedValue([]),
     }
   })
 
@@ -246,5 +248,117 @@ describe("POST /api/sessions", () => {
 
     expect(res.status).toBe(400)
     expect(createSession).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/sessions/variants", () => {
+  let server: http.Server
+  let broadcaster: StateBroadcaster
+  let createSessionVariants: ReturnType<typeof vi.fn>
+  let dispatcher: DispatcherApi
+
+  beforeEach(() => {
+    broadcaster = new StateBroadcaster()
+    createSessionVariants = vi.fn()
+    dispatcher = {
+      getSessions: () => new Map(),
+      getTopicSessions: () => new Map(),
+      getDags: () => new Map(),
+      getSessionState: () => undefined,
+      sendReply: vi.fn().mockResolvedValue(undefined),
+      stopSession: vi.fn(),
+      closeSession: vi.fn().mockResolvedValue(undefined),
+      handleIncomingText: vi.fn().mockResolvedValue(undefined),
+      createSession: vi.fn().mockResolvedValue({ slug: "unused", threadId: 0 }),
+      createSessionVariants,
+    }
+  })
+
+  afterEach(() => {
+    server?.close()
+  })
+
+  async function start(): Promise<number> {
+    server = createApiServer(dispatcher, {
+      port: 0,
+      uiDistPath: "/nonexistent",
+      broadcaster,
+    })
+    return listen(server)
+  }
+
+  it("spawns N variants and returns 201 with one entry per variant", async () => {
+    createSessionVariants.mockResolvedValueOnce([
+      { slug: "a1", threadId: 1 },
+      { slug: "a2", threadId: 2 },
+      { slug: "a3", threadId: 3 },
+    ])
+    const port = await start()
+
+    const res = await fetch(`http://localhost:${port}/api/sessions/variants`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "fix it", count: 3 }),
+    })
+    const body = await res.json() as { data: { sessions: { slug: string }[] } }
+
+    expect(res.status).toBe(201)
+    expect(body.data.sessions.map((s) => s.slug)).toEqual(["a1", "a2", "a3"])
+    expect(createSessionVariants).toHaveBeenCalledWith(
+      { repo: undefined, prompt: "fix it", mode: undefined, profileId: undefined },
+      3,
+    )
+  })
+
+  it("passes per-variant failures back to the client", async () => {
+    createSessionVariants.mockResolvedValueOnce([
+      { slug: "x1", threadId: 10 },
+      { error: "workspace boom" },
+    ])
+    const port = await start()
+    const res = await fetch(`http://localhost:${port}/api/sessions/variants`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "p", count: 2 }),
+    })
+    const body = await res.json() as { data: { sessions: ({ slug: string } | { error: string })[] } }
+    expect(res.status).toBe(201)
+    expect(body.data.sessions).toEqual([
+      { sessionId: "x1", slug: "x1", threadId: 10 },
+      { error: "workspace boom" },
+    ])
+  })
+
+  it("rejects count < 2", async () => {
+    const port = await start()
+    const res = await fetch(`http://localhost:${port}/api/sessions/variants`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "p", count: 1 }),
+    })
+    expect(res.status).toBe(400)
+    expect(createSessionVariants).not.toHaveBeenCalled()
+  })
+
+  it("rejects count > 10", async () => {
+    const port = await start()
+    const res = await fetch(`http://localhost:${port}/api/sessions/variants`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "p", count: 11 }),
+    })
+    expect(res.status).toBe(400)
+    expect(createSessionVariants).not.toHaveBeenCalled()
+  })
+
+  it("rejects empty prompts", async () => {
+    const port = await start()
+    const res = await fetch(`http://localhost:${port}/api/sessions/variants`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "  ", count: 2 }),
+    })
+    expect(res.status).toBe(400)
+    expect(createSessionVariants).not.toHaveBeenCalled()
   })
 })
