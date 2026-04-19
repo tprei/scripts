@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import { ConfigManager } from "../src/config/config-manager.js"
-import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
+import type { EngineContext } from "../src/engine/engine-context.js"
 import type { TopicSession } from "../src/domain/session-types.js"
 import {
   createMockContext,

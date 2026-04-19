@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { Dispatcher } from "../src/orchestration/dispatcher.js"
+import { MinionEngine } from "../src/engine/engine.js"
 import type { TelegramClient } from "../src/telegram/telegram.js"
 import { TelegramPlatform } from "../src/telegram/telegram-platform.js"
 import { Observer } from "../src/telegram/observer.js"
@@ -79,13 +79,13 @@ beforeEach(async () => {
   try { await fs.unlink(path.join(WORKSPACE_ROOT, ".sessions.json")) } catch {}
 })
 
-describe("Dispatcher module wiring", () => {
+describe("MinionEngine module wiring", () => {
   it("constructs without errors and exposes the same public API", () => {
     const telegram = makeMockTelegram()
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     expect(dispatcher).toBeDefined()
     expect(typeof dispatcher.start).toBe("function")
@@ -110,7 +110,7 @@ describe("Dispatcher module wiring", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const d = dispatcher as unknown as Record<string, unknown>
     expect(d.ciBabysitter).toBeDefined()
@@ -127,7 +127,7 @@ describe("Dispatcher module wiring", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const d = dispatcher as unknown as {
       topicSessions: Map<number, TopicSession>
@@ -154,7 +154,7 @@ describe("Dispatcher module wiring", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
 
@@ -180,7 +180,7 @@ describe("Dispatcher module wiring", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
     const mockKill = vi.fn().mockResolvedValue(undefined)
@@ -212,7 +212,7 @@ describe("Dispatcher module wiring", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     await dispatcher.handleReplyCommand(999, "hello")
     expect(telegram.sendMessage).toHaveBeenCalledWith(
@@ -226,7 +226,7 @@ describe("Dispatcher module wiring", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     expect(dispatcher.activeSessions()).toBe(0)
   })
@@ -236,7 +236,7 @@ describe("Dispatcher module wiring", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     expect(dispatcher.getDags()).toBeInstanceOf(Map)
     expect(dispatcher.getDags().size).toBe(0)
@@ -247,7 +247,7 @@ describe("Dispatcher module wiring", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const topicSessions = (dispatcher as unknown as { topicSessions: Map<number, TopicSession> }).topicSessions
 
@@ -288,7 +288,7 @@ describe("Dispatcher module wiring", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const d = dispatcher as unknown as {
       topicSessions: Map<number, TopicSession>
@@ -335,7 +335,7 @@ describe("Dispatcher module wiring", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, config.telegram.chatId)
     const observer = new Observer(platform, 123)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const d = dispatcher as unknown as {
       topicSessions: Map<number, TopicSession>
@@ -383,7 +383,7 @@ describe("Dispatcher module wiring", () => {
       const platform = new TelegramPlatform(telegram, config.telegram.chatId)
       const observer = new Observer(platform, 123)
       const eventBus = new EventBus()
-      const dispatcher = new Dispatcher(platform, observer, config, eventBus)
+      const dispatcher = new MinionEngine(platform, observer, config, eventBus)
 
       const d = dispatcher as unknown as {
         topicSessions: Map<number, TopicSession>
@@ -451,7 +451,7 @@ describe("Dispatcher module wiring", () => {
       const platform = new TelegramPlatform(telegram, config.telegram.chatId)
       const observer = new Observer(platform, 123)
       const eventBus = new EventBus()
-      const dispatcher = new Dispatcher(platform, observer, config, eventBus)
+      const dispatcher = new MinionEngine(platform, observer, config, eventBus)
 
       const d = dispatcher as unknown as {
         topicSessions: Map<number, TopicSession>

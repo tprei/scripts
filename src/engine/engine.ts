@@ -32,8 +32,6 @@ import {
 import { StatsTracker } from "../stats.js"
 import { truncateConversation } from "../conversation-limits.js"
 import { DEFAULT_CI_FIX_PROMPT } from "../config/prompts.js"
-import type { StateBroadcaster } from "../api-server.js"
-import { topicSessionToApi, dagToApi } from "../api-server.js"
 import { loggers } from "../logger.js"
 import { SessionNotFoundError } from "../errors.js"
 import {
@@ -48,20 +46,23 @@ import {
   rebootstrapDependencies,
   downloadPhotos, prepareFanInBranch, mergeUpstreamBranches,
 } from "../session/session-manager.js"
-import { buildSplitChildPrompt } from "./split.js"
+import { buildSplitChildPrompt } from "../orchestration/split.js"
 import { advanceDag, failNode, readyNodes, renderDagStatus, type DagGraph } from "../dag/dag.js"
-import type { DispatcherContext } from "./dispatcher-context.js"
+import type { EngineContext } from "./engine-context.js"
 import { CIBabysitter } from "../ci/ci-babysitter.js"
 import { LandingManager } from "../dag/landing-manager.js"
 import { DagOrchestrator } from "../dag/dag-orchestrator.js"
-import { ShipPipeline } from "./ship-pipeline.js"
-import { SplitOrchestrator } from "./split-orchestrator.js"
+import { ShipPipeline } from "../orchestration/ship-pipeline.js"
+import { SplitOrchestrator } from "../orchestration/split-orchestrator.js"
 import { JudgeOrchestrator } from "../judge/judge-orchestrator.js"
 import { PinnedMessageManager } from "../telegram/pinned-message-manager.js"
 import { routeCommand } from "../commands/command-router.js"
 import { CommandHandler } from "../commands/command-handler.js"
 import { parseResetTime } from "../session/quota-detection.js"
 import type { EventBus } from "../events/event-bus.js"
+import { EngineEventBus } from "./events.js"
+import type { Connector } from "../connectors/connector.js"
+import { computeAttentionReasons } from "../api-server.js"
 import { LoopScheduler, type LoopSchedulerConfig } from "../loops/loop-scheduler.js"
 import type { LoopDefinition, LoopState } from "../loops/domain-types.js"
 import { LoopStore } from "../loops/loop-store.js"
@@ -112,7 +113,7 @@ function toTelegramPhotos(photos?: ChatPhoto[]): TelegramPhotoSize[] | undefined
 /** Modes that use Claude CLI (not Goose) and support mid-execution reply injection via SDK */
 const SDK_MODES: Set<SessionMode> = new Set(["plan", "think", "review", "dag-review", "ship-think", "ship-plan", "ship-verify", "task"])
 
-export class Dispatcher {
+export class MinionEngine {
   private readonly sessions = new Map<number, ActiveSession>()
   private readonly topicSessions = new Map<number, TopicSession>()
   private readonly replyQueues = new Map<number, ReplyQueue>()
@@ -124,7 +125,6 @@ export class Dispatcher {
   private readonly profileStore: ProfileStore
   private readonly dags = new Map<string, DagGraph>()
   private readonly abortControllers = new Map<number, AbortController>()
-  private readonly broadcaster?: StateBroadcaster
   private offset = 0
   private running = false
   private cleanupTimer: ReturnType<typeof setInterval> | null = null
@@ -144,6 +144,9 @@ export class Dispatcher {
   private readonly commandHandler: CommandHandler
   private readonly pinnedMessages: PinnedMessageManager
   private readonly eventBus: EventBus
+  private readonly engineEvents: EngineEventBus
+  private readonly connectors: Connector[] = []
+  private readonly attentionSnapshots = new Map<string, string>()
   private readonly completionChain: CompletionHandlerChain
 
   constructor(
@@ -151,11 +154,11 @@ export class Dispatcher {
     private readonly observer: Observer,
     private readonly config: MinionConfig,
     eventBus: EventBus,
-    broadcaster?: StateBroadcaster,
     private readonly tokenProvider?: GitHubTokenProvider,
+    engineEvents?: EngineEventBus,
   ) {
-    this.broadcaster = broadcaster
     this.eventBus = eventBus
+    this.engineEvents = engineEvents ?? new EngineEventBus()
     this.store = new SessionStore(this.config.workspace.root)
     this.dagStore = new DagStore(this.config.workspace.root)
     this.loopStore = new LoopStore(this.config.workspace.root)
@@ -175,14 +178,13 @@ export class Dispatcher {
     })
 
     // Build context for extracted orchestrator modules
-    const ctx: DispatcherContext = {
+    const ctx: EngineContext = {
       config: this.config,
       platform: this.platform,
       telegram: telegramCompat,
       observer: this.observer,
       stats: this.stats,
       profileStore: this.profileStore,
-      broadcaster: this.broadcaster,
       sessions: this.sessions,
       topicSessions: this.topicSessions,
       dags: this.dags,
@@ -326,26 +328,66 @@ export class Dispatcher {
     }
   }
 
+  /** Read-only handle on the engine's channel-agnostic event bus. Connectors subscribe here. */
+  get events(): EngineEventBus {
+    return this.engineEvents
+  }
+
+  /**
+   * Register a connector. Calls `connector.attach(this)` immediately and
+   * remembers the connector so `stop()` can detach it.
+   *
+   * Returns `this` to allow chaining (`engine.use(a).use(b)`). If the
+   * connector's attach() is async and rejects, the rejection is logged
+   * rather than left as an unhandled promise; callers that need to await
+   * attach completion should call `connector.attach(engine)` directly.
+   */
+  use(connector: Connector): this {
+    this.connectors.push(connector)
+    const result = connector.attach(this)
+    if (result instanceof Promise) {
+      result.catch((err) => {
+        log.error({ err, connector: connector.name }, "connector attach rejected")
+      })
+    }
+    return this
+  }
+
   private broadcastSession(session: TopicSession, eventType: "session_created" | "session_updated", sessionState?: SessionDoneState): void {
-    if (!this.broadcaster) return
-    const apiSession = topicSessionToApi(session, this.config.telegram.chatId, session.activeSessionId, sessionState)
-    this.broadcaster.broadcast({ type: eventType, session: apiSession })
+    void this.engineEvents.emit({ type: eventType, session, sessionState })
+
+    const status: import("./../api-server.js").ApiSession["status"] = sessionState === "completed"
+      ? "completed"
+      : sessionState === "errored" || sessionState === "quota_exhausted"
+        ? "failed"
+        : session.activeSessionId
+          ? "running"
+          : "pending"
+    const reasons = computeAttentionReasons(session, status)
+    const previous = this.attentionSnapshots.get(session.slug) ?? ""
+    const current = reasons.join(",")
+    if (current && current !== previous) {
+      const newReason = reasons.find((r) => !previous.includes(r)) ?? reasons[0]
+      void this.engineEvents.emit({
+        type: "session_needs_attention",
+        sessionId: session.slug,
+        reason: newReason,
+      })
+    }
+    this.attentionSnapshots.set(session.slug, current)
   }
 
   private broadcastSessionDeleted(slug: string): void {
-    if (!this.broadcaster) return
-    this.broadcaster.broadcast({ type: "session_deleted", sessionId: slug })
+    void this.engineEvents.emit({ type: "session_deleted", sessionId: slug })
+    this.attentionSnapshots.delete(slug)
   }
 
   private broadcastDag(graph: DagGraph, eventType: "dag_created" | "dag_updated"): void {
-    if (!this.broadcaster) return
-    const apiDag = dagToApi(graph, this.topicSessions, this.sessions, this.config.telegram.chatId)
-    this.broadcaster.broadcast({ type: eventType, dag: apiDag })
+    void this.engineEvents.emit({ type: eventType, dag: graph })
   }
 
   private broadcastDagDeleted(dagId: string): void {
-    if (!this.broadcaster) return
-    this.broadcaster.broadcast({ type: "dag_deleted", dagId })
+    void this.engineEvents.emit({ type: "dag_deleted", dagId })
   }
 
   // ── Session persistence & lifecycle ───────────────────────────────────
@@ -509,6 +551,13 @@ export class Dispatcher {
     this.pendingTimers.clear()
     for (const { handle } of this.sessions.values()) {
       handle.interrupt()
+    }
+    for (const connector of this.connectors) {
+      try {
+        void connector.detach()
+      } catch (err) {
+        log.warn({ err, connector: connector.name }, "connector detach threw")
+      }
     }
     this.persistTopicSessions(true).catch(() => {})
     log.info("stopped")
@@ -904,7 +953,13 @@ export class Dispatcher {
 
     const message = update.message
     const userId = message.from?.id
-    if (!userId || !this.config.telegram.allowedUserIds.includes(Number(userId))) return
+    // Telegram auth is enforced at the Telegram poll boundary: if allowedUserIds
+    // is populated, every message must come from one of them. HTTP-sourced
+    // updates (PWA) are authed at the bearer-token layer instead; when
+    // allowedUserIds is empty we trust that boundary and don't re-gate here.
+    if (this.config.telegram.allowedUserIds.length > 0) {
+      if (!userId || !this.config.telegram.allowedUserIds.includes(Number(userId))) return
+    }
 
     const text = (message.text ?? message.caption)?.trim()
     const photos = toTelegramPhotos(message.photos)
@@ -1196,7 +1251,7 @@ export class Dispatcher {
     photos?: TelegramPhotoSize[],
     profileId?: string,
     autoAdvance?: AutoAdvance,
-  ): Promise<void> {
+  ): Promise<{ slug: string; threadId: number } | null> {
     const sessionId = crypto.randomUUID()
     const slug = generateSlug(sessionId)
     const repo = repoUrl ? extractRepoName(repoUrl) : "local"
@@ -1220,14 +1275,14 @@ export class Dispatcher {
     } catch (err) {
       log.error({ err, topicName }, "failed to create topic")
       captureException(err, { operation: "createForumTopic" })
-      return
+      return null
     }
 
     const cwd = await this.prepareWorkspace(slug, repoUrl)
     if (!cwd) {
       await this.platform.chat.sendMessage(`❌ Failed to prepare workspace.`, String(threadId))
       await this.platform.threads.deleteThread(String(threadId))
-      return
+      return null
     }
 
     const imagePaths = await this.downloadPhotos(photos, cwd)
@@ -1254,6 +1309,7 @@ export class Dispatcher {
     this.pinnedMessages.updatePinnedSummary()
 
     await this.spawnTopicAgent(topicSession, fullTask)
+    return { slug, threadId }
   }
 
   private async updateTopicTitle(topicSession: TopicSession, stateEmoji: string): Promise<void> {
@@ -1565,7 +1621,7 @@ export class Dispatcher {
     handle.start(task, DEFAULT_CI_FIX_PROMPT)
   }
 
-  // ── Feedback & commands that stay in Dispatcher ───────────────────────
+  // ── Feedback & commands that stay in MinionEngine ───────────────────────
 
   private getReplyQueue(topicSession: TopicSession): ReplyQueue {
     let queue = this.replyQueues.get(topicSession.threadId)
@@ -2021,6 +2077,73 @@ export class Dispatcher {
     await this.handleCloseCommandInternal(topicSession)
   }
 
+  /**
+   * Create a new session directly, without parsing a /task-style command string.
+   *
+   * - `repo` accepts either a full URL or a repo alias from `config.repos`.
+   * - `mode` defaults to "task".
+   * - `profileId` overrides the default profile; falls back to the store's
+   *   default, then the first registered profile, then undefined.
+   *
+   * Returns the session's slug and threadId on success. Throws when workspace
+   * preparation or topic/thread creation fails.
+   */
+  async createSession(opts: {
+    repo?: string
+    prompt: string
+    mode?: SessionMode
+    profileId?: string
+  }): Promise<{ slug: string; threadId: number }> {
+    const prompt = opts.prompt.trim()
+    if (!prompt) throw new Error("prompt is required")
+
+    const mode = opts.mode ?? "task"
+    const repoUrl = opts.repo
+      ? (this.config.repos[opts.repo] ?? opts.repo)
+      : undefined
+
+    const profileId = opts.profileId
+      ?? this.profileStore.getDefaultId()
+      ?? this.profileStore.list()[0]?.id
+
+    const result = await this.startTopicSession(repoUrl, prompt, mode, undefined, profileId)
+    if (!result) {
+      throw new Error("Failed to create session — workspace or thread setup failed")
+    }
+    return result
+  }
+
+  /**
+   * Spawn N parallel variants of the same prompt. Each variant gets its own
+   * slug, worktree, and branch — Conductor-style fan-out for comparing a
+   * prompt against multiple runs of the agent.
+   *
+   * Runs session creation concurrently. Any failures are returned as nulls;
+   * the caller decides whether to accept partial success.
+   */
+  async createSessionVariants(
+    opts: {
+      repo?: string
+      prompt: string
+      mode?: SessionMode
+      profileId?: string
+    },
+    count: number,
+  ): Promise<Array<{ slug: string; threadId: number } | { error: string }>> {
+    if (!Number.isInteger(count) || count < 1) {
+      throw new Error("count must be a positive integer")
+    }
+    const results = await Promise.all(
+      Array.from({ length: count }, () =>
+        this.createSession(opts).then(
+          (ok) => ok,
+          (err: unknown) => ({ error: err instanceof Error ? err.message : String(err) }),
+        ),
+      ),
+    )
+    return results
+  }
+
   async handleIncomingText(text: string, sessionSlug?: string): Promise<void> {
     const topicSession = sessionSlug
       ? [...this.topicSessions.values()].find((s) => s.slug === sessionSlug)
@@ -2035,9 +2158,12 @@ export class Dispatcher {
 
     // Slash commands always route through handleChatUpdate so /stop, /close,
     // /execute, /split, /stack, /dag, /doctor, /ship are parsed as commands
-    // rather than reply-injected as session feedback.
+    // rather than reply-injected as session feedback. HTTP-sourced messages
+    // (no Telegram configured) synthesize an "http" userId; the auth gate in
+    // handleChatUpdate skips the allowedUserIds check when the list is empty.
     const userId = this.config.telegram.allowedUserIds[0]
-    if (!userId) return
+      ? String(this.config.telegram.allowedUserIds[0])
+      : "http"
 
     const update: import("../provider/types.js").ChatUpdate = {
       type: "message",

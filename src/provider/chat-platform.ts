@@ -1,13 +1,13 @@
 // ChatPlatform — the bundle interface that combines all provider capabilities.
 //
-// A platform adapter creates a ChatPlatform instance that the Dispatcher
+// A platform adapter creates a ChatPlatform instance that the MinionEngine
 // and Observer depend on. Required capabilities are always present;
 // optional ones are checked at runtime with null guards.
 //
 // Example usage:
 //
 //   const platform = createTelegramPlatform(config)
-//   const dispatcher = new Dispatcher(platform, ...)
+//   const dispatcher = new MinionEngine(platform, ...)
 //
 //   // Required — always available:
 //   await platform.chat.sendMessage("Hello", threadId)

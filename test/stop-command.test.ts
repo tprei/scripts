@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest"
-import { Dispatcher } from "../src/orchestration/dispatcher.js"
+import { MinionEngine } from "../src/engine/engine.js"
 import type { TelegramClient } from "../src/telegram/telegram.js"
 import { TelegramPlatform } from "../src/telegram/telegram-platform.js"
 import { Observer } from "../src/telegram/observer.js"
@@ -62,7 +62,7 @@ describe("handleStopCommand", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const mockKill = vi.fn().mockResolvedValue(undefined)
 
@@ -111,7 +111,7 @@ describe("handleStopCommand", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const topicSession: TopicSession = {
       threadId: 200,
@@ -145,7 +145,7 @@ describe("handleStopCommand", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const mockKill = vi.fn().mockResolvedValue(undefined)
 
@@ -186,7 +186,7 @@ describe("handleStopCommand", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const mockKill = vi.fn().mockResolvedValue(undefined)
 
@@ -227,7 +227,7 @@ describe("handleStopCommand", () => {
     const config = makeConfig()
     const platform = new TelegramPlatform(telegram, String(config.telegram.chatId))
     const observer = new Observer(platform, 1)
-    const dispatcher = new Dispatcher(platform, observer, config, new EventBus())
+    const dispatcher = new MinionEngine(platform, observer, config, new EventBus())
 
     const topicSession: TopicSession = {
       threadId: 500,

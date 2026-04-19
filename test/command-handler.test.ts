@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { CommandHandler } from "../src/commands/command-handler.js"
-import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
+import type { EngineContext } from "../src/engine/engine-context.js"
 import type { TopicSession } from "../src/domain/session-types.js"
 import {
   createMockContext,
@@ -61,7 +61,7 @@ function makeSession(overrides: Partial<TopicSession> = {}): TopicSession {
 }
 
 describe("CommandHandler", () => {
-  let ctx: DispatcherContext
+  let ctx: EngineContext
   let handler: CommandHandler
 
   beforeEach(() => {

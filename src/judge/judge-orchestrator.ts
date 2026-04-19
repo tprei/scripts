@@ -11,7 +11,7 @@ import {
   formatJudgeVerdict,
   formatJudgeError,
 } from "../telegram/format.js"
-import type { DispatcherContext } from "../orchestration/dispatcher-context.js"
+import type { EngineContext } from "../engine/engine-context.js"
 
 const log = loggers.judgeOrchestrator
 
@@ -78,9 +78,9 @@ export interface JudgeArenaResult {
 }
 
 export class JudgeOrchestrator {
-  private readonly ctx: DispatcherContext
+  private readonly ctx: EngineContext
 
-  constructor(ctx: DispatcherContext) {
+  constructor(ctx: EngineContext) {
     this.ctx = ctx
   }
 

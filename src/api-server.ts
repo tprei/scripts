@@ -7,6 +7,11 @@ import type { TopicSession, SessionState, SessionDoneState } from "./domain/sess
 import type { ActiveSession } from "./session/session-manager.js"
 import type { DagGraph } from "./dag/dag.js"
 import { loggers } from "./logger.js"
+import { computeWorkspaceDiff } from "./session/workspace-diff.js"
+import { listSessionScreenshots, resolveScreenshotPath } from "./session/workspace-screenshots.js"
+import { fetchPrPreview } from "./github/pr-preview.js"
+import type { PushSubscriptionStore } from "./push/push-subscriptions.js"
+import type { VapidKeys } from "./push/vapid-keys.js"
 import pkg from "../package.json" with { type: "json" }
 
 const log = loggers.apiServer
@@ -99,6 +104,19 @@ export type MinionCommand =
   | { action: "close"; sessionId: string }
   | { action: "plan_action"; sessionId: string; planAction: PlanActionType }
 
+export type CreateSessionMode = "task" | "plan" | "think" | "review" | "ship-think"
+
+export interface CreateSessionRequest {
+  repo?: string
+  prompt: string
+  mode?: CreateSessionMode
+  profileId?: string
+}
+
+export type CreateSessionVariantResult =
+  | { slug: string; threadId: number }
+  | { error: string }
+
 export interface DispatcherApi {
   getSessions(): Map<number, ActiveSession>
   getTopicSessions(): Map<number, TopicSession>
@@ -108,6 +126,8 @@ export interface DispatcherApi {
   stopSession(threadId: number): void
   closeSession(threadId: number): Promise<void>
   handleIncomingText(text: string, sessionSlug?: string): Promise<void>
+  createSession(request: CreateSessionRequest): Promise<{ slug: string; threadId: number }>
+  createSessionVariants(request: CreateSessionRequest, count: number): Promise<CreateSessionVariantResult[]>
 }
 
 export class StateBroadcaster extends EventEmitter {
@@ -208,7 +228,7 @@ export function computeQuickActions(
 
 export function topicSessionToApi(
   session: TopicSession,
-  chatId: string,
+  chatId: string | undefined,
   activeSessionId?: string,
   sessionState?: SessionState | SessionDoneState,
 ): ApiSession {
@@ -232,7 +252,7 @@ export function topicSessionToApi(
     branch: session.branch,
     prUrl: session.prUrl,
     threadId: session.threadId,
-    chatId: parseInt(chatId, 10),
+    chatId: chatId ? parseInt(chatId, 10) : undefined,
     createdAt: new Date().toISOString(),
     updatedAt: new Date(session.lastActivityAt).toISOString(),
     parentId: session.parentThreadId?.toString(),
@@ -249,7 +269,7 @@ export function dagToApi(
   graph: DagGraph,
   topicSessions: Map<number, TopicSession>,
   sessions: Map<number, ActiveSession>,
-  chatId: string,
+  chatId: string | undefined,
 ): ApiDagGraph {
   const nodes: Record<string, ApiDagNode> = {}
 
@@ -308,12 +328,17 @@ export function dagToApi(
 export interface ApiServerOptions {
   port: number
   uiDistPath: string
-  chatId: string
-  botToken: string
+  /** Telegram chat id — only present when a TelegramConnector is registered. */
+  chatId?: string
+  /** Telegram bot token — only present when a TelegramConnector is registered. */
+  botToken?: string
   broadcaster: StateBroadcaster
   apiToken?: string
   corsAllowedOrigins?: string[]
   repos?: Record<string, string>
+  /** Web Push store + keys. When absent, push endpoints return 503. */
+  pushSubscriptions?: PushSubscriptionStore
+  vapidKeys?: VapidKeys
 }
 
 function resolveOrigin(req: http.IncomingMessage, allowed?: string[]): string | null {
@@ -345,7 +370,7 @@ export function createApiServer(
   dispatcher: DispatcherApi,
   options: ApiServerOptions,
 ): http.Server {
-  const { port, uiDistPath, chatId, botToken, broadcaster, apiToken, corsAllowedOrigins, repos } = options
+  const { port, uiDistPath, chatId, botToken, broadcaster, apiToken, corsAllowedOrigins, repos, pushSubscriptions, vapidKeys } = options
   const sseClients = new Set<http.ServerResponse>()
 
   broadcaster.on("event", (event: SseEvent) => {
@@ -377,11 +402,16 @@ export function createApiServer(
 
     if (url.pathname.startsWith("/api/")) {
       if (!requireAuth(req, res, apiToken)) return
-      await handleApiRoute(req, res, url, dispatcher, chatId, sseClients, repos)
+      await handleApiRoute(req, res, url, dispatcher, chatId, sseClients, repos, pushSubscriptions, vapidKeys)
       return
     }
 
     if (url.pathname === "/validate") {
+      if (!botToken || !chatId) {
+        res.writeHead(503, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: "Telegram login is not configured on this minion" }))
+        return
+      }
       await handleValidation(req, res, chatId, botToken)
       return
     }
@@ -397,9 +427,11 @@ async function handleApiRoute(
   res: http.ServerResponse,
   url: URL,
   dispatcher: DispatcherApi,
-  chatId: string,
+  chatId: string | undefined,
   sseClients: Set<http.ServerResponse>,
   repos?: Record<string, string>,
+  pushSubscriptions?: PushSubscriptionStore,
+  vapidKeys?: VapidKeys,
 ): Promise<void> {
   const pathname = url.pathname
 
@@ -440,6 +472,108 @@ async function handleApiRoute(
 
       res.writeHead(404, { "Content-Type": "application/json" })
       res.end(JSON.stringify({ data: null, error: "Session not found" }))
+      return
+    }
+
+    // GET /api/sessions/:id/diff
+    const diffMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/diff$/)
+    if (diffMatch && req.method === "GET") {
+      const slug = diffMatch[1]
+      const session = [...dispatcher.getTopicSessions().values()].find((s) => s.slug === slug)
+      if (!session || !session.cwd) {
+        res.writeHead(404, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Session not found" }))
+        return
+      }
+      try {
+        const diff = await computeWorkspaceDiff(session.cwd, session.branch)
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: diff }))
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: err instanceof Error ? err.message : String(err) }))
+      }
+      return
+    }
+
+    // GET /api/sessions/:id/screenshots — list captured PNGs
+    const screenshotsMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/screenshots$/)
+    if (screenshotsMatch && req.method === "GET") {
+      const slug = screenshotsMatch[1]
+      const session = [...dispatcher.getTopicSessions().values()].find((s) => s.slug === slug)
+      if (!session || !session.cwd) {
+        res.writeHead(404, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Session not found" }))
+        return
+      }
+      const screenshots = await listSessionScreenshots(session.cwd)
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({
+        data: {
+          screenshots: screenshots.map((s) => ({
+            ...s,
+            url: `/api/sessions/${slug}/screenshots/${encodeURIComponent(s.filename)}`,
+          })),
+        },
+      }))
+      return
+    }
+
+    // GET /api/sessions/:id/screenshots/:filename — stream the PNG
+    const screenshotFileMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/screenshots\/([^/]+)$/)
+    if (screenshotFileMatch && req.method === "GET") {
+      const [, slug, rawName] = screenshotFileMatch
+      const filename = decodeURIComponent(rawName)
+      const session = [...dispatcher.getTopicSessions().values()].find((s) => s.slug === slug)
+      if (!session || !session.cwd) {
+        res.writeHead(404, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Session not found" }))
+        return
+      }
+      const absPath = resolveScreenshotPath(session.cwd, filename)
+      if (!absPath) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Invalid screenshot filename" }))
+        return
+      }
+      try {
+        const data = await fs.promises.readFile(absPath)
+        res.writeHead(200, {
+          "Content-Type": "image/png",
+          "Content-Length": data.length,
+          "Cache-Control": "private, max-age=300",
+        })
+        res.end(data)
+      } catch {
+        res.writeHead(404, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Screenshot not found" }))
+      }
+      return
+    }
+
+    // GET /api/sessions/:id/pr — pull request preview card (gh pr view + checks)
+    const prMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/pr$/)
+    if (prMatch && req.method === "GET") {
+      const slug = prMatch[1]
+      const session = [...dispatcher.getTopicSessions().values()].find((s) => s.slug === slug)
+      if (!session) {
+        res.writeHead(404, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Session not found" }))
+        return
+      }
+      if (!session.prUrl) {
+        res.writeHead(404, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Session has no open PR" }))
+        return
+      }
+      try {
+        const preview = await fetchPrPreview(session.prUrl)
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: preview }))
+      } catch (err) {
+        res.writeHead(502, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: err instanceof Error ? err.message : String(err) }))
+      }
       return
     }
 
@@ -557,6 +691,177 @@ async function handleApiRoute(
       return
     }
 
+    // GET /api/push/vapid-public-key
+    if (pathname === "/api/push/vapid-public-key" && req.method === "GET") {
+      if (!vapidKeys) {
+        res.writeHead(503, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Web Push is not configured on this minion" }))
+        return
+      }
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ data: { publicKey: vapidKeys.publicKey } }))
+      return
+    }
+
+    // POST /api/push-subscribe
+    if (pathname === "/api/push-subscribe" && req.method === "POST") {
+      if (!pushSubscriptions) {
+        res.writeHead(503, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Web Push is not configured on this minion" }))
+        return
+      }
+      const body = await readBody(req)
+      let parsed: { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } }
+      try {
+        parsed = JSON.parse(body) as typeof parsed
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "invalid JSON body" }))
+        return
+      }
+      const endpoint = typeof parsed.endpoint === "string" ? parsed.endpoint : ""
+      const p256dh = typeof parsed.keys?.p256dh === "string" ? parsed.keys.p256dh : ""
+      const auth = typeof parsed.keys?.auth === "string" ? parsed.keys.auth : ""
+      if (!endpoint || !p256dh || !auth) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "endpoint + keys.p256dh + keys.auth are required" }))
+        return
+      }
+      await pushSubscriptions.add({ endpoint, keys: { p256dh, auth } })
+      res.writeHead(201, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ data: { subscribed: true } }))
+      return
+    }
+
+    // DELETE /api/push-subscribe
+    if (pathname === "/api/push-subscribe" && req.method === "DELETE") {
+      if (!pushSubscriptions) {
+        res.writeHead(503, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Web Push is not configured on this minion" }))
+        return
+      }
+      const body = await readBody(req)
+      let parsed: { endpoint?: unknown }
+      try {
+        parsed = JSON.parse(body) as typeof parsed
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "invalid JSON body" }))
+        return
+      }
+      const endpoint = typeof parsed.endpoint === "string" ? parsed.endpoint : ""
+      if (!endpoint) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "endpoint is required" }))
+        return
+      }
+      const removed = await pushSubscriptions.remove(endpoint)
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ data: { removed } }))
+      return
+    }
+
+    // POST /api/sessions/variants — spawn N parallel variants of one prompt.
+    if (pathname === "/api/sessions/variants" && req.method === "POST") {
+      const body = await readBody(req)
+      let parsed: Partial<CreateSessionRequest & { count?: unknown }>
+      try {
+        parsed = JSON.parse(body) as Partial<CreateSessionRequest & { count?: unknown }>
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "invalid JSON body" }))
+        return
+      }
+
+      const prompt = typeof parsed.prompt === "string" ? parsed.prompt.trim() : ""
+      if (!prompt) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "prompt is required" }))
+        return
+      }
+
+      const count = typeof parsed.count === "number" ? parsed.count : 0
+      if (!Number.isInteger(count) || count < 2 || count > 10) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "count must be an integer between 2 and 10" }))
+        return
+      }
+
+      const allowedModes: CreateSessionMode[] = ["task", "plan", "think", "review", "ship-think"]
+      const mode = parsed.mode
+      if (mode !== undefined && !allowedModes.includes(mode)) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: `mode must be one of ${allowedModes.join(", ")}` }))
+        return
+      }
+
+      try {
+        const results = await dispatcher.createSessionVariants(
+          {
+            repo: typeof parsed.repo === "string" ? parsed.repo : undefined,
+            prompt,
+            mode,
+            profileId: typeof parsed.profileId === "string" ? parsed.profileId : undefined,
+          },
+          count,
+        )
+        const sessions = results.map((r) =>
+          "slug" in r
+            ? { sessionId: r.slug, slug: r.slug, threadId: r.threadId }
+            : { error: r.error },
+        )
+        res.writeHead(201, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: { sessions } }))
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: err instanceof Error ? err.message : String(err) }))
+      }
+      return
+    }
+
+    // POST /api/sessions — create a session without parsing a /task string.
+    if (pathname === "/api/sessions" && req.method === "POST") {
+      const body = await readBody(req)
+      let parsed: Partial<CreateSessionRequest>
+      try {
+        parsed = JSON.parse(body) as Partial<CreateSessionRequest>
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "invalid JSON body" }))
+        return
+      }
+
+      const prompt = typeof parsed.prompt === "string" ? parsed.prompt.trim() : ""
+      if (!prompt) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "prompt is required" }))
+        return
+      }
+
+      const allowedModes: CreateSessionMode[] = ["task", "plan", "think", "review", "ship-think"]
+      const mode = parsed.mode
+      if (mode !== undefined && !allowedModes.includes(mode)) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: `mode must be one of ${allowedModes.join(", ")}` }))
+        return
+      }
+
+      try {
+        const { slug, threadId } = await dispatcher.createSession({
+          repo: typeof parsed.repo === "string" ? parsed.repo : undefined,
+          prompt,
+          mode,
+          profileId: typeof parsed.profileId === "string" ? parsed.profileId : undefined,
+        })
+        res.writeHead(201, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: { sessionId: slug, slug, threadId } }))
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: err instanceof Error ? err.message : String(err) }))
+      }
+      return
+    }
+
     // POST /api/messages
     if (pathname === "/api/messages" && req.method === "POST") {
       const body = await readBody(req)
@@ -584,7 +889,18 @@ async function handleApiRoute(
         data: {
           apiVersion: "1",
           libraryVersion: pkg.version,
-          features: ["messages", "auth", "cors-allowlist", "repos"],
+          features: [
+            "messages",
+            "auth",
+            "cors-allowlist",
+            "repos",
+            "sessions-create",
+            "diff-viewer",
+            "screenshots-http",
+            "pr-preview",
+            "parallel-variants",
+            ...(vapidKeys ? ["web-push"] : []),
+          ],
           repos: repoList,
         },
       }))

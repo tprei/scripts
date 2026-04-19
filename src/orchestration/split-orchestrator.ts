@@ -1,4 +1,4 @@
-import type { DispatcherContext } from "./dispatcher-context.js"
+import type { EngineContext } from "../engine/engine-context.js"
 import type { TopicSession } from "../domain/session-types.js"
 import { extractSplitItems } from "./split.js"
 import { extractStackItems } from "../dag/dag-extract.js"
@@ -11,10 +11,10 @@ import {
 } from "../telegram/format.js"
 
 export class SplitOrchestrator {
-  private readonly ctx: DispatcherContext
+  private readonly ctx: EngineContext
   private readonly drainingParents = new Set<number>()
 
-  constructor(ctx: DispatcherContext) {
+  constructor(ctx: EngineContext) {
     this.ctx = ctx
   }
 

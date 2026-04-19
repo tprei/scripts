@@ -14,7 +14,7 @@ import {
   mockExecFileError,
   mockExecFileResponses,
 } from "./test-helpers.js"
-import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
+import type { EngineContext } from "../src/engine/engine-context.js"
 
 describe("makeMockTelegram", () => {
   it("returns a mock with all TelegramClient methods", async () => {
@@ -153,7 +153,7 @@ describe("makeMockConfig", () => {
 })
 
 describe("createMockContext", () => {
-  it("produces a complete DispatcherContext with all required properties", () => {
+  it("produces a complete EngineContext with all required properties", () => {
     const ctx = createMockContext()
     expect(ctx.config).toBeDefined()
     expect(ctx.telegram).toBeDefined()

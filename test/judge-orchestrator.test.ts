@@ -6,7 +6,7 @@ import {
 } from "../src/judge/judge-orchestrator.js"
 import type { TopicSession, TopicMessage } from "../src/domain/session-types.js"
 import type { ChildProcess } from "node:child_process"
-import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
+import type { EngineContext } from "../src/engine/engine-context.js"
 import { makeMockActiveSession, makeMockSessionPort } from "./test-helpers.js"
 
 // Mock spawn to control advocate/judge CLI output
@@ -228,7 +228,7 @@ describe("JudgeOrchestrator.handleJudgeCommand", () => {
     return child
   }
 
-  function createMockContext(): DispatcherContext {
+  function createMockContext(): EngineContext {
     return {
       config: {
         workspace: { maxSplitItems: 10, maxConcurrentSessions: 5 },
@@ -242,7 +242,7 @@ describe("JudgeOrchestrator.handleJudgeCommand", () => {
     abortControllers: new Map(),
       profileStore: { get: vi.fn().mockReturnValue(undefined) },
       pushToConversation: vi.fn(),
-    } as unknown as DispatcherContext
+    } as unknown as EngineContext
   }
 
   function createTopicSession(conversation?: TopicMessage[]): TopicSession {

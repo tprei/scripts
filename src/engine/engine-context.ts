@@ -1,11 +1,11 @@
 /**
- * DispatcherContext — the callback contract that extracted modules use
- * to communicate back to the Dispatcher without circular dependencies.
+ * EngineContext — the callback contract that extracted modules use
+ * to communicate back to the MinionEngine without circular dependencies.
  *
  * Each extracted module (CIBabysitter, LandingManager, DagOrchestrator,
  * SplitOrchestrator, ShipPipeline) receives this interface at construction
  * time. It provides access to shared state and operations that remain
- * owned by the Dispatcher core.
+ * owned by the MinionEngine core.
  */
 
 import type { TelegramClient } from "../telegram/telegram.js"
@@ -19,9 +19,8 @@ import type { QualityReport } from "../ci/quality-gates.js"
 import type { ActiveSession, MergeResult, PendingTask } from "../session/session-manager.js"
 import type { StatsTracker } from "../stats.js"
 import type { ProfileStore } from "../profile-store.js"
-import type { StateBroadcaster } from "../api-server.js"
 
-export interface DispatcherContext {
+export interface EngineContext {
   // ── Configuration ──────────────────────────────────────────────────
   readonly config: MinionConfig
   /** Platform-agnostic chat interface. Prefer this over telegram for new code. */
@@ -31,7 +30,6 @@ export interface DispatcherContext {
   readonly observer: Observer
   readonly stats: StatsTracker
   readonly profileStore: ProfileStore
-  readonly broadcaster?: StateBroadcaster
 
   // ── Shared mutable state ───────────────────────────────────────────
   /** Active running sessions keyed by threadId. */

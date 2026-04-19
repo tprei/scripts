@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { CommandHandler } from "../src/commands/command-handler.js"
-import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
+import type { EngineContext } from "../src/engine/engine-context.js"
 import type { PendingTask } from "../src/session/session-manager.js"
 import { createMockContext, makeMockConfig } from "./test-helpers.js"
 
@@ -27,7 +27,7 @@ vi.mock("../src/session/session-manager.js", () => ({
 }))
 
 describe("pending keyboard TTL", () => {
-  let ctx: DispatcherContext
+  let ctx: EngineContext
   let handler: CommandHandler
 
   beforeEach(() => {
@@ -101,7 +101,7 @@ describe("pending keyboard TTL", () => {
   })
 })
 
-describe("Dispatcher pending TTL internals", () => {
+describe("MinionEngine pending TTL internals", () => {
   const PENDING_TTL_MS = 60 * 60 * 1000
 
   let pendingMap: Map<number, PendingTask>

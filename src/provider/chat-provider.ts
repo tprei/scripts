@@ -1,7 +1,7 @@
 // ChatProvider — core messaging contract.
 //
 // Every platform adapter must implement this interface. It covers
-// the minimum set of operations needed by the Observer and Dispatcher:
+// the minimum set of operations needed by the Observer and MinionEngine:
 // sending, editing, deleting, and pinning messages.
 
 import type { MessageId, SendResult, ThreadId } from "./types.js"

@@ -9,7 +9,7 @@
 // Usage:
 //
 //   const platform = new LocalPlatform("local-1")
-//   const dispatcher = new Dispatcher(platform, ...)
+//   const engine = new MinionEngine(platform, ...)
 //
 //   // Push a command as if a user typed it:
 //   platform.pushUpdate({ type: "message", message: { ... } })

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { SplitOrchestrator } from "../src/orchestration/split-orchestrator.js"
-import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
+import type { EngineContext } from "../src/engine/engine-context.js"
 import type { ActiveSession } from "../src/session/session-manager.js"
 import {
   createMockContext,
@@ -49,7 +49,7 @@ function makeSession(overrides: Partial<import("../src/domain/session-types.js")
 }
 
 describe("SplitOrchestrator", () => {
-  let ctx: DispatcherContext
+  let ctx: EngineContext
   let orchestrator: SplitOrchestrator
 
   beforeEach(() => {

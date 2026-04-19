@@ -1,5 +1,5 @@
 import crypto from "node:crypto"
-import type { DispatcherContext } from "./dispatcher-context.js"
+import type { EngineContext } from "../engine/engine-context.js"
 import type { TopicSession, SessionMeta } from "../domain/session-types.js"
 import type { DagGraph } from "../dag/dag.js"
 import { SessionHandle, type SessionConfig } from "../session/session.js"
@@ -13,16 +13,16 @@ import { loggers } from "../logger.js"
 const log = loggers.ship
 
 /**
- * ShipPipeline — extracted from Dispatcher.
+ * ShipPipeline — extracted from MinionEngine.
  *
  * Owns the multi-phase ship pipeline: think → plan → dag → verify → done.
  * Each phase completes and automatically advances to the next.
  */
 export class ShipPipeline {
-  private readonly ctx: DispatcherContext
+  private readonly ctx: EngineContext
   private readonly judgeOrchestrator: JudgeOrchestrator
 
-  constructor(ctx: DispatcherContext) {
+  constructor(ctx: EngineContext) {
     this.ctx = ctx
     this.judgeOrchestrator = new JudgeOrchestrator(ctx)
   }

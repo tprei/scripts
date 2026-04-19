@@ -26,12 +26,12 @@ vi.mock("../src/sentry.js", () => ({
   initSentry: vi.fn(),
 }))
 
-// Capture constructor args from Dispatcher and Observer
+// Capture constructor args from MinionEngine and Observer
 const dispatcherConstructorArgs: unknown[][] = []
 const observerConstructorArgs: unknown[][] = []
 
-vi.mock("../src/orchestration/dispatcher.js", () => {
-  const MockDispatcher = vi.fn(function (this: Record<string, unknown>, ...args: unknown[]) {
+vi.mock("../src/engine/engine.js", () => {
+  const MockMinionEngine = vi.fn(function (this: Record<string, unknown>, ...args: unknown[]) {
     dispatcherConstructorArgs.push(args)
     this.start = vi.fn()
     this.stop = vi.fn()
@@ -45,8 +45,9 @@ vi.mock("../src/orchestration/dispatcher.js", () => {
     this.apiSendReply = vi.fn()
     this.apiStopSession = vi.fn()
     this.apiCloseSession = vi.fn()
+    this.use = vi.fn()
   })
-  return { Dispatcher: MockDispatcher }
+  return { MinionEngine: MockMinionEngine }
 })
 
 vi.mock("../src/telegram/observer.js", () => {
@@ -112,7 +113,7 @@ describe("createMinion wiring", () => {
     observerConstructorArgs.length = 0
   })
 
-  it("passes TelegramPlatform (not TelegramClient) to Dispatcher", () => {
+  it("passes TelegramPlatform (not TelegramClient) to MinionEngine", () => {
     createMinion(makeConfig())
 
     expect(dispatcherConstructorArgs).toHaveLength(1)

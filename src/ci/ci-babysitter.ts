@@ -1,4 +1,4 @@
-import type { DispatcherContext } from "../orchestration/dispatcher-context.js"
+import type { EngineContext } from "../engine/engine-context.js"
 import type { TopicSession } from "../domain/session-types.js"
 import type { QualityReport } from "./quality-gates.js"
 import { runQualityGates } from "./quality-gates.js"
@@ -33,16 +33,16 @@ export interface PendingBabysitEntry {
 }
 
 /**
- * CIBabysitter — extracted from Dispatcher.
+ * CIBabysitter — extracted from MinionEngine.
  *
  * Owns PR babysitting, CI monitoring, merge-conflict resolution,
  * and deferred babysit queuing for split children.
  */
 export class CIBabysitter {
   readonly pendingBabysitPRs = new Map<number, PendingBabysitEntry[]>()
-  private readonly ctx: DispatcherContext
+  private readonly ctx: EngineContext
 
-  constructor(ctx: DispatcherContext) {
+  constructor(ctx: EngineContext) {
     this.ctx = ctx
   }
 

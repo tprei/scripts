@@ -4,7 +4,7 @@ import path from "node:path"
 import { promisify } from "node:util"
 import { existsSync } from "node:fs"
 import { extractRepoName } from "../commands/command-parser.js"
-import type { DispatcherContext } from "../orchestration/dispatcher-context.js"
+import type { EngineContext } from "../engine/engine-context.js"
 import type { TopicSession } from "../domain/session-types.js"
 import type { DagGraph, DagNode } from "./dag.js"
 import { topologicalSort, cleanupMergedBranch } from "./dag.js"
@@ -66,7 +66,7 @@ function prNumberFromUrl(prUrl: string): string | undefined {
 }
 
 export class LandingManager {
-  constructor(private readonly ctx: DispatcherContext) {}
+  constructor(private readonly ctx: EngineContext) {}
 
   async handleLandCommand(topicSession: TopicSession): Promise<void> {
     const ac = new AbortController()

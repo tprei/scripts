@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { CIBabysitter } from "../src/ci/ci-babysitter.js"
-import type { DispatcherContext } from "../src/orchestration/dispatcher-context.js"
+import type { EngineContext } from "../src/engine/engine-context.js"
 import type { TopicSession } from "../src/domain/session-types.js"
 import { createMockContext, makeMockConfig } from "./test-helpers.js"
 // Mock external dependencies
@@ -46,7 +46,7 @@ function makeSession(overrides: Partial<TopicSession> = {}): TopicSession {
   }
 }
 
-function makeContext(overrides: Partial<DispatcherContext> = {}): DispatcherContext {
+function makeContext(overrides: Partial<EngineContext> = {}): EngineContext {
   return createMockContext({
     config: makeMockConfig({
       ci: { babysitEnabled: true, maxRetries: 2, pollIntervalMs: 100, pollTimeoutMs: 1000, dagCiPolicy: "skip" },
@@ -57,7 +57,7 @@ function makeContext(overrides: Partial<DispatcherContext> = {}): DispatcherCont
 }
 
 describe("CIBabysitter", () => {
-  let ctx: DispatcherContext
+  let ctx: EngineContext
   let babysitter: CIBabysitter
 
   beforeEach(() => {
