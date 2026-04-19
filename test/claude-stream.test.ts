@@ -446,3 +446,434 @@ describe("translateClaudeEvents", () => {
     expect(ids).toEqual(["t1", "t2"])
   })
 })
+
+describe("translateClaudeEvent — thinking coverage", () => {
+  it("emits multiple thinking blocks in original order", () => {
+    const result = translateClaudeEvent({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "first thought", signature: "sig-a" },
+          { type: "thinking", thinking: "second thought", signature: "sig-b" },
+          { type: "tool_use", id: "t1", name: "Bash", input: { command: "ls" } },
+        ],
+      },
+    })
+
+    expect(result).not.toBeNull()
+    if (result && result.type === "message") {
+      expect(result.message.content).toHaveLength(3)
+      expect(result.message.content[0]).toEqual({
+        type: "thinking",
+        thinking: "first thought",
+        signature: "sig-a",
+      })
+      expect(result.message.content[1]).toEqual({
+        type: "thinking",
+        thinking: "second thought",
+        signature: "sig-b",
+      })
+      expect(result.message.content[2].type).toBe("toolRequest")
+    }
+  })
+
+  it("returns a thinking-only message when the turn has no tool_use", () => {
+    const result = translateClaudeEvent({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "just thinking", signature: "s" },
+        ],
+      },
+    })
+
+    expect(result).not.toBeNull()
+    if (result && result.type === "message") {
+      expect(result.message.content).toHaveLength(1)
+      expect(result.message.content[0].type).toBe("thinking")
+      expect(result.message.stopReason ?? null).toBeNull()
+    }
+  })
+
+  it("defaults missing thinking/signature fields to empty strings", () => {
+    const result = translateClaudeEvent({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [{ type: "thinking" }],
+      },
+    })
+
+    if (result && result.type === "message") {
+      const block = result.message.content[0]
+      expect(block.type).toBe("thinking")
+      if (block.type === "thinking") {
+        expect(block.thinking).toBe("")
+        expect(block.signature).toBe("")
+      }
+    }
+  })
+
+  it("ignores text blocks when bundling thinking and tool_use", () => {
+    const result = translateClaudeEvent({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "some prose" },
+          { type: "thinking", thinking: "hmm", signature: "s" },
+          { type: "tool_use", id: "t1", name: "Bash", input: {} },
+        ],
+      },
+    })
+
+    if (result && result.type === "message") {
+      expect(result.message.content).toHaveLength(2)
+      expect(result.message.content[0].type).toBe("thinking")
+      expect(result.message.content[1].type).toBe("toolRequest")
+    }
+  })
+})
+
+describe("translateClaudeEvent — multi-tool coverage", () => {
+  it("applies parent_tool_use_id to every tool in a bundled multi-tool turn", () => {
+    const result = translateClaudeEvent({
+      type: "assistant",
+      parent_tool_use_id: "parent-99",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t1", name: "Read", input: { file_path: "/a.ts" } },
+          { type: "tool_use", id: "t2", name: "Bash", input: { command: "ls" } },
+          { type: "tool_use", id: "t3", name: "Grep", input: { pattern: "x" } },
+        ],
+      },
+    })
+
+    if (result && result.type === "message") {
+      const parents = result.message.content
+        .filter((b) => b.type === "toolRequest")
+        .map((b) => (b as { parentToolUseId: string | null }).parentToolUseId)
+      expect(parents).toEqual(["parent-99", "parent-99", "parent-99"])
+    }
+  })
+
+  it("preserves distinct tool name and arguments for each block", () => {
+    const result = translateClaudeEvent({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t1", name: "Read", input: { file_path: "/a.ts" } },
+          { type: "tool_use", id: "t2", name: "Edit", input: { file_path: "/a.ts", old: "x", new: "y" } },
+        ],
+      },
+    })
+
+    if (result && result.type === "message") {
+      const calls = result.message.content
+        .filter((b) => b.type === "toolRequest")
+        .map((b) => (b as { toolCall: { name: string; arguments: Record<string, unknown> } }).toolCall)
+      expect(calls[0]).toEqual({ name: "Read", arguments: { file_path: "/a.ts" } })
+      expect(calls[1]).toEqual({ name: "Edit", arguments: { file_path: "/a.ts", old: "x", new: "y" } })
+    }
+  })
+
+  it("defaults missing tool_use fields (id, name, input) to safe values", () => {
+    const result = translateClaudeEvent({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [{ type: "tool_use" }],
+      },
+    })
+
+    if (result && result.type === "message") {
+      const block = result.message.content[0]
+      if (block.type === "toolRequest") {
+        expect(block.id).toBe("")
+        if ("name" in block.toolCall) {
+          expect(block.toolCall.name).toBe("unknown")
+          expect(block.toolCall.arguments).toEqual({})
+        }
+      }
+    }
+  })
+
+  it("normalizes explicit null parent_tool_use_id to null on toolRequests", () => {
+    const result = translateClaudeEvent({
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }],
+      },
+    })
+
+    if (result && result.type === "message") {
+      const block = result.message.content[0]
+      if (block.type === "toolRequest") {
+        expect(block.parentToolUseId).toBeNull()
+      }
+    }
+  })
+})
+
+describe("translateClaudeEvents — thinking + multi-tool coverage", () => {
+  it("emits each thinking block as its own event in order", () => {
+    const events = translateClaudeEvents({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "A", signature: "s-a" },
+          { type: "thinking", thinking: "B", signature: "s-b" },
+        ],
+      },
+    })
+
+    expect(events).toHaveLength(2)
+    const thoughts = events
+      .flatMap((e) => (e.type === "message" ? e.message.content : []))
+      .filter((b) => b.type === "thinking")
+      .map((b) => (b as { thinking: string }).thinking)
+    expect(thoughts).toEqual(["A", "B"])
+  })
+
+  it("orders thinking events before tool events and only stamps stop_reason on the last tool", () => {
+    const events = translateClaudeEvents({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "plan", signature: "s" },
+          { type: "tool_use", id: "t1", name: "Read", input: { file_path: "/a" } },
+          { type: "tool_use", id: "t2", name: "Bash", input: { command: "ls" } },
+          { type: "tool_use", id: "t3", name: "Grep", input: { pattern: "x" } },
+        ],
+        stop_reason: "tool_use",
+      },
+    })
+
+    expect(events).toHaveLength(4)
+    if (events[0].type === "message") {
+      expect(events[0].message.content[0].type).toBe("thinking")
+      expect(events[0].message.stopReason ?? null).toBeNull()
+    }
+    const toolStops = events.slice(1).map((e) => (e.type === "message" ? e.message.stopReason ?? null : null))
+    expect(toolStops).toEqual([null, null, "tool_use"])
+  })
+
+  it("applies parent_tool_use_id to every split tool event in a multi-tool turn", () => {
+    const events = translateClaudeEvents({
+      type: "assistant",
+      parent_tool_use_id: "parent-abc",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t1", name: "Read", input: {} },
+          { type: "tool_use", id: "t2", name: "Bash", input: {} },
+          { type: "tool_use", id: "t3", name: "Grep", input: {} },
+        ],
+      },
+    })
+
+    const parents = events
+      .flatMap((e) => (e.type === "message" ? e.message.content : []))
+      .filter((b) => b.type === "toolRequest")
+      .map((b) => (b as { parentToolUseId: string | null }).parentToolUseId)
+    expect(parents).toEqual(["parent-abc", "parent-abc", "parent-abc"])
+  })
+
+  it("returns thinking-only events (no stop_reason-only fallback) when thinking present without tools", () => {
+    const events = translateClaudeEvents({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [{ type: "thinking", thinking: "solo", signature: "s" }],
+        stop_reason: "end_turn",
+      },
+    })
+
+    expect(events).toHaveLength(1)
+    if (events[0].type === "message") {
+      expect(events[0].message.content[0].type).toBe("thinking")
+    }
+  })
+
+  it("ignores text blocks in assistant messages even when tools are present", () => {
+    const events = translateClaudeEvents({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "prose" },
+          { type: "tool_use", id: "t1", name: "Bash", input: {} },
+        ],
+      },
+    })
+
+    expect(events).toHaveLength(1)
+    if (events[0].type === "message") {
+      expect(events[0].message.content).toHaveLength(1)
+      expect(events[0].message.content[0].type).toBe("toolRequest")
+    }
+  })
+
+  it("applies parent_tool_use_id to every tool_result in a multi-result user event", () => {
+    const events = translateClaudeEvents({
+      type: "user",
+      parent_tool_use_id: "parent-user",
+      message: {
+        role: "user",
+        content: [
+          { type: "tool_result", id: "t1", content: "one" },
+          { type: "tool_result", id: "t2", content: "two" },
+          { type: "tool_result", id: "t3", content: "three" },
+        ],
+      },
+    })
+
+    expect(events).toHaveLength(3)
+    const parents = events
+      .flatMap((e) => (e.type === "message" ? e.message.content : []))
+      .filter((b) => b.type === "toolResponse")
+      .map((b) => (b as { parentToolUseId: string | null }).parentToolUseId)
+    expect(parents).toEqual(["parent-user", "parent-user", "parent-user"])
+  })
+
+  it("filters mixed user content down to tool_result blocks only", () => {
+    const events = translateClaudeEvents({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: "here's the result" },
+          { type: "tool_result", id: "t1", content: "payload" },
+        ],
+      },
+    })
+
+    expect(events).toHaveLength(1)
+    if (events[0].type === "message") {
+      expect(events[0].message.content).toHaveLength(1)
+      expect(events[0].message.content[0].type).toBe("toolResponse")
+    }
+  })
+})
+
+describe("translateClaudeEvents — NDJSON integration", () => {
+  it("produces a full conversational turn sequence from a realistic claude stream", () => {
+    const ndjson: unknown[] = [
+      {
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "planning the work", signature: "sig-1" },
+            { type: "tool_use", id: "call-1", name: "Read", input: { file_path: "/a.ts" } },
+            { type: "tool_use", id: "call-2", name: "Grep", input: { pattern: "foo" } },
+          ],
+          stop_reason: "tool_use",
+        },
+      },
+      {
+        type: "user",
+        parent_tool_use_id: null,
+        message: {
+          role: "user",
+          content: [
+            { type: "tool_result", id: "call-1", content: "file contents" },
+            { type: "tool_result", id: "call-2", content: "grep results" },
+          ],
+        },
+      },
+      {
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "all done" }],
+          stop_reason: "end_turn",
+        },
+      },
+      {
+        type: "result",
+        is_error: false,
+        total_cost_usd: 0.0042,
+        num_turns: 3,
+        usage: { input_tokens: 1200, output_tokens: 340 },
+      },
+    ]
+
+    const all = ndjson.flatMap((raw) => translateClaudeEvents(raw as Parameters<typeof translateClaudeEvents>[0]))
+
+    // 1 thinking + 2 tool_use (split) + 2 tool_result + 1 stop-reason-only + 1 complete = 7
+    expect(all).toHaveLength(7)
+
+    const blockTypes = all.map((e) => {
+      if (e.type === "message") return e.message.content[0]?.type ?? "empty"
+      return e.type
+    })
+    expect(blockTypes).toEqual([
+      "thinking",
+      "toolRequest",
+      "toolRequest",
+      "toolResponse",
+      "toolResponse",
+      "empty",
+      "complete",
+    ])
+
+    const lastTool = all[2]
+    if (lastTool.type === "message") {
+      expect(lastTool.message.stopReason).toBe("tool_use")
+    }
+
+    const stopOnly = all[5]
+    if (stopOnly.type === "message") {
+      expect(stopOnly.message.stopReason).toBe("end_turn")
+      expect(stopOnly.message.content).toEqual([])
+    }
+
+    const done = all[6]
+    expect(done).toEqual({
+      type: "complete",
+      total_tokens: 1540,
+      total_cost_usd: 0.0042,
+      num_turns: 3,
+    })
+  })
+
+  it("passes parent_tool_use_id through nested sub-agent tool calls", () => {
+    const parentId = "parent-agent-1"
+    const ndjson: unknown[] = [
+      {
+        type: "assistant",
+        parent_tool_use_id: parentId,
+        message: {
+          role: "assistant",
+          content: [{ type: "tool_use", id: "child-1", name: "Bash", input: { command: "ls" } }],
+        },
+      },
+      {
+        type: "user",
+        parent_tool_use_id: parentId,
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", id: "child-1", content: "dir listing" }],
+        },
+      },
+    ]
+
+    const events = ndjson.flatMap((raw) => translateClaudeEvents(raw as Parameters<typeof translateClaudeEvents>[0]))
+    const parents = events
+      .flatMap((e) => (e.type === "message" ? e.message.content : []))
+      .filter((b) => b.type === "toolRequest" || b.type === "toolResponse")
+      .map((b) => (b as { parentToolUseId: string | null }).parentToolUseId)
+    expect(parents).toEqual([parentId, parentId])
+  })
+})
