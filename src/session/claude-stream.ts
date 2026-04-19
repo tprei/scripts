@@ -1,4 +1,7 @@
 import type { GooseStreamEvent, GooseContentType } from "../domain/goose-types.js"
+import { loggers } from "../logger.js"
+
+const log = loggers.session
 
 interface ClaudeContentBlock {
   type: string
@@ -47,11 +50,15 @@ function buildAssistantContent(
         signature: block.signature ?? "",
       })
     } else if (block.type === "tool_use") {
+      if (typeof block.name !== "string" || block.name.length === 0) {
+        log.warn({ blockId: block.id, blockType: block.type }, "claude tool_use block missing name — dropping")
+        continue
+      }
       content.push({
         type: "toolRequest",
         id: block.id ?? "",
         parentToolUseId: parentToolUseId ?? null,
-        toolCall: { name: block.name ?? "unknown", arguments: block.input ?? {} },
+        toolCall: { name: block.name, arguments: block.input ?? {} },
       })
     }
   }
@@ -128,7 +135,13 @@ export function translateClaudeEvents(raw: ClaudeStreamEvent): GooseStreamEvent[
     const stopReason = msg.stop_reason ?? null
 
     const thinkingBlocks = msg.content.filter((b) => b.type === "thinking")
-    const toolBlocks = msg.content.filter((b) => b.type === "tool_use")
+    const toolBlocks = msg.content
+      .filter((b) => b.type === "tool_use")
+      .filter((b) => {
+        if (typeof b.name === "string" && b.name.length > 0) return true
+        log.warn({ blockId: b.id, blockType: b.type }, "claude tool_use block missing name — dropping")
+        return false
+      })
 
     const events: GooseStreamEvent[] = []
 
@@ -163,7 +176,7 @@ export function translateClaudeEvents(raw: ClaudeStreamEvent): GooseStreamEvent[
               type: "toolRequest",
               id: block.id ?? "",
               parentToolUseId,
-              toolCall: { name: block.name ?? "unknown", arguments: block.input ?? {} },
+              toolCall: { name: block.name as string, arguments: block.input ?? {} },
             },
           ],
         },

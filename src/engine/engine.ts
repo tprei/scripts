@@ -1427,6 +1427,11 @@ export class MinionEngine {
       this.broadcastSession(topicSession, "session_updated")
     }
 
+    const onLifecycleCapture = (_sid: string, plainText: string) => {
+      this.pushToConversation(topicSession, { role: "assistant", text: plainText })
+      this.broadcastSession(topicSession, "session_updated")
+    }
+
     const prompts = { ...DEFAULT_PROMPTS, ...this.config.prompts }
     const profile = topicSession.profileId ? this.profileStore.get(topicSession.profileId) : undefined
     const sessionConfig: SessionConfig = {
@@ -1487,7 +1492,7 @@ export class MinionEngine {
     await this.pinnedMessages.updateTopicTitle(topicSession, "⚡")
     this.pinnedMessages.updatePinnedSummary()
     const onDeadThread = () => this.handleDeadThread(topicSession, meta.threadId)
-    await this.observer.onSessionStart(meta, task, onTextCapture, onDeadThread, onActivityCapture)
+    await this.observer.onSessionStart(meta, task, onTextCapture, onDeadThread, onActivityCapture, onLifecycleCapture)
     const systemPrompt = systemPromptOverride ?? (topicSession.mode === "task" ? prompts.task : undefined)
     handle.start(task, systemPrompt)
     return true
