@@ -12,6 +12,7 @@ import { listSessionScreenshots, resolveScreenshotPath } from "./session/workspa
 import { fetchPrPreview } from "./github/pr-preview.js"
 import type { PushSubscriptionStore } from "./push/push-subscriptions.js"
 import type { VapidKeys } from "./push/vapid-keys.js"
+import type { TranscriptEvent, TranscriptSnapshot } from "./transcript/types.js"
 import pkg from "../package.json" with { type: "json" }
 
 const log = loggers.apiServer
@@ -60,6 +61,10 @@ export interface ApiSession {
   quickActions: QuickAction[]
   mode: string
   conversation: ConversationMessage[]
+  /** Path to the structured transcript for this session. Stable across the
+   *  session's lifetime — PWA clients GET for snapshot + `after=<seq>`
+   *  replay, and watch the SSE stream for incremental `transcript_event`s. */
+  transcriptUrl: string
 }
 
 export interface ApiDagNode {
@@ -97,6 +102,7 @@ export type SseEvent =
   | { type: "dag_created"; dag: ApiDagGraph }
   | { type: "dag_updated"; dag: ApiDagGraph }
   | { type: "dag_deleted"; dagId: string }
+  | { type: "transcript_event"; sessionId: string; event: TranscriptEvent }
 
 export type MinionCommand =
   | { action: "reply"; sessionId: string; message: string }
@@ -128,6 +134,16 @@ export interface DispatcherApi {
   handleIncomingText(text: string, sessionSlug?: string): Promise<void>
   createSession(request: CreateSessionRequest): Promise<{ slug: string; threadId: number }>
   createSessionVariants(request: CreateSessionRequest, count: number): Promise<CreateSessionVariantResult[]>
+  /**
+   * Return a snapshot of the structured transcript for `slug`, containing
+   * only events with `seq > afterSeq`. Returns `undefined` when the session
+   * is unknown. Returning an empty-events snapshot is valid (e.g. a session
+   * whose transcript hasn't started yet).
+   *
+   * Optional so minions without a TranscriptStore wired up still satisfy the
+   * interface — in that case the REST endpoint responds 501.
+   */
+  getTranscript?(slug: string, afterSeq: number): TranscriptSnapshot | undefined
 }
 
 export class StateBroadcaster extends EventEmitter {
@@ -262,6 +278,7 @@ export function topicSessionToApi(
     quickActions,
     mode: session.mode,
     conversation: session.conversation.map((m) => ({ role: m.role, text: m.text })),
+    transcriptUrl: `/api/sessions/${encodeURIComponent(session.slug)}/transcript`,
   }
 }
 
@@ -548,6 +565,48 @@ async function handleApiRoute(
         res.writeHead(404, { "Content-Type": "application/json" })
         res.end(JSON.stringify({ data: null, error: "Screenshot not found" }))
       }
+      return
+    }
+
+    // GET /api/sessions/:slug/transcript?after=<seq> — structured transcript snapshot
+    const transcriptMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/transcript$/)
+    if (transcriptMatch && req.method === "GET") {
+      const slug = transcriptMatch[1]
+      const session = [...dispatcher.getTopicSessions().values()].find((s) => s.slug === slug)
+      if (!session) {
+        res.writeHead(404, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Session not found" }))
+        return
+      }
+      if (!dispatcher.getTranscript) {
+        res.writeHead(501, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Transcript is not available on this minion" }))
+        return
+      }
+
+      const afterParam = url.searchParams.get("after")
+      let afterSeq = -1
+      if (afterParam !== null) {
+        const parsed = Number(afterParam)
+        if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < -1) {
+          res.writeHead(400, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ data: null, error: "after must be an integer >= -1" }))
+          return
+        }
+        afterSeq = parsed
+      }
+
+      const snapshot = dispatcher.getTranscript(slug, afterSeq)
+      if (!snapshot) {
+        res.writeHead(404, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Session not found" }))
+        return
+      }
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      })
+      res.end(JSON.stringify({ data: snapshot }))
       return
     }
 
@@ -900,6 +959,7 @@ async function handleApiRoute(
             "pr-preview",
             "parallel-variants",
             ...(vapidKeys ? ["web-push"] : []),
+            ...(dispatcher.getTranscript ? ["transcript"] : []),
           ],
           repos: repoList,
         },
