@@ -44,6 +44,70 @@ describe("Observer", () => {
       expect(msg).toContain("bold-arc")
     })
 
+    it("forwards the session-start plain text to onLifecycleCapture", async () => {
+      const platform = makeMockPlatform()
+      const observer = new Observer(platform, 3000, { textFlushDebounceMs: 1500, activityEditDebounceMs: 2000 })
+      const meta = makeMeta({ mode: "task" })
+      const captured: Array<{ sessionId: string; text: string }> = []
+
+      await observer.onSessionStart(meta, "fix the bug", undefined, undefined, undefined, (sessionId, text) => {
+        captured.push({ sessionId, text })
+      })
+
+      expect(captured).toHaveLength(1)
+      expect(captured[0].sessionId).toBe(meta.sessionId)
+      expect(captured[0].text).toContain("Session started")
+      expect(captured[0].text).not.toContain("<b>")
+      expect(captured[0].text).not.toContain("<code>")
+    })
+
+    it("forwards the session-complete plain text to onLifecycleCapture", async () => {
+      const platform = makeMockPlatform()
+      const observer = new Observer(platform, 3000, { textFlushDebounceMs: 1500, activityEditDebounceMs: 2000 })
+      const meta = makeMeta({ mode: "task" })
+      const captured: string[] = []
+
+      await observer.onSessionStart(meta, "fix the bug", undefined, undefined, undefined, (_sid, text) => {
+        captured.push(text)
+      })
+
+      await observer.onSessionComplete(meta, "completed", 1234)
+
+      expect(captured.at(-1)).toContain("Complete")
+      expect(captured.at(-1)).toContain("bold-arc")
+    })
+
+    it("forwards the session-error plain text to onLifecycleCapture (onEvent path)", async () => {
+      const platform = makeMockPlatform()
+      const observer = new Observer(platform, 3000, { textFlushDebounceMs: 1500, activityEditDebounceMs: 2000 })
+      const meta = makeMeta({ mode: "task" })
+      const captured: string[] = []
+
+      await observer.onSessionStart(meta, "fix the bug", undefined, undefined, undefined, (_sid, text) => {
+        captured.push(text)
+      })
+
+      await observer.onEvent(meta, { type: "error", error: "boom" })
+
+      expect(captured.at(-1)).toContain("Error")
+      expect(captured.at(-1)).toContain("boom")
+    })
+
+    it("forwards the session-complete (errored) plain text to onLifecycleCapture", async () => {
+      const platform = makeMockPlatform()
+      const observer = new Observer(platform, 3000, { textFlushDebounceMs: 1500, activityEditDebounceMs: 2000 })
+      const meta = makeMeta({ mode: "task" })
+      const captured: string[] = []
+
+      await observer.onSessionStart(meta, "fix the bug", undefined, undefined, undefined, (_sid, text) => {
+        captured.push(text)
+      })
+
+      await observer.onSessionComplete(meta, "errored", 99)
+
+      expect(captured.at(-1)).toContain("Error")
+    })
+
     it("sends a plan start message for plan mode", async () => {
       const platform = makeMockPlatform()
       const observer = new Observer(platform, 3000, { textFlushDebounceMs: 1500, activityEditDebounceMs: 2000 })
@@ -516,7 +580,7 @@ describe("Observer", () => {
       expect(platform.chat.sendMessage).not.toHaveBeenCalled()
     })
 
-    it("does not throw when toolCall.name is undefined", async () => {
+    it("drops the tool request when toolCall.name is missing", async () => {
       const platform = makeMockPlatform()
       const observer = new Observer(platform, 3000, { textFlushDebounceMs: 1500, activityEditDebounceMs: 2000 })
       const meta = makeMeta()
@@ -532,15 +596,12 @@ describe("Observer", () => {
           content: [{
             type: "toolRequest",
             id: "t1",
-            // simulates a malformed payload where the provider drops the tool name
             toolCall: { name: undefined as unknown as string, arguments: { command: "ls" } },
           }],
         },
       })).resolves.not.toThrow()
 
-      expect(platform.chat.sendMessage).toHaveBeenCalledOnce()
-      const msg = (platform.chat.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][0]
-      expect(msg).toContain("unknown")
+      expect(platform.chat.sendMessage).not.toHaveBeenCalled()
     })
 
     it("does not throw when toolCall.arguments is missing", async () => {
@@ -912,10 +973,10 @@ describe("Observer", () => {
           content: [{
             type: "toolRequest",
             id: "t1",
-            toolCall: { status: "success", value: { name: "shell", arguments: { command: "ls" } } },
+            toolCall: { name: "shell", arguments: { command: "ls" } },
           }],
         },
-      } as unknown as GooseStreamEvent)
+      })
 
       const activity = seen.filter((e) => e.type === "assistant_activity")
       expect(activity).toHaveLength(1)

@@ -53,6 +53,55 @@ describe("translateClaudeEvent", () => {
     }
   })
 
+  it("drops tool_use blocks that are missing a name", () => {
+    const result = translateClaudeEvent({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "tool-1", input: { command: "ls" } },
+        ],
+      },
+    })
+    expect(result).toBeNull()
+  })
+
+  it("drops tool_use blocks with an empty-string name", () => {
+    const result = translateClaudeEvent({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "tool-1", name: "", input: { command: "ls" } },
+        ],
+      },
+    })
+    expect(result).toBeNull()
+  })
+
+  it("keeps named tool_use blocks and drops unnamed ones alongside them", () => {
+    const result = translateClaudeEvent({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "tool-1", input: { command: "ls" } },
+          { type: "tool_use", id: "tool-2", name: "Bash", input: { command: "pwd" } },
+        ],
+      },
+    })
+
+    expect(result).not.toBeNull()
+    if (result!.type === "message") {
+      expect(result!.message.content).toHaveLength(1)
+      const block = result!.message.content[0]
+      expect(block.type).toBe("toolRequest")
+      if (block.type === "toolRequest" && !("error" in block.toolCall)) {
+        expect(block.toolCall.name).toBe("Bash")
+      }
+    }
+  })
+
   it("returns null for assistant messages with no thinking, tool_use, or stop_reason", () => {
     const result = translateClaudeEvent({
       type: "assistant",
@@ -310,6 +359,28 @@ describe("translateClaudeEvents", () => {
     const second = events[1]
     if (second.type === "message") {
       expect(second.message.content[0].type).toBe("toolRequest")
+    }
+  })
+
+  it("drops unnamed tool_use blocks while keeping named ones", () => {
+    const events = translateClaudeEvents({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t1", input: { command: "ls" } },
+          { type: "tool_use", id: "t2", name: "Bash", input: { command: "pwd" } },
+          { type: "tool_use", id: "t3", name: "", input: { command: "noop" } },
+        ],
+      },
+    })
+
+    expect(events).toHaveLength(1)
+    if (events[0].type === "message") {
+      const block = events[0].message.content[0]
+      if (block.type === "toolRequest" && !("error" in block.toolCall)) {
+        expect(block.toolCall.name).toBe("Bash")
+      }
     }
   })
 

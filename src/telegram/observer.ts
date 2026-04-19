@@ -25,6 +25,7 @@ import {
   formatSessionError,
   formatAssistantTextChunks,
 } from "./format.js"
+import { stripHtml } from "./strip-html.js"
 
 const log = loggers.observer
 
@@ -74,6 +75,10 @@ interface SessionState {
   // plain-text activity summary, so API consumers (e.g. the PWA) can surface
   // tool use in the conversation feed just like Telegram users see it.
   onActivityCapture?: (sessionId: string, activityText: string) => void
+  // Optional callback fired for session-lifecycle telegram posts (start,
+  // error, complete). Mirrors onActivityCapture so PWA users see the same
+  // lifecycle breadcrumbs Telegram users do.
+  onLifecycleCapture?: (sessionId: string, plainText: string) => void
 }
 
 export class Observer {
@@ -98,6 +103,7 @@ export class Observer {
     onTextCapture?: TextCaptureCallback,
     onDeadThread?: () => void,
     onActivityCapture?: (sessionId: string, activityText: string) => void,
+    onLifecycleCapture?: (sessionId: string, plainText: string) => void,
   ): Promise<void> {
     this.sessions.set(meta.sessionId, {
       textBuffer: "",
@@ -114,6 +120,7 @@ export class Observer {
       onTextCapture,
       onDeadThread,
       onActivityCapture,
+      onLifecycleCapture,
     })
     const msg = meta.mode === "ship-think"
       ? formatShipThinkStart(meta.repo, meta.topicName, task)
@@ -130,7 +137,19 @@ export class Observer {
       : meta.mode === "dag-review"
       ? formatDagReviewStart(meta.repo, meta.topicName, task)
       : formatSessionStart(meta.repo, meta.topicName, task)
+    this.captureLifecycle(meta, msg, onLifecycleCapture)
     await this.safeSendMessage(meta, msg)
+  }
+
+  private captureLifecycle(
+    meta: SessionMeta,
+    html: string,
+    override?: (sessionId: string, plainText: string) => void,
+  ): void {
+    const cb = override ?? this.sessions.get(meta.sessionId)?.onLifecycleCapture
+    if (!cb) return
+    const plain = stripHtml(html)
+    if (plain) cb(meta.sessionId, plain)
   }
 
   private async safeSendMessage(
@@ -156,10 +175,13 @@ export class Observer {
         await this.handleMessage(meta, event.message)
         break
 
-      case "error":
+      case "error": {
         await this.flushTextBuffer(meta)
-        await this.safeSendMessage(meta, formatSessionError(meta.topicName, event.error))
+        const html = formatSessionError(meta.topicName, event.error)
+        this.captureLifecycle(meta, html)
+        await this.safeSendMessage(meta, html)
         break
+      }
 
       case "complete":
       case "notification":
@@ -352,11 +374,12 @@ export class Observer {
     if ("error" in block.toolCall) return
 
     const { name: rawName, arguments: rawArgs } = block.toolCall
-    const name = typeof rawName === "string" && rawName.length > 0 ? rawName : "unknown"
-    const args: Record<string, unknown> = rawArgs && typeof rawArgs === "object" ? rawArgs as Record<string, unknown> : {}
-    if (name === "unknown") {
-      log.warn({ sessionId: meta.sessionId, toolCallId: block.id }, "toolRequest missing name — treating as 'unknown'")
+    if (typeof rawName !== "string" || rawName.length === 0) {
+      log.warn({ sessionId: meta.sessionId, toolCallId: block.id }, "toolRequest missing name — dropping")
+      return
     }
+    const name = rawName
+    const args: Record<string, unknown> = rawArgs && typeof rawArgs === "object" ? rawArgs as Record<string, unknown> : {}
     const now = Date.now()
     const state = this.sessions.get(meta.sessionId)
     if (!state) return
@@ -431,11 +454,14 @@ export class Observer {
     await this.flushTextBuffer(meta, "end")
     this.sessions.delete(meta.sessionId)
 
-    if (finalState === "errored") {
-      await this.safeSendMessage(meta, formatSessionError(meta.topicName, "Session ended with an error. Check logs."))
-    } else {
-      await this.safeSendMessage(meta, formatSessionComplete(meta.topicName, durationMs, meta.totalTokens, sessionToolCount, meta.totalCostUsd, meta.numTurns))
+    const html = finalState === "errored"
+      ? formatSessionError(meta.topicName, "Session ended with an error. Check logs.")
+      : formatSessionComplete(meta.topicName, durationMs, meta.totalTokens, sessionToolCount, meta.totalCostUsd, meta.numTurns)
+    if (state?.onLifecycleCapture) {
+      const plain = stripHtml(html)
+      if (plain) state.onLifecycleCapture(meta.sessionId, plain)
     }
+    await this.safeSendMessage(meta, html)
   }
 
   async flushAndComplete(
