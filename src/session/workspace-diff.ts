@@ -37,6 +37,31 @@ async function hasRef(cwd: string, ref: string): Promise<boolean> {
   }
 }
 
+async function refreshRemoteBranch(cwd: string, branch: string): Promise<void> {
+  try {
+    await gitOutput(cwd, [
+      "fetch",
+      "--quiet",
+      "--no-tags",
+      "origin",
+      `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+    ])
+  } catch {
+    // offline / auth failure / branch doesn't exist upstream — fall back to
+    // whatever `refs/remotes/origin/<branch>` currently points at
+  }
+}
+
+async function mergeBase(cwd: string, a: string, b: string): Promise<string | null> {
+  try {
+    const out = await gitOutput(cwd, ["merge-base", a, b])
+    const sha = out.trim()
+    return sha.length > 0 ? sha : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * Compute a unified diff for a session's worktree.
  *
@@ -51,6 +76,13 @@ async function hasRef(cwd: string, ref: string): Promise<boolean> {
  * for display purposes.
  */
 export async function computeWorkspaceDiff(cwd: string, headBranch?: string): Promise<WorkspaceDiff> {
+  // Refresh origin/main (and master) so we diff against the current upstream
+  // tip. Without this, other PRs that land on main after the session started
+  // appear in our patch as "new" and inflate the file/line counts far beyond
+  // what the session's own PR changes.
+  await refreshRemoteBranch(cwd, "main")
+  await refreshRemoteBranch(cwd, "master")
+
   const candidates = ["refs/remotes/origin/main", "refs/remotes/origin/master", "refs/heads/main", "refs/heads/master"]
   let base = "HEAD"
   for (const ref of candidates) {
@@ -60,9 +92,19 @@ export async function computeWorkspaceDiff(cwd: string, headBranch?: string): Pr
     }
   }
 
-  // `git diff <base>` covers both committed-on-branch and uncommitted
-  // working-tree changes, which is what a "preview this PR" view needs.
-  const raw = await gitOutput(cwd, ["diff", "--no-color", base])
+  // Diff from the branch's fork point with base, not from base's current tip.
+  // If main has diverged, a plain `git diff <base>` would render those
+  // diverged commits as inverted "deletions" in the patch.
+  let diffBase = base
+  if (base !== "HEAD") {
+    const forkPoint = await mergeBase(cwd, base, "HEAD")
+    if (forkPoint) diffBase = forkPoint
+  }
+
+  // `git diff <base>` (no second ref) covers both committed-on-branch and
+  // uncommitted working-tree changes, which is what a "preview this PR" view
+  // needs.
+  const raw = await gitOutput(cwd, ["diff", "--no-color", diffBase])
   const truncated = raw.length > MAX_PATCH_BYTES
   const patch = truncated ? raw.slice(0, MAX_PATCH_BYTES) : raw
 
