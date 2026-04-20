@@ -6,6 +6,14 @@ export function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max).trimEnd() + "…" : s
 }
 
+export function formatTimestamp(ts: number): string {
+  const d = new Date(ts)
+  const hh = String(d.getUTCHours()).padStart(2, "0")
+  const mm = String(d.getUTCMinutes()).padStart(2, "0")
+  const ss = String(d.getUTCSeconds()).padStart(2, "0")
+  return `${hh}:${mm}:${ss}`
+}
+
 const TOOL_ICONS: Record<string, string> = {
   read_file: "📖", Read: "📖",
   write_file: "✏️", Write: "✏️",
@@ -20,6 +28,7 @@ const TOOL_ICONS: Record<string, string> = {
 export function formatToolLine(
   toolName: string,
   args: Record<string, unknown>,
+  timestamp?: number,
 ): string {
   const MAX_SUMMARY = 60
   const icon = TOOL_ICONS[toolName]
@@ -59,9 +68,10 @@ export function formatToolLine(
     summary = typeof url === "string" ? truncate(url, MAX_SUMMARY) : ""
   }
 
+  const tsPrefix = timestamp != null ? `<code>${formatTimestamp(timestamp)}</code> ` : ""
   return summary
-    ? `${icon} <code>${esc(summary)}</code>`
-    : `${icon} ${esc(toolName)}`
+    ? `${tsPrefix}${icon} <code>${esc(summary)}</code>`
+    : `${tsPrefix}${icon} ${esc(toolName)}`
 }
 
 export function formatActivityLog(
@@ -194,10 +204,11 @@ function splitTextIntoChunks(text: string, maxLen: number): string[] {
   return chunks
 }
 
-export function formatAssistantText(slug: string, text: string, toolLines?: string[], toolCount?: number): string {
+export function formatAssistantText(slug: string, text: string, toolLines?: string[], toolCount?: number, timestamp?: number): string {
   const toolPart = toolCount && toolCount > 0 ? `  ·  🔧 ${toolCount} tool${toolCount === 1 ? "" : "s"}` : ""
+  const tsPart = timestamp != null ? `  ·  🕒 <code>${formatTimestamp(timestamp)}</code>` : ""
   const lines: string[] = [
-    `🤖 <b>Reply</b>  ·  🏷 <code>${esc(slug)}</code>${toolPart}`,
+    `🤖 <b>Reply</b>  ·  🏷 <code>${esc(slug)}</code>${toolPart}${tsPart}`,
   ]
 
   if (toolLines && toolLines.length > 0) {
@@ -221,12 +232,14 @@ export function formatAssistantTextChunks(
   text: string,
   toolLines?: string[],
   toolCount?: number,
+  timestamp?: number,
 ): string[] {
   const toolPart = toolCount && toolCount > 0 ? `  ·  🔧 ${toolCount} tool${toolCount === 1 ? "" : "s"}` : ""
+  const tsPart = timestamp != null ? `  ·  🕒 <code>${formatTimestamp(timestamp)}</code>` : ""
 
   // Build header template (first message gets tools)
-  const headerWithTools = `🤖 <b>Reply</b>  ·  🏷 <code>${esc(slug)}</code>${toolPart}`
-  const headerPlain = `🤖 <b>Reply</b>  ·  🏷 <code>${esc(slug)}</code>`
+  const headerWithTools = `🤖 <b>Reply</b>  ·  🏷 <code>${esc(slug)}</code>${toolPart}${tsPart}`
+  const headerPlain = `🤖 <b>Reply</b>  ·  🏷 <code>${esc(slug)}</code>${tsPart}`
 
   // Build tool lines section (only for first message)
   const toolSection: string[] = []
@@ -251,7 +264,7 @@ export function formatAssistantTextChunks(
 
   // If single chunk, use simple format
   if (textChunks.length === 1) {
-    return [formatAssistantText(slug, text, toolLines, toolCount)]
+    return [formatAssistantText(slug, text, toolLines, toolCount, timestamp)]
   }
 
   // Build multiple formatted chunks

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import {
   esc,
   truncate,
+  formatTimestamp,
   formatToolLine,
   formatActivityLog,
   formatToolActivity,
@@ -101,11 +102,36 @@ describe("truncate", () => {
   })
 })
 
+describe("formatTimestamp", () => {
+  it("formats milliseconds as HH:MM:SS in UTC", () => {
+    // 2026-04-20 03:14:07 UTC
+    const ts = Date.UTC(2026, 3, 20, 3, 14, 7)
+    expect(formatTimestamp(ts)).toBe("03:14:07")
+  })
+
+  it("zero-pads single-digit components", () => {
+    const ts = Date.UTC(2026, 0, 1, 0, 0, 0)
+    expect(formatTimestamp(ts)).toBe("00:00:00")
+  })
+})
+
 describe("formatToolLine", () => {
   it("formats a Bash tool with command summary", () => {
     const line = formatToolLine("Bash", { command: "npm test" })
     expect(line).toContain("💻")
     expect(line).toContain("npm test")
+  })
+
+  it("prefixes timestamp when provided", () => {
+    const ts = Date.UTC(2026, 3, 20, 12, 34, 56)
+    const line = formatToolLine("Bash", { command: "npm test" }, ts)
+    expect(line.startsWith("<code>12:34:56</code> ")).toBe(true)
+    expect(line).toContain("npm test")
+  })
+
+  it("omits timestamp when not provided", () => {
+    const line = formatToolLine("Bash", { command: "npm test" })
+    expect(line).not.toMatch(/^<code>\d{2}:\d{2}:\d{2}<\/code>/)
   })
 
   it("formats a Read tool with file path", () => {
@@ -266,6 +292,12 @@ describe("formatAssistantText", () => {
     const msg = formatAssistantText("slug", "text", ["📖 file.ts"], 1)
     expect(msg).toContain("📖 file.ts")
   })
+
+  it("includes timestamp in header when provided", () => {
+    const ts = Date.UTC(2026, 3, 20, 9, 8, 7)
+    const msg = formatAssistantText("slug", "text", undefined, undefined, ts)
+    expect(msg).toContain("🕒 <code>09:08:07</code>")
+  })
 })
 
 describe("formatAssistantTextChunks", () => {
@@ -328,6 +360,21 @@ describe("formatAssistantTextChunks", () => {
     const chunks = formatAssistantTextChunks("slug", "Text with <script>alert('xss')</script>")
     expect(chunks[0]).toContain("&lt;script&gt;")
     expect(chunks[0]).not.toContain("<script>")
+  })
+
+  it("includes timestamp on each chunk when provided", () => {
+    const ts = Date.UTC(2026, 3, 20, 5, 6, 7)
+    const paragraphs = []
+    for (let i = 0; i < 10; i++) {
+      paragraphs.push(`Paragraph ${i}: ${"x".repeat(500)}`)
+    }
+    const longText = paragraphs.join("\n\n")
+
+    const chunks = formatAssistantTextChunks("slug", longText, undefined, undefined, ts)
+    expect(chunks.length).toBeGreaterThan(1)
+    for (const chunk of chunks) {
+      expect(chunk).toContain("🕒 <code>05:06:07</code>")
+    }
   })
 })
 
