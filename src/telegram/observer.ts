@@ -348,7 +348,7 @@ export class Observer {
     const toolCount = state.toolCount > 0 ? state.toolCount : undefined
 
     // Get formatted chunks (may be single message or multiple with headers like "1/3")
-    const chunks = formatAssistantTextChunks(meta.topicName, text, toolLines, toolCount)
+    const chunks = formatAssistantTextChunks(meta.topicName, text, toolLines, toolCount, Date.now())
 
     // Send each chunk as a separate message with a small delay to avoid rate limits
     for (let i = 0; i < chunks.length; i++) {
@@ -392,7 +392,7 @@ export class Observer {
     state.sessionToolCount++
 
     // Append to rolling activity log
-    const line = formatToolLine(name, args)
+    const line = formatToolLine(name, args, now)
     state.activityLog.push(line)
     if (state.activityLog.length > MAX_ACTIVITY_LINES) {
       state.activityLog.shift()
