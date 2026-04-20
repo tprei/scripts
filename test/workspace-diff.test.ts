@@ -64,4 +64,46 @@ describe("computeWorkspaceDiff", () => {
     expect(result.patch).toContain("+hello")
     expect(result.patch).toContain("feature.txt")
   })
+
+  it("ignores commits that landed on origin/main after the branch diverged", async () => {
+    // Simulate a minion workspace cloned from a remote whose main has
+    // advanced with unrelated PRs since the session's branch was created.
+    const remoteDir = await fs.mkdtemp(path.join(os.tmpdir(), "workspace-diff-remote-"))
+    try {
+      await git(remoteDir, "init", "--bare", "--initial-branch=main")
+      await git(dir, "remote", "add", "origin", remoteDir)
+      await git(dir, "push", "origin", "main")
+
+      await git(dir, "checkout", "-b", "minion/feature")
+      await fs.writeFile(path.join(dir, "feature.txt"), "hello\n")
+      await git(dir, "add", ".")
+      await git(dir, "commit", "-m", "branch: add feature")
+
+      // A second clone advances `main` upstream with a large unrelated change,
+      // then pushes. The first clone's `origin/main` is now stale.
+      const otherDir = await fs.mkdtemp(path.join(os.tmpdir(), "workspace-diff-other-"))
+      try {
+        await git(otherDir, "clone", remoteDir, ".")
+        const bigLines = Array.from({ length: 500 }, (_, i) => `line-${i}`).join("\n") + "\n"
+        await fs.writeFile(path.join(otherDir, "unrelated.txt"), bigLines)
+        await git(otherDir, "add", ".")
+        await git(otherDir, "commit", "-m", "main: unrelated 500-line change")
+        await git(otherDir, "push", "origin", "main")
+      } finally {
+        await fs.rm(otherDir, { recursive: true, force: true })
+      }
+
+      const result = await computeWorkspaceDiff(dir, "minion/feature")
+
+      expect(result.base).toBe("origin/main")
+      expect(result.patch).toContain("feature.txt")
+      expect(result.patch).toContain("+hello")
+      // The unrelated upstream commit must not show up as inverted deletions
+      // in this branch's patch.
+      expect(result.patch).not.toContain("unrelated.txt")
+      expect(result.patch).not.toContain("line-0")
+    } finally {
+      await fs.rm(remoteDir, { recursive: true, force: true })
+    }
+  })
 })
