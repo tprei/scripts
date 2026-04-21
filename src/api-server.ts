@@ -356,6 +356,8 @@ export interface ApiServerOptions {
   /** Web Push store + keys. When absent, push endpoints return 503. */
   pushSubscriptions?: PushSubscriptionStore
   vapidKeys?: VapidKeys
+  /** SSE keepalive interval in ms. Defaults to 25000. Set lower in tests. */
+  sseKeepaliveMs?: number
 }
 
 function resolveOrigin(req: http.IncomingMessage, allowed?: string[]): string | null {
@@ -388,7 +390,7 @@ export function createApiServer(
   dispatcher: DispatcherApi,
   options: ApiServerOptions,
 ): http.Server {
-  const { port, uiDistPath, chatId, botToken, broadcaster, apiToken, corsAllowedOrigins, repos, pushSubscriptions, vapidKeys } = options
+  const { port, uiDistPath, chatId, botToken, broadcaster, apiToken, corsAllowedOrigins, repos, pushSubscriptions, vapidKeys, sseKeepaliveMs = 25_000 } = options
   const sseClients = new Set<http.ServerResponse>()
 
   broadcaster.on("event", (event: SseEvent) => {
@@ -397,6 +399,13 @@ export function createApiServer(
       client.write(data)
     }
   })
+
+  const keepaliveInterval = setInterval(() => {
+    for (const client of sseClients) {
+      client.write(": keepalive\n\n")
+    }
+  }, sseKeepaliveMs)
+  keepaliveInterval.unref?.()
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://localhost:${port}`)
@@ -435,6 +444,10 @@ export function createApiServer(
     }
 
     await serveStatic(req, res, url, uiDistPath)
+  })
+
+  server.on("close", () => {
+    clearInterval(keepaliveInterval)
   })
 
   return server
@@ -738,8 +751,12 @@ async function handleApiRoute(
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
       })
       res.flushHeaders()
+      req.socket.setTimeout(0)
+      req.socket.setNoDelay(true)
+      req.socket.setKeepAlive(true)
 
       sseClients.add(res)
 
