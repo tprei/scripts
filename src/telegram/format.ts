@@ -145,12 +145,39 @@ export function formatSessionComplete(
   return `✅ <b>Complete</b>  ·  🏷 <code>${esc(slug)}</code>  ·  ⏱ ${dur}${costPart}${tokenPart}${toolPart}${turnPart}`
 }
 
-export function formatSessionError(slug: string, error: string): string {
-  return [
-    `❌ <b>Error</b>  ·  🏷 <code>${esc(slug)}</code>`,
-    ``,
-    `<code>${esc(truncate(error, 300))}</code>`,
-  ].join("\n")
+export interface SessionErrorInfo {
+  detail?: string
+  phase?: "startup" | "streaming" | "runtime" | "subprocess"
+  exitCode?: number | null
+  subtype?: string
+}
+
+const PHASE_LABEL: Record<NonNullable<SessionErrorInfo["phase"]>, string> = {
+  startup: "Startup",
+  streaming: "Streaming",
+  runtime: "Runtime",
+  subprocess: "Subprocess",
+}
+
+export function formatSessionError(slug: string, error: string, info?: SessionErrorInfo): string {
+  const phaseLabel = info?.phase ? PHASE_LABEL[info.phase] : null
+  const header = phaseLabel
+    ? `❌ <b>Error</b>  ·  🏷 <code>${esc(slug)}</code>  ·  ${phaseLabel}`
+    : `❌ <b>Error</b>  ·  🏷 <code>${esc(slug)}</code>`
+
+  const lines = [header, ``, `<b>${esc(truncate(error, 400))}</b>`]
+
+  const meta: string[] = []
+  if (typeof info?.exitCode === "number") meta.push(`exit ${info.exitCode}`)
+  if (info?.subtype) meta.push(`subtype <code>${esc(info.subtype)}</code>`)
+  if (meta.length > 0) lines.push(meta.join("  ·  "))
+
+  const detail = info?.detail?.trim()
+  if (detail) {
+    lines.push(``, `<pre>${esc(truncate(detail, 1200))}</pre>`)
+  }
+
+  return lines.join("\n")
 }
 
 export function formatSessionInterrupted(slug: string): string {
