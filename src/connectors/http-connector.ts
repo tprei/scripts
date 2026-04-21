@@ -11,6 +11,13 @@ import {
 import { PushSubscriptionStore } from "../push/push-subscriptions.js"
 import { loadOrCreateVapidKeys, type VapidKeys } from "../push/vapid-keys.js"
 import { PushNotifier } from "../push/push-notifier.js"
+import { ResourceCollector } from "../metrics/resource-collector.js"
+import type { ResourceSnapshot } from "../metrics/types.js"
+import {
+  RuntimeOverridesStore,
+  buildSchema,
+  type LoopMeta,
+} from "../config/runtime-overrides.js"
 
 export interface HttpConnectorOptions {
   port: number
@@ -59,6 +66,9 @@ export class HttpConnector implements Connector {
   private vapidKeys: VapidKeys | null = null
   private pushNotifier: PushNotifier | null = null
   private attachPromise: Promise<void> = Promise.resolve()
+  private resourceCollector: ResourceCollector | null = null
+  private runtimeOverrides: RuntimeOverridesStore | null = null
+  private engineRef: MinionEngine | null = null
 
   constructor(private readonly opts: HttpConnectorOptions) {
     this.broadcaster = new StateBroadcaster()
@@ -70,6 +80,7 @@ export class HttpConnector implements Connector {
   }
 
   private async doAttach(engine: MinionEngine): Promise<void> {
+    this.engineRef = engine
     const chatId = this.opts.chatId
     const topicSessions = engine.getTopicSessions()
     const activeSessions = engine.getSessions()
@@ -109,6 +120,25 @@ export class HttpConnector implements Connector {
       await this.pushSubscriptions.load()
       this.pushNotifier = new PushNotifier(engine.events, this.pushSubscriptions, this.vapidKeys)
       this.pushNotifier.attach()
+
+      this.runtimeOverrides = new RuntimeOverridesStore(this.opts.workspaceRoot)
+      await this.runtimeOverrides.load()
+      engine.setRuntimeOverridesStore(this.runtimeOverrides)
+
+      const resourceCollector = new ResourceCollector({
+        workspaceRoot: this.opts.workspaceRoot,
+        callbacks: {
+          getActiveSessionCount: () => engine.getSessions().size,
+          getMaxSessionCount: () => engine.getConfig().workspace.maxConcurrentSessions,
+          getActiveLoopCount: () => engine.getLoopScheduler()?.getActiveLoopCount() ?? 0,
+          getMaxLoopCount: () => engine.getConfig().loops?.maxConcurrentLoops ?? 0,
+        },
+        onSnapshot: (snapshot: ResourceSnapshot) => {
+          this.broadcaster.broadcast({ type: "resource", snapshot })
+        },
+      })
+      this.resourceCollector = resourceCollector
+      resourceCollector.start()
     }
 
     const dispatcherApi: DispatcherApi = {
@@ -140,6 +170,10 @@ export class HttpConnector implements Connector {
           highWaterMark: storeHwm,
         }
       },
+      getResourceSnapshot: () => this.resourceCollector?.getLatest() ?? null,
+      getRuntimeOverridesStore: () => this.runtimeOverrides,
+      getRuntimeOverridesSchema: () => buildSchema(collectLoopMetas(engine)),
+      getBaseConfig: () => buildBaseConfigView(engine),
     }
 
     this.server = createApiServer(dispatcherApi, {
@@ -173,6 +207,9 @@ export class HttpConnector implements Connector {
     this.subscriptions = []
     this.pushNotifier?.detach()
     this.pushNotifier = null
+    this.resourceCollector?.stop()
+    this.resourceCollector = null
+    this.engineRef = null
     if (this.server) {
       this.server.close()
       this.server = null
@@ -181,5 +218,49 @@ export class HttpConnector implements Connector {
 
   getServer(): http.Server | null {
     return this.server
+  }
+}
+
+function collectLoopMetas(engine: MinionEngine): LoopMeta[] {
+  const scheduler = engine.getLoopScheduler()
+  if (!scheduler) return []
+  const metas: LoopMeta[] = []
+  for (const def of scheduler.getDefinitions().values()) {
+    metas.push({
+      id: def.id,
+      name: def.name,
+      defaultIntervalMs: def.intervalMs,
+      defaultEnabled: def.enabled,
+    })
+  }
+  return metas
+}
+
+function buildBaseConfigView(engine: MinionEngine): Record<string, unknown> {
+  const config = engine.getConfig()
+  const scheduler = engine.getLoopScheduler()
+  const loops: Record<string, { enabled: boolean; intervalMs: number }> = {}
+  if (scheduler) {
+    for (const def of scheduler.getDefinitions().values()) {
+      const state = scheduler.getStates().get(def.id)
+      loops[def.id] = {
+        enabled: def.enabled && (state?.enabled ?? false),
+        intervalMs: def.intervalMs,
+      }
+    }
+  }
+  return {
+    workspace: { maxConcurrentSessions: config.workspace.maxConcurrentSessions },
+    loopsConfig: {
+      maxConcurrentLoops: config.loops?.maxConcurrentLoops ?? 0,
+      reservedInteractiveSlots: config.loops?.reservedInteractiveSlots ?? 0,
+    },
+    quota: {
+      retryMax: config.quota.retryMax,
+      defaultSleepMs: config.quota.defaultSleepMs,
+    },
+    ci: { babysitEnabled: config.ci.babysitEnabled },
+    mcp: { ...config.mcp },
+    loops,
   }
 }

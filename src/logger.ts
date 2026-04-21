@@ -64,6 +64,8 @@ export const loggers = {
   loopStore: createLogger({ component: "loop-store" }),
   loopScheduler: createLogger({ component: "loop-scheduler" }),
   transcriptStore: createLogger({ component: "transcript-store" }),
+  resourceCollector: createLogger({ component: "resource-collector" }),
+  runtimeOverrides: createLogger({ component: "runtime-overrides" }),
 } as const
 
 /**
