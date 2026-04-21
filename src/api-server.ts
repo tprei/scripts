@@ -13,6 +13,13 @@ import { fetchPrPreview } from "./github/pr-preview.js"
 import type { PushSubscriptionStore } from "./push/push-subscriptions.js"
 import type { VapidKeys } from "./push/vapid-keys.js"
 import type { TranscriptEvent, TranscriptSnapshot } from "./transcript/types.js"
+import type { ResourceSnapshot } from "./metrics/types.js"
+import type {
+  RuntimeOverridesStore,
+  RuntimeOverrides,
+  RuntimeOverridesSchema,
+} from "./config/runtime-overrides.js"
+import { RuntimeOverrideValidationError } from "./config/runtime-overrides.js"
 import pkg from "../package.json" with { type: "json" }
 
 const log = loggers.apiServer
@@ -103,6 +110,7 @@ export type SseEvent =
   | { type: "dag_updated"; dag: ApiDagGraph }
   | { type: "dag_deleted"; dagId: string }
   | { type: "transcript_event"; sessionId: string; event: TranscriptEvent }
+  | { type: "resource"; snapshot: ResourceSnapshot }
 
 export type MinionCommand =
   | { action: "reply"; sessionId: string; message: string }
@@ -144,6 +152,14 @@ export interface DispatcherApi {
    * interface — in that case the REST endpoint responds 501.
    */
   getTranscript?(slug: string, afterSeq: number): TranscriptSnapshot | undefined
+  /** Optional latest resource snapshot from the engine-owned collector. */
+  getResourceSnapshot?(): ResourceSnapshot | null
+  /** Optional runtime-overrides store. When absent, `/api/config/runtime` routes 501. */
+  getRuntimeOverridesStore?(): RuntimeOverridesStore | null
+  /** Optional schema describing every configurable field. */
+  getRuntimeOverridesSchema?(): RuntimeOverridesSchema
+  /** Baseline env config for the runtime-config view (before overrides apply). */
+  getBaseConfig?(): Record<string, unknown>
 }
 
 export class StateBroadcaster extends EventEmitter {
@@ -417,7 +433,7 @@ export function createApiServer(
       res.setHeader("Access-Control-Allow-Origin", origin)
       res.setHeader("Vary", "Origin")
     }
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Cache-Control, Last-Event-ID")
     res.setHeader("Access-Control-Max-Age", "600")
 
@@ -451,6 +467,40 @@ export function createApiServer(
   })
 
   return server
+}
+
+function collectRestartKeys(
+  patch: RuntimeOverrides,
+  schema: RuntimeOverridesSchema,
+): string[] {
+  const result: string[] = []
+  for (const field of schema.fields) {
+    if (field.apply !== "restart") continue
+    const [root, second, third] = field.key.split(".")
+    let touched = false
+    switch (root) {
+      case "mcp":
+        if (patch.mcp && second && (patch.mcp as Record<string, unknown>)[second] !== undefined) {
+          touched = true
+        }
+        break
+      case "ci":
+        if (patch.ci && second && (patch.ci as Record<string, unknown>)[second] !== undefined) {
+          touched = true
+        }
+        break
+      case "loops":
+        if (patch.loops && second) {
+          const loopPatch = patch.loops[second]
+          if (loopPatch && third && (loopPatch as Record<string, unknown>)[third] !== undefined) {
+            touched = true
+          }
+        }
+        break
+    }
+    if (touched) result.push(field.key)
+  }
+  return result
 }
 
 async function handleApiRoute(
@@ -963,6 +1013,88 @@ async function handleApiRoute(
       return
     }
 
+    // GET /api/metrics — latest resource snapshot (one-shot)
+    if (pathname === "/api/metrics" && req.method === "GET") {
+      if (!dispatcher.getResourceSnapshot) {
+        res.writeHead(501, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Resource metrics are not enabled on this minion" }))
+        return
+      }
+      const snapshot = dispatcher.getResourceSnapshot()
+      if (!snapshot) {
+        res.writeHead(503, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "No snapshot available yet" }))
+        return
+      }
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ data: snapshot }))
+      return
+    }
+
+    // GET /api/config/runtime — base + overrides + schema
+    if (pathname === "/api/config/runtime" && req.method === "GET") {
+      const store = dispatcher.getRuntimeOverridesStore?.() ?? null
+      const schema = dispatcher.getRuntimeOverridesSchema?.()
+      const base = dispatcher.getBaseConfig?.()
+      if (!store || !schema || !base) {
+        res.writeHead(501, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Runtime config is not enabled on this minion" }))
+        return
+      }
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({
+        data: {
+          base,
+          overrides: store.get(),
+          schema,
+        },
+      }))
+      return
+    }
+
+    // PATCH /api/config/runtime — merge overrides + persist
+    if (pathname === "/api/config/runtime" && req.method === "PATCH") {
+      const store = dispatcher.getRuntimeOverridesStore?.() ?? null
+      const schema = dispatcher.getRuntimeOverridesSchema?.()
+      const base = dispatcher.getBaseConfig?.()
+      if (!store || !schema || !base) {
+        res.writeHead(501, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "Runtime config is not enabled on this minion" }))
+        return
+      }
+      const body = await readBody(req)
+      let parsed: RuntimeOverrides
+      try {
+        parsed = JSON.parse(body) as RuntimeOverrides
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ data: null, error: "invalid JSON body" }))
+        return
+      }
+      const loopIds = new Set(schema.loops.map((l) => l.id))
+      try {
+        const next = await store.patch(parsed, loopIds)
+        const requiresRestart = collectRestartKeys(parsed, schema)
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({
+          data: {
+            base,
+            overrides: next,
+            schema,
+            requiresRestart,
+          },
+        }))
+      } catch (err) {
+        if (err instanceof RuntimeOverrideValidationError) {
+          res.writeHead(400, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ data: null, error: err.message }))
+          return
+        }
+        throw err
+      }
+      return
+    }
+
     // GET /api/version
     if (pathname === "/api/version" && req.method === "GET") {
       const repoList = repos
@@ -985,6 +1117,8 @@ async function handleApiRoute(
             "parallel-variants",
             ...(vapidKeys ? ["web-push"] : []),
             ...(dispatcher.getTranscript ? ["transcript"] : []),
+            ...(dispatcher.getResourceSnapshot ? ["resource-metrics"] : []),
+            ...(dispatcher.getRuntimeOverridesStore?.() ? ["runtime-config"] : []),
           ],
           repos: repoList,
         },

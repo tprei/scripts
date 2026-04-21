@@ -70,6 +70,7 @@ import { computeAttentionReasons } from "../api-server.js"
 import { LoopScheduler, type LoopSchedulerConfig } from "../loops/loop-scheduler.js"
 import type { LoopDefinition, LoopState } from "../loops/domain-types.js"
 import { LoopStore } from "../loops/loop-store.js"
+import type { RuntimeOverridesStore, RuntimeOverrides } from "../config/runtime-overrides.js"
 import { CompletionHandlerChain } from "../handlers/completion-handler-chain.js"
 import { StatsHandler } from "../handlers/stats-handler.js"
 import { QuotaHandler } from "../handlers/quota-handler.js"
@@ -138,6 +139,8 @@ export class MinionEngine {
   private readonly loopStore: LoopStore
   private loopScheduler: LoopScheduler | null = null
   private readonly quotaSleepTimers = new Map<number, ReturnType<typeof setTimeout>>()
+  private runtimeOverrides: RuntimeOverridesStore | null = null
+  private runtimeOverridesUnsub: (() => void) | null = null
 
   private readonly ciBabysitter: CIBabysitter
   private readonly landingManager: LandingManager
@@ -714,10 +717,73 @@ export class MinionEngine {
     })
 
     await this.loopScheduler.start(definitions)
+
+    const overrides = this.runtimeOverrides?.get()
+    if (overrides) this.applyOverrides(overrides)
+  }
+
+  setRuntimeOverridesStore(store: RuntimeOverridesStore): void {
+    if (this.runtimeOverridesUnsub) {
+      this.runtimeOverridesUnsub()
+      this.runtimeOverridesUnsub = null
+    }
+    this.runtimeOverrides = store
+    this.runtimeOverridesUnsub = store.on("changed", (next) => {
+      this.applyOverrides(next)
+    })
+    this.applyOverrides(store.get())
+  }
+
+  getRuntimeOverridesStore(): RuntimeOverridesStore | null {
+    return this.runtimeOverrides
+  }
+
+  private applyOverrides(overrides: RuntimeOverrides): void {
+    if (overrides.workspace?.maxConcurrentSessions !== undefined) {
+      this.config.workspace.maxConcurrentSessions = overrides.workspace.maxConcurrentSessions
+      this.loopScheduler?.updateConfig({ maxConcurrentSessions: overrides.workspace.maxConcurrentSessions })
+    }
+    if (overrides.loopsConfig?.maxConcurrentLoops !== undefined) {
+      if (!this.config.loops) {
+        this.config.loops = { maxConcurrentLoops: overrides.loopsConfig.maxConcurrentLoops, reservedInteractiveSlots: 2 }
+      } else {
+        this.config.loops.maxConcurrentLoops = overrides.loopsConfig.maxConcurrentLoops
+      }
+      this.loopScheduler?.updateConfig({ maxConcurrentLoops: overrides.loopsConfig.maxConcurrentLoops })
+    }
+    if (overrides.loopsConfig?.reservedInteractiveSlots !== undefined) {
+      if (!this.config.loops) {
+        this.config.loops = { maxConcurrentLoops: 3, reservedInteractiveSlots: overrides.loopsConfig.reservedInteractiveSlots }
+      } else {
+        this.config.loops.reservedInteractiveSlots = overrides.loopsConfig.reservedInteractiveSlots
+      }
+      this.loopScheduler?.updateConfig({ reservedInteractiveSlots: overrides.loopsConfig.reservedInteractiveSlots })
+    }
+    if (overrides.quota?.retryMax !== undefined) {
+      this.config.quota.retryMax = overrides.quota.retryMax
+    }
+    if (overrides.quota?.defaultSleepMs !== undefined) {
+      this.config.quota.defaultSleepMs = overrides.quota.defaultSleepMs
+    }
+    if (overrides.loops && this.loopScheduler) {
+      for (const [loopId, override] of Object.entries(overrides.loops)) {
+        if (override.intervalMs !== undefined) {
+          this.loopScheduler.setLoopInterval(loopId, override.intervalMs)
+        }
+        if (override.enabled !== undefined) {
+          if (override.enabled) this.loopScheduler.enableLoop(loopId)
+          else this.loopScheduler.disableLoop(loopId)
+        }
+      }
+    }
   }
 
   getLoopScheduler(): LoopScheduler | null {
     return this.loopScheduler
+  }
+
+  getConfig(): MinionConfig {
+    return this.config
   }
 
   async handleLoopsCommand(args: string): Promise<void> {

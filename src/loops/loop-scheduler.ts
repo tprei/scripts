@@ -31,7 +31,7 @@ export class LoopScheduler {
 
   constructor(
     private readonly store: LoopStore,
-    private readonly config: LoopSchedulerConfig,
+    private config: LoopSchedulerConfig,
     private readonly callbacks: LoopSchedulerCallbacks,
   ) {}
 
@@ -127,6 +127,42 @@ export class LoopScheduler {
     this.persist().catch(() => {})
     log.info({ loopId }, "loop disabled")
     return true
+  }
+
+  setLoopInterval(loopId: string, intervalMs: number): boolean {
+    const def = this.definitions.get(loopId)
+    const state = this.states.get(loopId)
+    if (!def || !state) return false
+
+    def.intervalMs = intervalMs
+    if (state.enabled && this.running) {
+      this.scheduleLoop(loopId, intervalMs)
+      state.nextRunAt = Date.now() + intervalMs
+    }
+    this.persist().catch(() => {})
+    log.info({ loopId, intervalMs }, "loop interval updated")
+    return true
+  }
+
+  updateConfig(partial: Partial<LoopSchedulerConfig>): void {
+    if (partial.maxConcurrentLoops !== undefined) {
+      this.config.maxConcurrentLoops = partial.maxConcurrentLoops
+    }
+    if (partial.reservedInteractiveSlots !== undefined) {
+      this.config.reservedInteractiveSlots = partial.reservedInteractiveSlots
+    }
+    if (partial.maxConcurrentSessions !== undefined) {
+      this.config.maxConcurrentSessions = partial.maxConcurrentSessions
+    }
+    log.info({ config: this.config }, "loop scheduler config updated")
+  }
+
+  getConfig(): LoopSchedulerConfig {
+    return { ...this.config }
+  }
+
+  getActiveLoopCount(): number {
+    return this.activeLoopThreads.size
   }
 
   recordOutcome(loopId: string, result: LoopState["outcomes"][number]): void {

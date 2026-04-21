@@ -82,6 +82,32 @@ export { LoopStore, LoopScheduler } from "./loops/index.js"
 export type { LoopDefinition, LoopState, LoopOutcome, LoopOutcomeResult, LoopSchedulerConfig, LoopSchedulerCallbacks } from "./loops/index.js"
 export type { LoopConfig } from "./config/config-types.js"
 export {
+  RuntimeOverridesStore,
+  RuntimeOverrideValidationError,
+  buildSchema as buildRuntimeOverridesSchema,
+} from "./config/runtime-overrides.js"
+export type {
+  RuntimeOverrides,
+  RuntimeOverridesSchema,
+  OverrideField,
+  OverrideFieldType,
+  OverrideApply,
+  OverrideCategory,
+  LoopMeta,
+  LoopOverride,
+} from "./config/runtime-overrides.js"
+export { ResourceCollector, cgroupAvailable } from "./metrics/index.js"
+export type {
+  ResourceSnapshot,
+  CpuSnapshot,
+  MemorySnapshot,
+  DiskSnapshot,
+  CountsSnapshot,
+  LimitSource,
+  ResourceCollectorOptions,
+  ResourceCollectorCallbacks,
+} from "./metrics/index.js"
+export {
   TRANSCRIPT_TRUNCATION_BUDGET,
   isTranscriptEventOfType,
 } from "./transcript/types.js"
