@@ -363,6 +363,47 @@ describe("API Server", () => {
       expect(response.status).toBe(200)
       expect(response.headers.get("content-type")).toBe("text/event-stream")
     })
+
+    it("should emit SSE keepalive comments on interval", async () => {
+      server = createApiServer(mockDispatcher, {
+        port: 0,
+        uiDistPath: "/nonexistent",
+        chatId: "-1001234567890",
+        botToken: "test-bot-token-123456",
+        broadcaster,
+        sseKeepaliveMs: 50,
+      })
+
+      const address = await new Promise<{ port: number }>((resolve) => {
+        server.listen(0, () => {
+          resolve(server.address() as { port: number })
+        })
+      })
+
+      const controller = new AbortController()
+      const response = await fetch(`http://localhost:${address.port}/api/events`, {
+        signal: controller.signal,
+      })
+      expect(response.body).not.toBeNull()
+
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      const deadline = Date.now() + 2000
+      try {
+        while (!buffer.includes(": keepalive") && Date.now() < deadline) {
+          const { value, done } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+        }
+      } finally {
+        controller.abort()
+        try { await reader.cancel() } catch { /* noop */ }
+      }
+
+      expect(buffer).toContain(": connected")
+      expect(buffer).toContain(": keepalive")
+    })
   })
 
   describe("chatId in API responses", () => {
