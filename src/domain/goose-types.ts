@@ -71,10 +71,21 @@ export interface GooseMessage {
   content: GooseContentType[]
 }
 
+export type GooseErrorPhase = "startup" | "streaming" | "runtime" | "subprocess"
+
+export interface GooseErrorEvent {
+  type: "error"
+  error: string
+  detail?: string
+  phase?: GooseErrorPhase
+  exitCode?: number | null
+  subtype?: string
+}
+
 export type GooseStreamEvent =
   | { type: "message"; message: GooseMessage }
   | { type: "notification"; extensionId: string; message?: string; progress?: number; total?: number | null }
-  | { type: "error"; error: string }
+  | GooseErrorEvent
   | { type: "complete"; total_tokens: number | null; total_cost_usd: number | null; num_turns: number | null }
   | { type: "idle" }
   | { type: "quota_exhausted"; resetAt?: number; rawMessage: string }

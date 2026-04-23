@@ -599,6 +599,13 @@ export class SDKSessionHandle implements SessionPort {
           exitCode: code,
           stderrTail: stderrText.slice(-2000),
         })
+        this.onEvent({
+          type: "error",
+          error: `Session process exited with code ${code}`,
+          detail: stderrText.slice(-1500),
+          phase: "subprocess",
+          exitCode: code,
+        })
       }
       const finalState: SessionDoneState = code === 0 ? "completed" : "errored"
       this.state = finalState
@@ -615,7 +622,7 @@ export class SDKSessionHandle implements SessionPort {
       })
       this.clearTimers()
       this.state = "errored"
-      this.onEvent({ type: "error", error: err.message })
+      this.onEvent({ type: "error", error: err.message, phase: "startup" })
       this.completionResolve?.("errored")
       this.onDone(this.meta, "errored")
     })

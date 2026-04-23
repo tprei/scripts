@@ -280,7 +280,12 @@ describe("translateClaudeEvent", () => {
       result: "something went wrong",
       is_error: true,
     })
-    expect(result).toEqual({ type: "error", error: "something went wrong" })
+    expect(result).toEqual({
+      type: "error",
+      error: "something went wrong",
+      phase: "runtime",
+      subtype: undefined,
+    })
   })
 
   it("translates an error result with no result text", () => {
@@ -288,7 +293,26 @@ describe("translateClaudeEvent", () => {
       type: "result",
       is_error: true,
     })
-    expect(result).toEqual({ type: "error", error: "Unknown error" })
+    expect(result).toEqual({
+      type: "error",
+      error: "Claude returned an error with no details",
+      phase: "runtime",
+      subtype: undefined,
+    })
+  })
+
+  it("translates an error result with subtype into a friendly message", () => {
+    const result = translateClaudeEvent({
+      type: "result",
+      is_error: true,
+      subtype: "error_max_turns",
+    })
+    expect(result).toEqual({
+      type: "error",
+      error: "Maximum conversation turns reached before completion",
+      phase: "runtime",
+      subtype: "error_max_turns",
+    })
   })
 
   it("returns null for unknown event types", () => {

@@ -38,6 +38,18 @@ interface ClaudeStreamEvent {
   session_id?: string
 }
 
+function subtypeToMessage(subtype: string | undefined): string | null {
+  if (!subtype) return null
+  switch (subtype) {
+    case "error_max_turns":
+      return "Maximum conversation turns reached before completion"
+    case "error_during_execution":
+      return "Claude encountered an error while executing the task"
+    default:
+      return `Claude returned error subtype: ${subtype}`
+  }
+}
+
 function buildAssistantContent(
   blocks: ClaudeContentBlock[],
   parentToolUseId: string | null | undefined,
@@ -107,7 +119,9 @@ export function translateClaudeEvent(raw: ClaudeStreamEvent): GooseStreamEvent |
 
     case "result": {
       if (raw.is_error) {
-        return { type: "error", error: raw.result ?? "Unknown error" }
+        const subtype = typeof raw.subtype === "string" && raw.subtype.length > 0 ? raw.subtype : undefined
+        const error = raw.result ?? subtypeToMessage(subtype) ?? "Claude returned an error with no details"
+        return { type: "error", error, phase: "runtime", subtype }
       }
 
       const totalTokens = raw.usage

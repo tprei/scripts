@@ -79,6 +79,9 @@ interface SessionState {
   // error, complete). Mirrors onActivityCapture so PWA users see the same
   // lifecycle breadcrumbs Telegram users do.
   onLifecycleCapture?: (sessionId: string, plainText: string) => void
+  // Whether a rich error message has already been sent for this session,
+  // so that onSessionComplete can skip the generic "errored" fallback.
+  errorSent: boolean
 }
 
 export class Observer {
@@ -121,6 +124,7 @@ export class Observer {
       onDeadThread,
       onActivityCapture,
       onLifecycleCapture,
+      errorSent: false,
     })
     const msg = meta.mode === "ship-think"
       ? formatShipThinkStart(meta.repo, meta.topicName, task)
@@ -177,7 +181,14 @@ export class Observer {
 
       case "error": {
         await this.flushTextBuffer(meta)
-        const html = formatSessionError(meta.topicName, event.error)
+        const html = formatSessionError(meta.topicName, event.error, {
+          detail: event.detail,
+          phase: event.phase,
+          exitCode: event.exitCode,
+          subtype: event.subtype,
+        })
+        const state = this.sessions.get(meta.sessionId)
+        if (state) state.errorSent = true
         this.captureLifecycle(meta, html)
         await this.safeSendMessage(meta, html)
         break
@@ -447,12 +458,15 @@ export class Observer {
   ): Promise<void> {
     const state = this.sessions.get(meta.sessionId)
     const sessionToolCount = state?.sessionToolCount ?? 0
+    const errorSent = state?.errorSent ?? false
     // Send any pending screenshots before posting summary
     if (state) state.screenshotPending = true
     await this.scanAndSendScreenshots(meta)
     // Flush any remaining buffered text before posting summary
     await this.flushTextBuffer(meta, "end")
     this.sessions.delete(meta.sessionId)
+
+    if (finalState === "errored" && errorSent) return
 
     const html = finalState === "errored"
       ? formatSessionError(meta.topicName, "Session ended with an error. Check logs.")
