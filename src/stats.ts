@@ -59,8 +59,9 @@ export class StatsTracker {
     if (this.cache) return this.cache
     try {
       const raw = await fs.readFile(this.filePath, "utf-8")
-      this.cache = JSON.parse(raw)
-      return this.cache!
+      const parsed: unknown = JSON.parse(raw)
+      this.cache = Array.isArray(parsed) ? (parsed as SessionRecord[]) : []
+      return this.cache
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         this.cache = []
